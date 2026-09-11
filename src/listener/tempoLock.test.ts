@@ -18,6 +18,10 @@ describe('estimateTempo', () => {
     expect(bpm).toBeCloseTo(100, 0);
   });
   it('reports first onset as downbeat', () => { expect(estimateTempo(beats(120, 16))!.downbeat).toBe(1); });
+  it('resolves nearby tempos 10 bpm apart under jitter', () => {
+    expect(Math.abs(estimateTempo(beats(100, 24, 0.015))!.bpm - 100)).toBeLessThan(2);
+    expect(Math.abs(estimateTempo(beats(110, 24, 0.015))!.bpm - 110)).toBeLessThan(2);
+  });
 });
 describe('TempoLock', () => {
   it('locks once and ignores later onsets', () => {

@@ -8,27 +8,40 @@ export function estimateTempo(onsets: number[]): { bpm: number; downbeat: number
     if (d > 0.05) iois.push(d);
   }
   if (iois.length < 4) return null;
-  // fold every IOI into the 60–180 bpm window, then histogram at 1 bpm resolution
+  // fold every IOI into the 60–180 bpm window, tracking each one's folded
+  // period alongside its rounded bpm (used for the stage-2 refinement below)
+  const folded: { period: number; bpm: number }[] = [];
   const hist = new Map<number, number>();
   for (const d of iois) {
-    let bpm = 60 / d;
-    while (bpm > MAX) bpm /= 2;
-    while (bpm < MIN) bpm *= 2;
+    let period = d;
+    let bpm = 60 / period;
+    while (bpm > MAX) { bpm /= 2; period *= 2; }
+    while (bpm < MIN) { bpm *= 2; period /= 2; }
     const b = Math.round(bpm);
+    folded.push({ period, bpm: b });
     hist.set(b, (hist.get(b) ?? 0) + 1);
   }
-  // pick the densest ±9 bpm window, return its weighted mean.
-  // A ±2 window is too narrow: jittered onsets fold into two adjacent-ish
-  // bpm bins (e.g. 92 and 101 for a true 96 bpm with 15ms jitter) that a
-  // tight window can't merge, so it locks onto one half instead of the mean.
-  const WINDOW = 9;
-  let best = 0, bestBpm = 0;
+  // Stage 1: find the mode with a window proportional to the candidate bpm
+  // (±5%), so nearby-but-distinct tempos (e.g. 100 vs 110) stay separate
+  // while jitter that spreads across a few bpm still gets grouped.
+  let bestCount = 0, modeBpm = 0;
   for (const [b] of hist) {
-    let n = 0, sum = 0;
-    for (let k = b - WINDOW; k <= b + WINDOW; k++) { const c = hist.get(k) ?? 0; n += c; sum += c * k; }
-    if (n > best) { best = n; bestBpm = sum / n; }
+    const w = b * 0.05;
+    let n = 0;
+    for (const [k, c] of hist) { if (Math.abs(k - b) <= w) n += c; }
+    if (n > bestCount) { bestCount = n; modeBpm = b; }
   }
-  return { bpm: Math.round(bestBpm * 10) / 10, downbeat: onsets[0] };
+  // Stage 2: refine in IOI space, where jitter is symmetric — average the
+  // actual periods (not their rounded bpm) of every folded IOI within ±12%
+  // of the mode's period, then convert back to bpm. The anchor here is the
+  // rounded mode bpm, i.e. one edge of the jittered split rather than its
+  // true center, so the window has to cover the full split width (up to
+  // ~4*jitter/period) as seen from that edge, not just half of it.
+  const modePeriod = 60 / modeBpm;
+  const near = folded.filter(f => Math.abs(f.period - modePeriod) <= modePeriod * 0.12);
+  const meanPeriod = near.reduce((s, f) => s + f.period, 0) / near.length;
+  const bpm = 60 / meanPeriod;
+  return { bpm: Math.round(bpm * 10) / 10, downbeat: onsets[0] };
 }
 
 export class TempoLock {
