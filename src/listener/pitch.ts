@@ -16,26 +16,30 @@ export function detectPitchHz(x: Float32Array, sr: number): number | null {
     nsdf[lag] = m ? (2 * ac) / m : 0;
   }
 
-  // first peak after the first negative-going zero crossing that clears the
-  // clarity threshold (McLeod-style: take the first strong peak, not the
-  // global max, to avoid picking a sub-harmonic on pure tones)
+  // McLeod pitch method peak selection: after the first negative-going zero
+  // crossing, collect all local maxima (parabolically interpolated), then
+  // pick the FIRST one that is at least 0.8x the tallest peak found. This
+  // avoids both octave errors: picking the global max (which can land on a
+  // harmonic for pure tones) and requiring an absolute 0.9 on the first peak
+  // (which skips a slightly-attenuated true fundamental in inharmonic/real
+  // input and locks onto a later harmonic instead).
   let lag = minLag;
   while (lag <= maxLag && nsdf[lag] > 0) lag++;
-  let bestLag = -1;
-  const CLARITY = 0.9;
+  const peaks: { lag: number; value: number }[] = [];
   for (; lag < maxLag; lag++) {
-    if (nsdf[lag] > nsdf[lag - 1] && nsdf[lag] >= nsdf[lag + 1] && nsdf[lag] >= CLARITY) {
-      bestLag = lag;
-      break;
+    if (nsdf[lag] > nsdf[lag - 1] && nsdf[lag] >= nsdf[lag + 1]) {
+      const a = nsdf[lag - 1], b = nsdf[lag], c = nsdf[lag + 1];
+      const denom = a - 2 * b + c;
+      const shift = denom !== 0 ? (a - c) / (2 * denom) : 0;
+      const interpValue = b - (denom !== 0 ? 0.25 * (a - c) * shift : 0);
+      peaks.push({ lag: lag + shift, value: interpValue });
     }
   }
-  if (bestLag < 0) return null;
-
-  // parabolic interpolation around the peak
-  const a = nsdf[bestLag - 1], b = nsdf[bestLag], c = nsdf[bestLag + 1];
-  const denom = a - 2 * b + c;
-  const shift = denom !== 0 ? (a - c) / (2 * denom) : 0;
-  return sr / (bestLag + shift);
+  if (peaks.length === 0) return null;
+  const max = Math.max(...peaks.map(p => p.value));
+  if (max < 0.9) return null;
+  const chosen = peaks.find(p => p.value >= 0.8 * max)!;
+  return sr / chosen.lag;
 }
 
 export const hzToMidi = (hz: number) => Math.round(69 + 12 * Math.log2(hz / 440));

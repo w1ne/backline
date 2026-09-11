@@ -9,4 +9,12 @@ describe('pitch', () => {
     expect(detectPitchHz(Float32Array.from({ length: 2048 }, rnd), 44100)).toBeNull();
   });
   it('hzToMidi', () => { expect(hzToMidi(440)).toBe(69); expect(hzToMidi(261.63)).toBe(60); });
+  it('inharmonic tone with strong harmonics still resolves to fundamental', () => {
+    const sr = 44100, n = 2048;
+    const frame = Float32Array.from({ length: n }, (_, i) => {
+      const t = i / sr;
+      return Math.sin(2 * Math.PI * 220 * t) + 0.6 * Math.sin(2 * Math.PI * 660 * t) + 0.4 * Math.sin(2 * Math.PI * 441 * t);
+    });
+    expect(detectPitchHz(frame, sr)!).toBeCloseTo(220, -1);
+  });
 });
