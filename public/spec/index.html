@@ -1,0 +1,211 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Backline</title><style>@page{margin:14mm} .screen{break-inside:avoid} h2{break-after:avoid}</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --paper:#F2F3F0; --paper-2:#E8EAE5; --ink:#17191B; --ink-2:#4E5357; --line:#CDD1CB;
+  --accent:#C8256B; --accent-ink:#fff;
+  --drums:#E0642B; --bass:#2F6FD6; --keys:#3FA36B; --lead:#C8256B;
+  --ui-bg:#111316; --ui-panel:#1B1E22; --ui-line:#2C3036; --ui-text:#EDEEEA; --ui-dim:#8B9096;
+  --display:"Bricolage Grotesque","Instrument Sans",system-ui,sans-serif;
+  --body:"Instrument Sans",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --paper:#15171A; --paper-2:#1D2024; --ink:#ECEDE9; --ink-2:#A6ABB0; --line:#33383E; --accent:#E8467F;
+}}
+:root[data-theme="dark"]{ --paper:#15171A; --paper-2:#1D2024; --ink:#ECEDE9; --ink-2:#A6ABB0; --line:#33383E; --accent:#E8467F; }
+
+body{background:var(--paper);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.55;padding-inline:20px;padding-block:32px 80px}
+.wrap{max-width:920px;margin:0 auto}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;line-height:1.1;margin:0}
+h1{font-size:clamp(40px,7vw,64px);font-weight:700;letter-spacing:-.02em}
+h2{font-size:26px;font-weight:700;margin-top:56px;margin-bottom:12px;padding-top:20px;border-top:2px solid var(--ink)}
+h3{font-size:18px;font-weight:700;margin-top:24px;margin-bottom:6px}
+p{max-width:64ch;margin:0 0 12px}
+ul,ol{max-width:64ch;padding-left:22px;margin:0 0 12px}
+li{margin-bottom:4px}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2);margin-bottom:10px}
+.lede{font-size:20px;max-width:56ch;color:var(--ink);margin-top:14px}
+.meta{display:flex;flex-wrap:wrap;gap:8px 22px;font-family:var(--mono);font-size:13px;color:var(--ink-2);margin-top:22px}
+.note{background:var(--paper-2);border-left:4px solid var(--accent);padding:10px 14px;max-width:64ch;margin:14px 0}
+.note.warn{border-left-color:var(--drums)}
+table{border-collapse:collapse;width:100%;font-size:15px;margin:10px 0 16px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--mono);font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2);font-weight:600}
+.tbl{overflow-x:auto}
+code{font-family:var(--mono);font-size:.9em;background:var(--paper-2);padding:1px 5px;border-radius:3px}
+.steps{counter-reset:s;list-style:none;padding:0;max-width:64ch}
+.steps li{counter-increment:s;display:grid;grid-template-columns:36px 1fr;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.steps li::before{content:counter(s);font-family:var(--mono);font-weight:600;color:var(--accent);font-size:18px}
+.steps b{display:block;font-weight:600}
+
+/* mockups: the app is a dark stage; the doc is paper */
+.shot{margin:18px 0 8px}
+.cap{font-size:14px;color:var(--ink-2);margin:6px 0 0;max-width:64ch}
+.screen{background:var(--ui-bg);color:var(--ui-text);border-radius:14px;border:1px solid var(--ui-line);padding:18px;font-size:14px;box-shadow:0 20px 40px -24px rgba(0,0,0,.6);max-width:100%}
+.screen *{box-sizing:border-box}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px}
+.logo{font-family:var(--display);font-weight:700;font-size:18px;letter-spacing:-.01em}
+.logo i{display:inline-block;width:10px;height:10px;background:var(--accent);border-radius:50%;margin-right:8px;vertical-align:1px}
+.pill{font-family:var(--mono);font-size:11px;padding:3px 9px;border:1px solid var(--ui-line);border-radius:99px;color:var(--ui-dim)}
+.pill.live{border-color:var(--accent);color:var(--accent)}
+.pill.live::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);margin-right:6px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.panel{background:var(--ui-panel);border:1px solid var(--ui-line);border-radius:10px;padding:14px}
+.panel h4{margin:0 0 10px;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ui-dim);font-weight:600}
+.choice{display:flex;gap:8px;flex-wrap:wrap}
+.choice span{padding:8px 12px;border:1px solid var(--ui-line);border-radius:8px;color:var(--ui-text)}
+.choice span.on{border-color:var(--accent);background:rgba(200,37,107,.15)}
+.btn{display:inline-block;padding:12px 18px;border-radius:9px;background:var(--accent);color:var(--accent-ink);font-weight:600;font-family:var(--body)}
+.btn.ghost{background:transparent;border:1px solid var(--ui-line);color:var(--ui-text)}
+.readout{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.readout div{background:var(--ui-panel);border:1px solid var(--ui-line);border-radius:10px;padding:10px 12px}
+.readout small{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ui-dim)}
+.readout strong{font-family:var(--mono);font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.2}
+.inst{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.inst div{border:1px solid var(--ui-line);border-radius:10px;padding:12px;position:relative;min-height:96px;display:flex;flex-direction:column;justify-content:space-between}
+.inst div.on{background:var(--ui-panel)}
+.inst .name{font-weight:600}
+.inst .st{font-family:var(--mono);font-size:11px;color:var(--ui-dim)}
+.inst div.on .st{color:var(--ui-text)}
+.inst .dot{position:absolute;top:10px;right:10px;width:10px;height:10px;border-radius:50%;background:var(--ui-line)}
+.inst .d.on .dot{background:var(--drums)} .inst .b.on .dot{background:var(--bass)} .inst .k.on .dot{background:var(--keys)} .inst .l.on .dot{background:var(--lead)}
+.meter{height:6px;background:var(--ui-line);border-radius:3px;overflow:hidden;margin-top:8px}
+.meter i{display:block;height:100%}
+.d .meter i{background:var(--drums)} .b .meter i{background:var(--bass)} .k .meter i{background:var(--keys)} .l .meter i{background:var(--lead)}
+.you{margin:14px 0;background:var(--ui-panel);border:1px solid var(--ui-line);border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:12px}
+.wave{flex:1;height:36px;display:flex;align-items:center;gap:2px}
+.wave i{display:block;width:3px;background:var(--ui-text);border-radius:2px;opacity:.85}
+.foot{display:flex;justify-content:space-between;align-items:center;margin-top:14px;gap:10px;flex-wrap:wrap}
+.tl{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 12px}
+.tl span{font-family:var(--mono);font-size:12px;padding:4px 8px;border:1px solid var(--line);border-radius:6px;color:var(--ink-2)}
+.tl span.on{color:var(--ink);border-color:var(--ink)}
+.arch{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:10px;align-items:center;margin:14px 0;font-size:14px}
+.arch .box{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--paper-2)}
+.arch .box b{display:block;font-family:var(--display)}
+.arch .arrow{font-family:var(--mono);color:var(--ink-2)}
+.arch .stack{display:grid;gap:8px}
+@media (max-width:640px){
+  .grid2,.inst,.readout{grid-template-columns:1fr 1fr}
+  .arch{grid-template-columns:1fr}.arch .arrow{text-align:center;transform:rotate(90deg)}
+}
+@media (max-width:420px){.inst,.readout,.grid2{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:no-preference){ .pill.live::before{animation:blink 1.2s infinite} }
+@keyframes blink{50%{opacity:.3}}
+</style></head><body>
+
+<div class="wrap">
+  <div class="eyebrow">Hackathon spec · draft 3 · 11 Sep 2026 · <a href="https://github.com/w1ne/backline" style="color:inherit">github.com/w1ne/backline</a></div>
+  <h1>Backline</h1>
+  <p class="lede">You play. A band in your browser hears your tempo and key and plays along. Drums, bass, keys and a lead line, each one you can switch on or off while you play.</p>
+  <div class="meta"><span>50 hours</span><span>5+ people</span><span>web browser</span><span>mic or MIDI in</span><span>paid APIs allowed</span></div>
+
+  <h2>1. The demo</h2>
+  <p>One of us plays a riff. Drums come in, then bass, then keys, then a lead answers. Genre flips from lofi to funk mid-jam. Under two minutes.</p>
+<h2>2. How a session goes</h2>
+  <ol class="steps">
+    <li><span><b>Pick input and genre</b>Mic or MIDI. Lofi, funk, rock, jazz.</span></li>
+    <li><span><b>Play four bars</b>App locks: "112 BPM · A minor".</span></li>
+    <li><span><b>Tap instruments in and out, set Creativity</b>Changes land on the next bar.</span></li>
+    <li><span><b>Stop, replay, download</b>Mix plus one file per instrument.</span></li>
+  </ol>
+
+  <h2>3. Mockups</h2>
+  
+  <h3>Screen A · Setup</h3>
+  <div class="shot"><div class="screen">
+    <div class="bar"><span class="logo"><i></i>Backline</span><span class="pill">ready</span></div>
+    <div class="grid2">
+      <div class="panel"><h4>Your input</h4><div class="choice"><span class="on">Microphone</span><span>MIDI keyboard</span></div>
+        <p style="margin:10px 0 0;color:var(--ui-dim);font-size:13px">Input level ▮▮▮▮▮▯▯▯ · Use headphones</p></div>
+      <div class="panel"><h4>Genre</h4><div class="choice"><span class="on">Lofi</span><span>Funk</span><span>Rock</span><span>Jazz</span></div></div>
+    </div>
+    <div class="foot"><span style="color:var(--ui-dim)">Play four bars and the band will lock onto you.</span><span class="btn">Start jam</span></div>
+  </div><p class="cap">Two choices, one button.</p></div>
+
+  <h3>Screen B · Live jam</h3>
+  <div class="shot"><div class="screen">
+    <div class="bar"><span class="logo"><i></i>Backline</span><span class="pill live">live · bar 12</span></div>
+    <div class="readout">
+      <div><small>Tempo · <span style="color:var(--accent)">locked</span> / follow</small><strong>112</strong></div>
+      <div><small>Key</small><strong>A min</strong></div>
+      <div><small>Genre</small><strong style="font-size:18px;line-height:1.9">Lofi ▾</strong></div>
+    </div>
+    <div class="panel" style="margin-bottom:14px;display:flex;align-items:center;gap:12px"><span style="font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--ui-dim)">CREATIVITY</span><span style="flex:1;height:4px;background:var(--ui-line);border-radius:2px;position:relative"><span style="position:absolute;left:0;top:0;height:100%;width:35%;background:var(--accent);border-radius:2px"></span><span style="position:absolute;left:35%;top:-6px;width:16px;height:16px;border-radius:50%;background:var(--ui-text);margin-left:-8px"></span></span><span style="font-family:var(--mono);font-size:12px">0.35</span></div>
+    <div class="you"><span style="font-family:var(--mono);font-size:11px;color:var(--ui-dim)">YOU</span>
+      <div class="wave"><i style="height:10px"></i><i style="height:22px"></i><i style="height:30px"></i><i style="height:14px"></i><i style="height:26px"></i><i style="height:34px"></i><i style="height:18px"></i><i style="height:8px"></i><i style="height:20px"></i><i style="height:28px"></i><i style="height:12px"></i><i style="height:24px"></i><i style="height:32px"></i><i style="height:16px"></i><i style="height:10px"></i><i style="height:26px"></i><i style="height:20px"></i><i style="height:14px"></i><i style="height:30px"></i><i style="height:22px"></i></div>
+      <span class="pill">A · C · E</span></div>
+    <div class="inst">
+      <div class="d on"><span class="dot"></span><span class="name">Drums</span><span class="st">playing<span class="meter"><i style="width:70%"></i></span></span></div>
+      <div class="b on"><span class="dot"></span><span class="name">Bass</span><span class="st">playing<span class="meter"><i style="width:55%"></i></span></span></div>
+      <div class="k on"><span class="dot"></span><span class="name">Keys</span><span class="st">joins next bar<span class="meter"><i style="width:0"></i></span></span></div>
+      <div class="l"><span class="dot"></span><span class="name">Lead</span><span class="st">off<span class="meter"><i style="width:0"></i></span></span></div>
+    </div>
+    <div class="foot"><span class="btn ghost">Stop</span><span style="color:var(--ui-dim);font-family:var(--mono);font-size:12px">latency 38 ms</span></div>
+  </div><p class="cap">Four tiles, tap to toggle. Creativity 0 plays the written patterns; higher adds fills, passing notes and busier leads. Tempo and key readable from the stage.</p></div>
+
+  <h3>Screen C · After the jam</h3>
+  <div class="shot"><div class="screen">
+    <div class="bar"><span class="logo"><i></i>Backline</span><span class="pill">jam · 1:48</span></div>
+    <div class="panel" style="margin-bottom:12px"><h4>Timeline</h4>
+      <div style="display:grid;gap:6px;font-family:var(--mono);font-size:11px">
+        <div style="display:grid;grid-template-columns:52px 1fr;gap:8px;align-items:center"><span>you</span><span style="height:8px;background:var(--ui-text);border-radius:4px"></span></div>
+        <div style="display:grid;grid-template-columns:52px 1fr;gap:8px;align-items:center"><span>drums</span><span style="height:8px;background:linear-gradient(90deg,transparent 8%,var(--drums) 8%);border-radius:4px"></span></div>
+        <div style="display:grid;grid-template-columns:52px 1fr;gap:8px;align-items:center"><span>bass</span><span style="height:8px;background:linear-gradient(90deg,transparent 22%,var(--bass) 22%);border-radius:4px"></span></div>
+        <div style="display:grid;grid-template-columns:52px 1fr;gap:8px;align-items:center"><span>keys</span><span style="height:8px;background:linear-gradient(90deg,transparent 40%,var(--keys) 40%);border-radius:4px"></span></div>
+        <div style="display:grid;grid-template-columns:52px 1fr;gap:8px;align-items:center"><span>lead</span><span style="height:8px;background:linear-gradient(90deg,transparent 65%,var(--lead) 65%,var(--lead) 90%,transparent 90%);border-radius:4px"></span></div>
+      </div></div>
+    <div class="foot"><span><span class="btn ghost">▶ Play back</span> &nbsp; <span class="btn ghost">Jam again</span></span><span class="btn">Download mix + tracks</span></div>
+  </div><p class="cap">Optional if time is short.</p></div>
+
+  <h2>4. In v1 / not in v1</h2>
+  <div class="tbl"><table>
+    <tr><th>In</th><th>Out</th></tr>
+    <tr><td>Locks tempo from 4 bars. Two modes: Locked (holds) or Follow (tracks you, smoothly)</td><td>Chord following (first upgrade if time)</td></tr>
+    <tr><td>Detects key, plays in it. Latency under 30 ms, shown on screen</td><td>Mixer, effects, text prompts, multiplayer</td></tr>
+    <tr><td>4 instruments on/off, 4 genres, Creativity slider, mic + MIDI</td><td>Replay/export (screen C)</td></tr>
+  </table></div>
+
+  <h2>5. How it works</h2>
+  <div class="arch">
+    <div class="box"><b>Listener</b>Mic or MIDI → beat tracker + key detector. Output: BPM, key, notes right now.</div>
+    <div class="arrow">→</div>
+    <div class="box"><b>Bandleader</b>A clock ticking at the BPM. Each bar it asks each instrument that is on for the next bar of notes, in the key, in the genre.</div>
+    <div class="arrow">→</div>
+    <div class="box"><b>Players</b>Notes → sound in the browser. Sample-based drums, bass, keys, lead.</div>
+  </div>
+  <h3>What we reuse (licenses checked 11 Sep)</h3>
+  <div class="tbl"><table>
+    <tr><th>Box</th><th>Plan A · in-browser, no network</th><th>Plan B · generative audio on top</th></tr>
+    <tr><td>Beat &amp; tempo</td><td>MIDI: note timestamps. Mic: BeatNet (streaming, CC-BY) or our own onset + autocorrelation over 4 bars.</td><td>—</td></tr>
+    <tr><td>Key &amp; notes</td><td>MIDI: note numbers. Mic: chroma histogram → key; BTC (MIT) if we want chords. Not basic-pitch: over 1 s latency.</td><td>—</td></tr>
+    <tr><td>Generating parts</td><td>Genre pattern banks, transposed to key, with variation. Optional: Anticipatory Music Transformer (Apache-2.0 code+weights) for melody→accompaniment infilling of the next bar.</td><td>Magenta RealTime 2 (CC-BY weights, ~200 ms, takes our MIDI as conditioning; needs Apple Silicon) or Lyria RealTime via Gemini API (bpm/scale/mute controls, ~2 s, no audio input; paid tier only, free tier trains on user audio).</td></tr>
+    <tr><td>Making sound</td><td>Tone.js or SpessaSynth with CC0 samples/soundfonts, one set per genre.</td><td>Model streams audio directly.</td></tr>
+    <tr><td>Export</td><td>Record each instrument bus in the browser. Later "upload a track" mode: Demucs (MIT) + ACE-Step 1.5 <code>complete</code> (MIT code+weights) to add stems offline.</td><td>Same.</td></tr>
+  </table></div>
+  <div class="note">Plan A is the demo: works offline, cannot play a wrong note. Nothing shipping today listens to live audio and plays along; MRT2 and Lyria are real-time but deaf, ACE-Step and Stable Audio hear you but are offline. That gap is the pitch. Avoid MusicGen, JASCO, YuE, madmom and Essentia models: non-commercial weights.</div>
+
+  <h2>6. Team split</h2>
+  <div class="tbl"><table>
+    <tr><th>Track</th><th>Owns</th><th>Done means</th></tr>
+    <tr><td>Listener</td><td>Mic + MIDI input, tempo lock, key detection, the "YOU" strip.</td><td>Play four bars on a real guitar in a noisy room, get the right BPM ±2 and the right key 8 times out of 10.</td></tr>
+    <tr><td>Bandleader + patterns</td><td>The clock, the bar scheduler, genre pattern banks for drums/bass/keys/lead.</td><td>Any genre, any key, any tempo 60–160 sounds like a band for two minutes without repeating obviously.</td></tr>
+    <tr><td>Sound</td><td>Instrument samples, Tone.js setup, latency, export.</td><td>Toggle lands on the bar, latency under 50 ms on a laptop, download works.</td></tr>
+    <tr><td>UI</td><td>The three screens above, works on a laptop and a phone.</td><td>A stranger can start a jam without being told how.</td></tr>
+    <tr><td>Demo + pitch</td><td>The riff we play, the two-minute script, the slides, testing at the venue.</td><td>Rehearsed twice on the venue's hardware.</td></tr>
+  </table></div>
+  <h3>Timeline</h3>
+  <div class="tl"><span class="on">h0–4 clock + drums + mic</span><span class="on">h4–16 tempo, key, 4 instruments</span><span class="on">h16–30 genres, UI, export</span><span class="on">h30–42 test with real instruments</span><span class="on">h42–50 rehearse, freeze</span></div>
+  <p>Nothing new after hour 30. Listener and band talk through one message (tempo, key, notes) so both tracks start at hour 0.</p>
+
+  <h2>7. Risks</h2>
+  <ul>
+    <li><b>Mic bleed</b> from speakers. Headphones; lock tempo once, stop re-estimating.</li>
+    <li><b>Loud venue.</b> MIDI keyboard is the primary demo input, mic the second.</li>
+    <li><b>Browser latency.</b> Test on the demo laptop on day one.</li>
+    <li><b>Sounds like a toy.</b> Sample quality beats model quality; spend time on sounds.</li>
+  </ul>
+</div>
+
+</body></html>
