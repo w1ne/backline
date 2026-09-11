@@ -28,6 +28,14 @@ Deployed at https://backline-relay.shylenkoa.workers.dev.
   Auth: the `bl_session` cookie only. The cookie is `SameSite=None; Secure`,
   so browsers send it on the cross-site WebSocket upgrade without any extra
   wiring from the app.
+- `GET /acestep` — WebSocket upgrade, same Origin check and `bl_session`
+  cookie auth as `/lyria`, proxying to the ACE-Step pod at
+  `env.ACESTEP_UPSTREAM` (a full `wss://…/ws` URL, kept as a Worker secret
+  so pod ids don't land in git). Returns `503` with body
+  `acestep upstream not configured` if the secret isn't set. The Worker
+  sends the upstream a `{"type":"ping"}` text frame every 30 s for the life
+  of the connection, since RunPod's proxy in front of the pod drops
+  connections idle for 100 s; the app-facing side has no keepalive.
 
 ## Deploy
 
@@ -40,6 +48,7 @@ npx wrangler secret put GITHUB_CLIENT_ID
 npx wrangler secret put GITHUB_CLIENT_SECRET
 npx wrangler secret put SESSION_SECRET
 npx wrangler secret put GITHUB_TOKEN
+npx wrangler secret put ACESTEP_UPSTREAM   # wss://<pod>.../ws, only needed for /acestep
 npx wrangler deploy
 ```
 

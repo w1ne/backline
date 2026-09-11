@@ -8,6 +8,7 @@ export interface Env {
   GITHUB_TOKEN: string;
   ALLOWED_ORIGIN: string;
   REPO: string;
+  ACESTEP_UPSTREAM?: string;
 }
 
 const SESSION_TTL_SECONDS = 12 * 60 * 60;
@@ -191,6 +192,94 @@ function isBidiGenerateMusicPath(pathname: string): boolean {
   return /^\/+ws\/.*BidiGenerateMusic$/.test(pathname);
 }
 
+/**
+ * Opens an outbound WebSocket to `upstreamUrl`, pairs it with a fresh
+ * client-facing WebSocket, and wires the two together (bidirectional pipe,
+ * plus close/error mirroring). Returns the 101 upgrade Response to hand back
+ * to the original client, or an error Response if the upstream connection
+ * or handshake failed.
+ *
+ * `keepaliveMs`, when set, sends a `{"type":"ping"}` text frame to the
+ * upstream on that interval for as long as the connection is open, and
+ * clears the timer once either side closes.
+ */
+async function proxyWebSocket(upstreamUrl: string, keepaliveMs?: number): Promise<Response> {
+  let upstreamResp: Response;
+  try {
+    // Workers open outbound WebSockets with an https:// URL plus the
+    // Upgrade header; a wss:// scheme throws inside fetch().
+    upstreamResp = await fetch(upstreamUrl, { headers: { Upgrade: "websocket" } });
+  } catch (e) {
+    return new Response(`upstream connect failed: ${(e as Error).message}`, { status: 502 });
+  }
+  const upstream = upstreamResp.webSocket;
+  if (!upstream) {
+    const body = await upstreamResp.text().catch(() => "");
+    return new Response(`upstream did not upgrade: ${upstreamResp.status} ${body.slice(0, 200)}`, { status: 502 });
+  }
+  upstream.accept();
+
+  const pair = new WebSocketPair();
+  const client = pair[0];
+  const server = pair[1];
+  server.accept();
+
+  pipe(server, upstream);
+  pipe(upstream, server);
+
+  let keepalive: ReturnType<typeof setInterval> | undefined;
+  if (keepaliveMs) {
+    keepalive = setInterval(() => {
+      try {
+        upstream.send(JSON.stringify({ type: "ping" }));
+      } catch {
+        /* socket already closing */
+      }
+    }, keepaliveMs);
+  }
+  const stopKeepalive = () => {
+    if (keepalive) clearInterval(keepalive);
+  };
+
+  server.addEventListener("close", (ev: CloseEvent) => {
+    stopKeepalive();
+    try {
+      upstream.close(ev.code, ev.reason);
+    } catch {
+      /* already closed */
+    }
+  });
+  upstream.addEventListener("close", (ev: CloseEvent) => {
+    stopKeepalive();
+    try {
+      server.close(ev.code, ev.reason);
+    } catch {
+      /* already closed */
+    }
+  });
+  server.addEventListener("error", () => {
+    stopKeepalive();
+    try {
+      upstream.close();
+    } catch {
+      /* noop */
+    }
+  });
+  upstream.addEventListener("error", () => {
+    stopKeepalive();
+    try {
+      server.close();
+    } catch {
+      /* noop */
+    }
+  });
+
+  return new Response(null, {
+    status: 101,
+    webSocket: client,
+  });
+}
+
 async function handleLyria(req: Request, env: Env): Promise<Response> {
   const origin = req.headers.get("Origin");
   if (origin && origin !== env.ALLOWED_ORIGIN) {
@@ -213,64 +302,46 @@ async function handleLyria(req: Request, env: Env): Promise<Response> {
   // key instead.
   const upstreamPath = url.pathname.replace(/^\/+/, "/");
   const upstreamUrl = new URL(`https://generativelanguage.googleapis.com${upstreamPath}`);
-  // Workers open outbound WebSockets with an https:// URL plus the Upgrade
-  // header; a wss:// scheme throws inside fetch().
   upstreamUrl.searchParams.set("key", env.GEMINI_API_KEY);
 
-  let upstreamResp: Response;
-  try {
-    upstreamResp = await fetch(upstreamUrl.toString(), { headers: { Upgrade: "websocket" } });
-  } catch (e) {
-    return new Response(`upstream connect failed: ${(e as Error).message}`, { status: 502 });
+  return proxyWebSocket(upstreamUrl.toString());
+}
+
+// True for a bare "/acestep" path.
+export function isAceStepPath(pathname: string): boolean {
+  return pathname === "/acestep";
+}
+
+// RunPod's HTTP-facing proxy in front of the ACE-Step pod drops connections
+// that sit idle for 100 s, so we keep the upstream leg alive with a small
+// JSON ping frame every 30 s. ACE-Step ignores frames it doesn't recognize.
+const ACESTEP_KEEPALIVE_MS = 30_000;
+
+export async function handleAceStep(req: Request, env: Env): Promise<Response> {
+  const origin = req.headers.get("Origin");
+  if (origin && origin !== env.ALLOWED_ORIGIN) {
+    return new Response("forbidden origin", { status: 403 });
   }
-  const upstream = upstreamResp.webSocket;
-  if (!upstream) {
-    const body = await upstreamResp.text().catch(() => "");
-    return new Response(`upstream did not upgrade: ${upstreamResp.status} ${body.slice(0, 200)}`, { status: 502 });
+
+  // Auth: bl_session cookie only.
+  const token = readCookie(req, COOKIE_NAME);
+  const session = token ? await verifySession(env.SESSION_SECRET, token) : null;
+  if (!session) return new Response("unauthorized", { status: 401 });
+
+  if (!env.ACESTEP_UPSTREAM) {
+    return new Response("acestep upstream not configured", { status: 503 });
   }
-  upstream.accept();
 
-  const pair = new WebSocketPair();
-  const client = pair[0];
-  const server = pair[1];
-  server.accept();
+  if (req.headers.get("Upgrade") !== "websocket") {
+    return new Response("expected websocket upgrade", { status: 426 });
+  }
 
-  pipe(server, upstream);
-  pipe(upstream, server);
+  // ACESTEP_UPSTREAM is the full wss://.../ws URL of the RunPod-hosted pod,
+  // kept as a Worker secret so pod ids never land in git. fetch() needs an
+  // https:// scheme for the outbound WebSocket handshake.
+  const upstreamUrl = env.ACESTEP_UPSTREAM.replace(/^wss:\/\//, "https://").replace(/^ws:\/\//, "http://");
 
-  server.addEventListener("close", (ev: CloseEvent) => {
-    try {
-      upstream.close(ev.code, ev.reason);
-    } catch {
-      /* already closed */
-    }
-  });
-  upstream.addEventListener("close", (ev: CloseEvent) => {
-    try {
-      server.close(ev.code, ev.reason);
-    } catch {
-      /* already closed */
-    }
-  });
-  server.addEventListener("error", () => {
-    try {
-      upstream.close();
-    } catch {
-      /* noop */
-    }
-  });
-  upstream.addEventListener("error", () => {
-    try {
-      server.close();
-    } catch {
-      /* noop */
-    }
-  });
-
-  return new Response(null, {
-    status: 101,
-    webSocket: client,
-  });
+  return proxyWebSocket(upstreamUrl, ACESTEP_KEEPALIVE_MS);
 }
 
 export default {
@@ -291,6 +362,9 @@ export default {
     }
     if (url.pathname === "/lyria" || isBidiGenerateMusicPath(url.pathname)) {
       return handleLyria(req, env);
+    }
+    if (isAceStepPath(url.pathname)) {
+      return handleAceStep(req, env);
     }
     return new Response("not found", { status: 404 });
   },
