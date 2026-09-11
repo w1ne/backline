@@ -1,3 +1,4 @@
+import * as Tone from 'tone';
 import type { BandState, Genre, Instrument, Pattern } from '../types';
 import { Bandleader, type PlayersLike } from '../band/bandleader';
 import { ToneClock } from '../band/clock';
@@ -11,7 +12,7 @@ export class PatternEngine implements BandEngine {
   onBar?: (bar: number) => void;
 
   constructor(players: PlayersLike, patterns: Record<Genre, Record<Instrument, Pattern>>) {
-    this.band = new Bandleader(new ToneClock(), players, patterns);
+    this.band = new Bandleader(new ToneClock(), players, patterns, Date.now(), () => Tone.now());
     this.band.onBarCb = bar => this.onBar?.(bar);
   }
 

@@ -21,6 +21,10 @@ export class Bandleader {
     private players: PlayersLike,
     private patterns: Record<Genre, Record<Instrument, Pattern>>,
     seed = Date.now(),
+    /** Returns "now" in the same time base as the bar-start times the clock hands to onBar.
+     * Defaults to never-past so tests driving a fake clock with synthetic times aren't
+     * affected; production wires this to Tone.now(). */
+    private now: () => number = () => -Infinity,
   ) {
     this.rng = mulberry32(seed);
     clock.onBar((bar, t) => this.onBar(bar, t));
@@ -39,6 +43,10 @@ export class Bandleader {
   }
   private onBar(bar: number, t: number) {
     this.onBarCb?.(bar);
+    // A toggle can land after this bar's callback was scheduled ahead of time; if the bar's
+    // start has already slipped into the past, don't schedule stale notes for it — the
+    // instrument simply joins on the next bar.
+    if (t < this.now()) return;
     const { genre, key, creativity, enabled } = this.state;
     for (const i of INSTRUMENTS)
       if (enabled[i])

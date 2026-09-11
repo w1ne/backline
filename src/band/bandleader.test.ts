@@ -55,6 +55,21 @@ describe('Bandleader', () => {
     clock.tick(1);
     expect(calls.length).toBe(2); // no throw, both bars scheduled
   });
+  it('skips scheduling a bar whose start time is already in the past', () => {
+    const clock = new FakeClock();
+    const calls: { i: Instrument; n: number; t: number }[] = [];
+    const players = {
+      schedule: (i: Instrument, ev: NoteEvent[], t: number) => calls.push({ i, n: ev.length, t }),
+    };
+    const b = new Bandleader(clock, players, PATTERNS, 7, () => 100);
+    b.start(120, 0);
+    b.setEnabled('drums', true);
+    clock.tick(0); // t = 0, already "past" relative to now() = 100
+    expect(calls.length).toBe(0);
+    clock.tick(1); // t = 2, still past
+    expect(calls.length).toBe(0);
+  });
+
   it('onBarCb receives the bar index on each tick', () => {
     const { clock, b } = mk();
     const bars: number[] = [];
