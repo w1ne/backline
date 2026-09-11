@@ -304,11 +304,34 @@ body {
   flex: 1;
 }
 
-#stop-jam {
+#stop-jam,
+.power-off {
   background: var(--red);
   color: var(--panel);
   font-size: 20px;
   padding: 16px 34px;
+}
+
+.lcd {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: var(--ink);
+  color: #7fffb0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  flex: 1;
+  text-align: center;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dimmed {
+  opacity: 0.4;
+  pointer-events: none;
+  filter: grayscale(0.4);
 }
 
 /* ---------- slide switch ---------- */

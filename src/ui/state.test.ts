@@ -2,6 +2,13 @@ import { describe, it, expect } from 'vitest';
 import { Store } from './state';
 
 describe('Store', () => {
+  it('defaults to power off with both sources off, no setup screen', () => {
+    const s = new Store();
+    expect(s.state.power).toBe('off');
+    expect(s.state.sources).toEqual({ mic: 'off', midi: 'off' });
+    expect((s.state as unknown as { screen?: unknown }).screen).toBeUndefined();
+  });
+
   it('notifies subscribers with merged state', () => {
     const s = new Store();
     const seen: number[] = [];

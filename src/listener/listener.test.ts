@@ -8,9 +8,50 @@ class Fake implements Source {
   stop() {}
 }
 
+class FailingFake implements Source {
+  async start(): Promise<void> {
+    throw new Error('boom');
+  }
+  stop() {}
+}
+
+describe('Listener multi-source', () => {
+  it('starts all sources and both feed the same lock', async () => {
+    const a = new Fake();
+    const b = new Fake();
+    const l = new Listener([a, b]);
+    await l.start();
+    let t = 1;
+    for (let i = 0; i < 6; i++) { a.note(-1, 0.8, t); t += 0.5; }
+    for (let i = 0; i < 6; i++) { b.note(-1, 0.8, t); t += 0.5; }
+    expect(l.input.bpm).toBeCloseTo(120, 0);
+  });
+
+  it('tolerates one source failing to start and still starts the other', async () => {
+    const good = new Fake();
+    const bad = new FailingFake();
+    const l = new Listener([bad, good]);
+    await expect(l.start()).resolves.not.toThrow();
+    good.note(60, 0.8, 1);
+    expect(l.input.notesNow).toEqual([60]);
+  });
+
+  it('reports per-source status via onSourceStatus', async () => {
+    const good = new Fake();
+    const bad = new FailingFake();
+    const l = new Listener([bad, good], ['midi', 'mic']);
+    const seen: Record<string, string>[] = [];
+    l.onSourceStatus(s => seen.push({ ...s }));
+    await l.start();
+    expect(l.sourceStatus.mic).toBe('on');
+    expect(l.sourceStatus.midi).toBe('denied');
+    expect(seen[seen.length - 1]).toEqual({ mic: 'on', midi: 'denied' });
+  });
+});
+
 describe('Listener', () => {
   it('locks tempo and key from notes', async () => {
-    const f = new Fake(); const l = new Listener(f); await l.start();
+    const f = new Fake(); const l = new Listener([f]); await l.start();
     const seq = [60, 64, 67, 72, 67, 64, 60, 62, 64, 65, 67, 69, 71, 72];
     seq.forEach((n, i) => f.note(n, 0.8, 1 + i * 0.5)); // 120 bpm quarter notes
     expect(l.input.bpm).toBeCloseTo(120, 0);
@@ -18,12 +59,12 @@ describe('Listener', () => {
   });
 
   it('override wins', async () => {
-    const l = new Listener(new Fake()); await l.start(); l.setOverride({ bpm: 90 });
+    const l = new Listener([new Fake()]); await l.start(); l.setOverride({ bpm: 90 });
     expect(l.input.bpm).toBe(90);
   });
 
   it('midi -1 advances tempo but leaves key and notesNow untouched', async () => {
-    const f = new Fake(); const l = new Listener(f); await l.start();
+    const f = new Fake(); const l = new Listener([f]); await l.start();
     const seq = [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1];
     seq.forEach((n, i) => f.note(n, 0.8, 1 + i * 0.5)); // 120 bpm quarter notes
     expect(l.input.bpm).toBeCloseTo(120, 0);
@@ -32,7 +73,7 @@ describe('Listener', () => {
   });
 
   it('in follow mode, tracks a player who speeds up after lock', async () => {
-    const f = new Fake(); const l = new Listener(f); await l.start();
+    const f = new Fake(); const l = new Listener([f]); await l.start();
     l.setTempoMode('follow');
     let t = 1;
     for (let i = 0; i < 12; i++) { f.note(-1, 0.8, t); t += 0.5; } // lock at 120bpm
@@ -43,7 +84,7 @@ describe('Listener', () => {
   });
 
   it('in locked mode, ignores post-lock speed changes', async () => {
-    const f = new Fake(); const l = new Listener(f); await l.start();
+    const f = new Fake(); const l = new Listener([f]); await l.start();
     let t = 1;
     for (let i = 0; i < 12; i++) { f.note(-1, 0.8, t); t += 0.5; } // lock at 120bpm
     const lockedBpm = l.input.bpm!;
@@ -52,7 +93,7 @@ describe('Listener', () => {
   });
 
   it('freezes at the followed bpm when switching back to locked, and further onsets do not change it', async () => {
-    const f = new Fake(); const l = new Listener(f); await l.start();
+    const f = new Fake(); const l = new Listener([f]); await l.start();
     let t = 1;
     for (let i = 0; i < 12; i++) { f.note(-1, 0.8, t); t += 0.6; } // lock at 100bpm
 
@@ -70,7 +111,7 @@ describe('Listener', () => {
   });
 
   it('re-entering follow mode after a freeze seeds the follower from the frozen bpm', async () => {
-    const f = new Fake(); const l = new Listener(f); await l.start();
+    const f = new Fake(); const l = new Listener([f]); await l.start();
     let t = 1;
     for (let i = 0; i < 12; i++) { f.note(-1, 0.8, t); t += 0.6; } // lock at 100bpm
 

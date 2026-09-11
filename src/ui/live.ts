@@ -3,6 +3,7 @@ import type { Genre, Instrument } from '../types';
 import { keyName } from '../music/scales';
 import { DEBUG } from '../debug';
 import type { AppState, Store } from './state';
+import type { SourceState } from '../listener/listener';
 
 const KEY_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const ALL_KEYS: { root: number; mode: 'major' | 'minor' }[] = [
@@ -11,10 +12,13 @@ const ALL_KEYS: { root: number; mode: 'major' | 'minor' }[] = [
 ];
 
 export interface LiveActions {
+  power(): void;
+  powerOff(): void;
   toggle(i: Instrument): void;
   setGenre(g: Genre): void;
+  setEngine(e: 'lyria' | 'patterns'): void;
+  signIn(): void;
   setCreativity(c: number): void;
-  stop(): void;
   setBpmOverride?(bpm: number | undefined): void;
   setKeyOverride?(key: { root: number; mode: 'major' | 'minor' } | undefined): void;
   setTempoMode?(m: 'locked' | 'follow'): void;
@@ -53,6 +57,7 @@ function skeleton(): string {
     <div class="screen" data-live>
       <div class="bar">
         <h1 class="logo">Back<i>line</i></h1>
+        <span class="lcd" id="lcd"></span>
         <span class="pill" id="live-pill"></span>
       </div>
       <div class="readout">
@@ -94,6 +99,15 @@ function skeleton(): string {
             ${GENRES.map(g => `<option value="${g}">${cap(g)}</option>`).join('')}
           </select>
         </div>
+        <div class="zone zone--ink engine">
+          <span class="zone-label">Engine</span>
+          <span class="switch" id="engine-choice">
+            <button type="button" data-engine="patterns">Patterns</button>
+            <button type="button" data-engine="lyria">Lyria</button>
+          </span>
+          <button type="button" class="btn" id="github-login" hidden>Sign in with GitHub</button>
+          <span class="hint" id="signed-in-as" hidden></span>
+        </div>
         <div class="zone zone--yellow manual">
           <span class="zone-label">Manual</span>
           <div class="field">
@@ -127,7 +141,8 @@ function skeleton(): string {
           <span class="pill" id="you-notes"></span>
         </div>
         <div class="foot">
-          <button type="button" class="btn" id="stop-jam">Stop</button>
+          <button type="button" class="btn big power-on" id="power-key">Power</button>
+          <button type="button" class="btn big power-off" id="power-off-key" hidden>Power Off</button>
           <span class="hint" id="latency"></span>
         </div>
       </div>
@@ -159,13 +174,27 @@ function wireControls(screen: HTMLElement, store: Store): void {
   screen.querySelectorAll<HTMLButtonElement>('#inst-tiles button').forEach(btn => {
     btn.addEventListener('click', () => actions().toggle(btn.dataset.inst as Instrument));
   });
-  const stopBtn = screen.querySelector<HTMLButtonElement>('#stop-jam')!;
-  stopBtn.addEventListener('click', () => {
-    if (screen.classList.contains('stopping')) return;
-    // let the pads fade and the digits fall before the screen swaps back
-    screen.classList.add('stopping');
-    window.setTimeout(() => actions().stop(), 200);
+  const powerBtn = screen.querySelector<HTMLButtonElement>('#power-key')!;
+  powerBtn.addEventListener('click', () => {
+    if (screen.classList.contains('powering')) return;
+    screen.classList.add('powering');
+    actions().power();
   });
+  const powerOffBtn = screen.querySelector<HTMLButtonElement>('#power-off-key')!;
+  powerOffBtn.addEventListener('click', () => {
+    if (screen.classList.contains('stopping')) return;
+    // let the pads fade and the digits fall before the panel goes dark
+    screen.classList.add('stopping');
+    window.setTimeout(() => {
+      screen.classList.remove('stopping', 'powering');
+      actions().powerOff();
+    }, 200);
+  });
+
+  screen.querySelectorAll<HTMLButtonElement>('#engine-choice button').forEach(btn => {
+    btn.addEventListener('click', () => actions().setEngine(btn.dataset.engine as 'lyria' | 'patterns'));
+  });
+  screen.querySelector<HTMLButtonElement>('#github-login')!.addEventListener('click', () => actions().signIn());
 
   const bpmInput = screen.querySelector<HTMLInputElement>('#bpm')!;
   bpmInput.addEventListener('change', () => {
@@ -244,14 +273,51 @@ function wireKnob(screen: HTMLElement, input: HTMLInputElement): void {
 }
 
 function update(screen: HTMLElement, s: AppState, changeLatencyMs: number): void {
+  updatePower(screen, s);
   updateHeader(screen, s);
+  updateEngine(screen, s);
   updateReadouts(screen, s);
   updateYouStrip(screen, s);
   updateTiles(screen, s, changeLatencyMs);
   updateFooter(screen, s);
 }
 
+function mark(state: SourceState): string {
+  return state === 'on' ? '✓' : '✗';
+}
+
+function lcdText(s: AppState): string {
+  if (s.power === 'off') return 'OFF · PRESS POWER';
+  if (s.locked) return `LIVE · BAR ${s.bar}`;
+  return `LISTENING · MIC ${mark(s.sources.mic)} MIDI ${mark(s.sources.midi)} · ${s.input.onsets}/12`;
+}
+
+function updatePower(screen: HTMLElement, s: AppState): void {
+  const on = s.power === 'on';
+  screen.classList.toggle('powered', on);
+  screen.querySelector<HTMLElement>('#power-key')!.hidden = on;
+  screen.querySelector<HTMLElement>('#power-off-key')!.hidden = !on;
+  screen
+    .querySelectorAll<HTMLElement>(
+      '#genre-chips, .knob-zone, .inst, .manual, .engine, #inst-tiles, #creativity-knob',
+    )
+    .forEach(el => el.classList.toggle('dimmed', !on));
+}
+
+function updateEngine(screen: HTMLElement, s: AppState): void {
+  screen.querySelectorAll<HTMLButtonElement>('#engine-choice button').forEach(btn => {
+    btn.classList.toggle('on', btn.dataset.engine === s.engine);
+  });
+  const loginBtn = screen.querySelector<HTMLButtonElement>('#github-login')!;
+  const signedIn = screen.querySelector<HTMLElement>('#signed-in-as')!;
+  const showAuth = s.engine === 'lyria';
+  loginBtn.hidden = !showAuth || !!s.user;
+  signedIn.hidden = !showAuth || !s.user;
+  if (s.user) signedIn.textContent = `SIGNED IN AS ${s.user.login}`;
+}
+
 function updateHeader(screen: HTMLElement, s: AppState): void {
+  screen.querySelector<HTMLElement>('#lcd')!.textContent = lcdText(s);
   const pill = screen.querySelector<HTMLElement>('#live-pill')!;
   if (s.error) {
     pill.textContent = s.error;
@@ -260,8 +326,11 @@ function updateHeader(screen: HTMLElement, s: AppState): void {
     const looping = s.loopsUpdatedAt !== undefined && Date.now() - s.loopsUpdatedAt < 3000 ? ' · looping' : '';
     pill.textContent = `live · bar ${s.bar}${looping}`;
     pill.className = 'pill live';
-  } else {
+  } else if (s.power === 'on') {
     pill.textContent = `listening… onsets ${s.input.onsets}/12`;
+    pill.className = 'pill';
+  } else {
+    pill.textContent = '';
     pill.className = 'pill';
   }
 }
