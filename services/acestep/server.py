@@ -1,0 +1,470 @@
+"""ACE-Step block-generation service for Backline.
+
+Loads ACE-Step 1.5 once at process start and serves 2-bar (configurable)
+audio blocks over a WebSocket, quantized to the caller's bpm/key so a
+browser band can be assembled from consecutive blocks.
+
+Reaches ACE-Step by driving the bundled HTTP API (`uv run acestep-api`,
+entry point `acestep.api_server:main`) as a subprocess, using
+`POST /release_task` + `POST /query_result`. This was verified end-to-end
+against the ACE-Step 1.5 repo at commit
+ca1e85fe9430179831e6bc6be790c332190a3866 on an A40 GPU.
+
+An in-process path (calling `acestep.handler.AceStepHandler` /
+`acestep.inference.generate_music` directly) was evaluated and rejected:
+`AceStepHandler()` takes no constructor args and needs a separate
+`LLMHandler` plus manual `initialize_service()` wiring; `generate_music`
+requires *both* handlers plus a `GenerationConfig` (batch size / seeds /
+output format); `GenerationParams` uses different field names than the
+HTTP request (`caption` not `prompt`, `keyscale` not `key_scale`,
+`duration` not `audio_duration`, `src_audio` not `src_audio_path`); and
+`track_classes` isn't a `GenerationParams` field at all -- it's rendered
+into the `instruction` prompt text by
+`acestep/api/job_generation_setup.py::_resolve_instruction` before ever
+reaching `generate_music`. Reimplementing that translation layer
+in-process would just be a worse copy of `acestep/api_server.py`, so the
+HTTP subprocess is the only generation path.
+
+Env vars:
+  PORT           -- listen port (default 8080)
+  ACE_MODEL_DIR  -- where ACE-Step should look for / cache weights (passed
+                    through as ACESTEP_MODEL_DIR isn't a real ACE-Step env
+                    var; weights live under <ace repo>/checkpoints and are
+                    downloaded on first use -- see README)
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import io
+import json
+import logging
+import os
+import struct
+import subprocess
+import sys
+import time
+import uuid
+from dataclasses import dataclass
+from typing import Optional
+
+import numpy as np
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+log = logging.getLogger("acestep-server")
+
+PORT = int(os.environ.get("PORT", "8080"))
+MODEL_DIR = os.environ.get("ACE_MODEL_DIR", "/workspace/models")
+ACE_REPO_DIR = os.environ.get("ACE_REPO_DIR", "/opt/ace-step")
+MODEL_OUTPUT_SR = 44100  # ACE-Step 1.5 renders at 44.1 kHz; we resample to 48 kHz for the client.
+TARGET_SR = 48000
+INFERENCE_STEPS = 8
+
+GENRE_PROMPTS = {
+    "lofi": "lofi hip hop, chill beats, warm tape saturation",
+    "funk": "funk groove, syncopated, tight pocket",
+    "rock": "rock band, driving, energetic",
+    "jazz": "jazz combo, swung, sophisticated harmony",
+}
+
+INSTRUMENT_WORDS = {
+    "drums": "drums",
+    "bass": "bass",
+    "keys": "electric piano",
+    "lead": "lead synth",
+}
+
+
+def build_prompt(genre: str, instruments: list[str], exclude: Optional[str] = None) -> str:
+    genre_text = GENRE_PROMPTS.get(genre, GENRE_PROMPTS["lofi"])
+    words = [INSTRUMENT_WORDS.get(i, i) for i in instruments if i != exclude]
+    parts = [genre_text]
+    if words:
+        parts.append(", ".join(words))
+    parts.append("instrumental, no vocals, no guitar")
+    return ", ".join(parts)
+
+
+def track_classes_for(instruments: list[str], exclude: Optional[str] = None) -> list[str]:
+    return [INSTRUMENT_WORDS.get(i, i) for i in instruments if i != exclude]
+
+
+def creativity_to_guidance(creativity: float) -> float:
+    # ACE-Step's guidance_scale is typically in the ~3-15 range; higher creativity ->
+    # lower guidance (looser adherence to the prompt, more variation).
+    creativity = max(0.0, min(1.0, creativity))
+    return 15.0 - creativity * 10.0
+
+
+def creativity_to_seed(creativity: float, seq: int) -> int:
+    return (int(creativity * 1_000_000) * 2654435761 + seq) & 0x7FFFFFFF
+
+
+def resample_to_48k(audio: np.ndarray, src_sr: int) -> np.ndarray:
+    """audio: float32 [samples, channels] or [samples]. Returns float32 [samples, 2]."""
+    if audio.ndim == 1:
+        audio = np.stack([audio, audio], axis=-1)
+    if audio.shape[1] == 1:
+        audio = np.repeat(audio, 2, axis=1)
+    if src_sr == TARGET_SR:
+        return audio.astype(np.float32)
+    duration = audio.shape[0] / src_sr
+    n_out = int(round(duration * TARGET_SR))
+    x_src = np.linspace(0.0, duration, num=audio.shape[0], endpoint=False)
+    x_dst = np.linspace(0.0, duration, num=n_out, endpoint=False)
+    out = np.empty((n_out, audio.shape[1]), dtype=np.float32)
+    for ch in range(audio.shape[1]):
+        out[:, ch] = np.interp(x_dst, x_src, audio[:, ch]).astype(np.float32)
+    return out
+
+
+def _local_path_from_audio_url(file_url: str) -> str:
+    """"/v1/audio?path=%2Fworkspace%2F..." -> "/workspace/...". The
+    acestep-api subprocess and this process share a filesystem (same
+    container), so the file is read directly instead of over HTTP."""
+    from urllib.parse import urlparse, parse_qs, unquote
+
+    parsed = urlparse(file_url)
+    qs = parse_qs(parsed.query)
+    path = qs.get("path", [None])[0]
+    if not path:
+        raise RuntimeError(f"could not parse local path out of audio url: {file_url}")
+    return unquote(path)
+
+
+def float_to_pcm16(audio: np.ndarray) -> bytes:
+    clipped = np.clip(audio, -1.0, 1.0)
+    return (clipped * 32767.0).astype("<i2").tobytes()
+
+
+@dataclass
+class GenParams:
+    task_type: str  # 'text2music' | 'complete'
+    prompt: str
+    bpm: int
+    key_scale: str
+    audio_duration: float
+    inference_steps: int
+    guidance: float
+    seed: int
+    src_audio_path: Optional[str] = None
+    track_classes: Optional[list[str]] = None
+
+
+class AceStepModel:
+    """Drives the bundled ACE-Step HTTP API as a subprocess.
+
+    Note: RunPod's own nginx already listens on port 8001 (the port the
+    acestep-api CLI defaults to), so this binds the subprocess to 8010
+    instead -- confirmed by hitting a real pod (see README).
+    """
+
+    def __init__(self, model_dir: str):
+        self.model_dir = model_dir
+        self._http_proc: Optional[subprocess.Popen] = None
+        self._http_base = "http://127.0.0.1:8010"
+
+    def load(self) -> None:
+        self._start_http_server()
+
+    def _start_http_server(self) -> None:
+        # The real env var (acestep/model_downloader.py:get_checkpoints_dir)
+        # is ACESTEP_CHECKPOINTS_DIR, not ACE_MODEL_DIR/ACESTEP_MODEL_DIR --
+        # the original draft used a made-up name that ACE-Step never reads,
+        # so ACE_MODEL_DIR silently had no effect and weights always went to
+        # the default <ace repo>/checkpoints.
+        env = dict(os.environ)
+        env.setdefault("ACESTEP_CHECKPOINTS_DIR", self.model_dir)
+        self._http_proc = subprocess.Popen(
+            ["uv", "run", "acestep-api", "--host", "127.0.0.1", "--port", "8010"],
+            cwd=ACE_REPO_DIR,
+            env=env,
+        )
+        import urllib.request
+
+        deadline = time.time() + 600
+        while time.time() < deadline:
+            try:
+                urllib.request.urlopen(f"{self._http_base}/health", timeout=2)
+                log.info("acestep-api subprocess healthy")
+                return
+            except Exception:
+                if self._http_proc.poll() is not None:
+                    raise RuntimeError("acestep-api subprocess exited during startup")
+                time.sleep(2)
+        raise RuntimeError("acestep-api subprocess did not become healthy in time")
+
+    def warmup(self) -> None:
+        params = GenParams(
+            task_type="text2music",
+            prompt=build_prompt("lofi", ["drums", "bass"]),
+            bpm=100,
+            key_scale="A minor",
+            audio_duration=2.0,
+            inference_steps=INFERENCE_STEPS,
+            guidance=creativity_to_guidance(0.5),
+            seed=1,
+        )
+        self.generate(params)
+
+    def generate(self, params: GenParams) -> np.ndarray:
+        return self._generate_http(params)
+
+    def _generate_http(self, params: GenParams) -> np.ndarray:
+        # Field names below match acestep/api/http/release_task_param_parser.py's
+        # PARAM_ALIASES exactly (verified against the real /release_task route):
+        # "prompt", "key_scale", "audio_duration", "guidance_scale" (NOT
+        # "guidance" -- the original draft used the wrong key and every
+        # request would silently fall back to the request model's guidance_scale
+        # default of 7.0), "src_audio_path", "track_classes". audio_format=wav
+        # avoids mp3 lossy round-tripping and skips an extra ffmpeg decode.
+        # batch_size=1 avoids generating (and paying for) 2 candidates per
+        # block -- the server's own default is 2.
+        body = {
+            "task_type": params.task_type,
+            "prompt": params.prompt,
+            "bpm": params.bpm,
+            "key_scale": params.key_scale,
+            "audio_duration": params.audio_duration,
+            "inference_steps": params.inference_steps,
+            "guidance_scale": params.guidance,
+            "seed": params.seed,
+            "use_random_seed": False,
+            "batch_size": 1,
+            "audio_format": "wav",
+        }
+        if params.src_audio_path:
+            body["src_audio_path"] = params.src_audio_path
+        if params.track_classes:
+            body["track_classes"] = params.track_classes
+
+        import urllib.request
+
+        req = urllib.request.Request(
+            f"{self._http_base}/release_task",
+            data=json.dumps(body).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            release = json.loads(resp.read())
+        task_id = release["data"]["task_id"]
+
+        # /query_result's actual response shape (verified live):
+        # {"data": [{"task_id", "status": 0|1|2, "result": <JSON-encoded
+        # list of per-candidate dicts>, "progress_text"}]}. status 1 =
+        # succeeded, 2 = failed, 0 = queued/running. Each candidate's
+        # "file" is "/v1/audio?path=<urlencoded local path>" -- since this
+        # process runs on the same host as the acestep-api subprocess, the
+        # local path is decoded and read directly instead of round-tripping
+        # over HTTP.
+        deadline = time.time() + 300
+        out_path = None
+        while time.time() < deadline:
+            q = urllib.request.Request(
+                f"{self._http_base}/query_result",
+                data=json.dumps({"task_id_list": [task_id]}).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(q, timeout=30) as resp:
+                envelope = json.loads(resp.read())
+            entries = envelope.get("data") or []
+            entry = next((e for e in entries if e.get("task_id") == task_id), None)
+            if entry is None:
+                raise RuntimeError(f"ACE-Step task {task_id} missing from query_result response")
+            status = entry.get("status")
+            if status == 2:
+                raise RuntimeError(f"ACE-Step task {task_id} failed: {entry.get('progress_text')}")
+            if status == 1:
+                candidates = json.loads(entry["result"])
+                if not candidates or not candidates[0].get("file"):
+                    raise RuntimeError(f"ACE-Step task {task_id} succeeded with no audio file")
+                out_path = _local_path_from_audio_url(candidates[0]["file"])
+                break
+            time.sleep(1.0)
+        if out_path is None:
+            raise RuntimeError(f"ACE-Step task {task_id} timed out")
+
+        import soundfile as sf
+
+        audio, sr = sf.read(out_path, dtype="float32", always_2d=True)
+        return resample_to_48k(audio, sr)
+
+
+class Session:
+    """Per-connection generation state: one in-flight generation, later
+    requests cancel/skip older seqs."""
+
+    def __init__(self, model: AceStepModel):
+        self.model = model
+        self.last_bpm: Optional[int] = None
+        self.last_key: Optional[str] = None
+        self.prev_audio_path: Optional[str] = None
+        self._task: Optional[asyncio.Task] = None
+        self._latest_seq = -1
+
+    def cancel_inflight(self) -> None:
+        if self._task and not self._task.done():
+            self._task.cancel()
+
+    async def handle_block(self, msg: dict, send_binary, send_json) -> None:
+        seq = msg["seq"]
+        self._latest_seq = seq
+        self.cancel_inflight()
+        self._task = asyncio.ensure_future(self._run_block(msg, seq, send_binary, send_json))
+        try:
+            await self._task
+        except asyncio.CancelledError:
+            pass
+
+    async def _run_block(self, msg: dict, seq: int, send_binary, send_json) -> None:
+        bpm = int(msg["bpm"])
+        key = msg.get("key", "A minor")
+        genre = msg.get("genre", "lofi")
+        instruments = msg.get("instruments", ["drums", "bass"])
+        creativity = float(msg.get("creativity", 0.5))
+        bars = int(msg.get("bars", 2))
+        player_instrument = msg.get("player_instrument")
+
+        duration = bars * 240.0 / bpm
+        needs_restart = bpm != self.last_bpm or key != self.last_key or self.prev_audio_path is None
+        task_type = "text2music" if needs_restart else "complete"
+        prompt = build_prompt(genre, instruments, exclude=player_instrument)
+
+        params = GenParams(
+            task_type=task_type,
+            prompt=prompt,
+            bpm=bpm,
+            key_scale=key,
+            audio_duration=duration,
+            inference_steps=INFERENCE_STEPS,
+            guidance=creativity_to_guidance(creativity),
+            seed=creativity_to_seed(creativity, seq),
+            src_audio_path=None if task_type == "text2music" else self.prev_audio_path,
+            track_classes=None if task_type == "text2music" else track_classes_for(instruments, player_instrument),
+        )
+
+        loop = asyncio.get_running_loop()
+        t0 = time.monotonic()
+        audio = await loop.run_in_executor(None, self.model.generate, params)
+        elapsed_ms = (time.monotonic() - t0) * 1000.0
+
+        if seq != self._latest_seq:
+            return  # superseded while generating
+
+        self.last_bpm = bpm
+        self.last_key = key
+        self.prev_audio_path = _write_temp_wav(audio)
+
+        pcm = float_to_pcm16(audio)
+        header = struct.pack("<I", seq)
+        await send_binary(header + pcm)
+        await send_json({"type": "done", "seq": seq, "ms": elapsed_ms})
+
+
+def _write_temp_wav(audio: np.ndarray) -> str:
+    import soundfile as sf
+    import tempfile
+
+    fd, path = tempfile.mkstemp(suffix=".wav", prefix="acestep_block_")
+    os.close(fd)
+    sf.write(path, audio, TARGET_SR, subtype="PCM_16")
+    return path
+
+
+def create_app(model: AceStepModel):
+    from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+
+    app = FastAPI()
+    app.state.model = model
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok"}
+
+    @app.websocket("/ws")
+    async def ws(websocket: WebSocket):
+        await websocket.accept()
+        session = Session(model)
+
+        async def send_binary(data: bytes):
+            await websocket.send_bytes(data)
+
+        async def send_json(obj: dict):
+            await websocket.send_text(json.dumps(obj))
+
+        try:
+            while True:
+                raw = await websocket.receive_text()
+                msg = json.loads(raw)
+                mtype = msg.get("type")
+                if mtype == "ping":
+                    await send_json({"type": "pong"})
+                elif mtype == "block":
+                    await session.handle_block(msg, send_binary, send_json)
+                else:
+                    log.warning("unknown message type: %s", mtype)
+        except WebSocketDisconnect:
+            session.cancel_inflight()
+
+    return app
+
+
+def run_bench() -> None:
+    model = AceStepModel(MODEL_DIR)
+    log.info("loading model for bench...")
+    model.load()
+    log.info("warming up...")
+    model.warmup()
+
+    bpm = 100
+    bars = 2
+    duration = bars * 240.0 / bpm
+    genre = "lofi"
+    instruments = ["drums", "bass", "keys"]
+
+    prev_path = None
+    for i in range(6):
+        task_type = "text2music" if i == 0 else "complete"
+        params = GenParams(
+            task_type=task_type,
+            prompt=build_prompt(genre, instruments),
+            bpm=bpm,
+            key_scale="A minor",
+            audio_duration=duration,
+            inference_steps=INFERENCE_STEPS,
+            guidance=creativity_to_guidance(0.5),
+            seed=1000 + i,
+            src_audio_path=prev_path,
+            track_classes=None if task_type == "text2music" else track_classes_for(instruments),
+        )
+        t0 = time.monotonic()
+        audio = model.generate(params)
+        elapsed = time.monotonic() - t0
+        prev_path = _write_temp_wav(audio)
+        rtf = elapsed / duration
+        print(f"block {i} [{task_type}] wall={elapsed:.2f}s duration={duration:.2f}s rtf={rtf:.2f}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--bench", action="store_true", help="run the 6-block benchmark and exit")
+    args = parser.parse_args()
+
+    if args.bench:
+        run_bench()
+        return
+
+    import uvicorn
+
+    model = AceStepModel(MODEL_DIR)
+    model.load()
+    model.warmup()
+    app = create_app(model)
+    uvicorn.run(app, host="0.0.0.0", port=PORT)
+
+
+if __name__ == "__main__":
+    main()
