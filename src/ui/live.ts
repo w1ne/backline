@@ -23,11 +23,19 @@ export interface LiveActions {
 
 const actionsRef = new WeakMap<HTMLElement, LiveActions>();
 
+const GENRE_COLOR: Record<Genre, string> = {
+  lofi: 'var(--orange)',
+  funk: 'var(--yellow)',
+  rock: 'var(--blue)',
+  jazz: 'var(--pink)',
+};
+
 export function renderLive(root: HTMLElement, store: Store, actions: LiveActions): void {
   let screen = root.querySelector<HTMLElement>('.screen[data-live]');
   if (!screen) {
     root.innerHTML = skeleton();
     screen = root.querySelector<HTMLElement>('.screen[data-live]')!;
+    screen.classList.add('intro');
     actionsRef.set(screen, actions);
     wireControls(screen, store);
   } else {
@@ -43,44 +51,18 @@ function skeleton(): string {
   return `
     <div class="screen" data-live>
       <div class="bar">
-        <span class="logo"><i></i>Backline</span>
+        <h1 class="logo">Back<i>line</i></h1>
         <span class="pill" id="live-pill"></span>
       </div>
       <div class="readout">
-        <div><small>Tempo</small><strong id="ro-tempo">&mdash;</strong>
-          <span class="toggle" id="tempoMode">
-            <button type="button" data-mode="locked">Locked</button>
-            <button type="button" data-mode="follow">Follow</button>
-          </span>
-          <small class="hint" id="tempoMode-note" hidden>Follow needs the Patterns engine</small>
+        <div class="ro-tempo"><small>Tempo</small><strong id="ro-tempo">&mdash;</strong></div>
+        <div class="ro-side">
+          <div><small>Key</small><strong id="ro-key">&mdash;</strong></div>
+          <div><small>Bar</small><strong id="ro-bar">0</strong></div>
         </div>
-        <div><small>Key</small><strong id="ro-key">&mdash;</strong></div>
-        <div><small>Genre</small>
-          <select id="genre">
-            ${GENRES.map(g => `<option value="${g}">${cap(g)}</option>`).join('')}
-          </select>
+        <div class="beats" id="beats">
+          <b>Beat</b><i style="--n:0"></i><i style="--n:1"></i><i style="--n:2"></i><i style="--n:3"></i>
         </div>
-      </div>
-      <div class="creativity-panel panel">
-        <label for="creativity">CREATIVITY</label>
-        <input type="range" id="creativity" min="0" max="1" step="0.05" />
-        <span class="val" id="creativity-val"></span>
-      </div>
-      <div class="creativity-panel panel">
-        <label for="bpm">BPM OVERRIDE</label>
-        <input type="number" id="bpm" min="40" max="240" placeholder="auto" />
-        <label for="key">KEY OVERRIDE</label>
-        <select id="key">
-          <option value="auto">auto</option>
-          ${ALL_KEYS.map(
-            k => `<option value="${k.root}-${k.mode}">${KEY_NAMES[k.root]} ${k.mode === 'major' ? 'maj' : 'min'}</option>`,
-          ).join('')}
-        </select>
-      </div>
-      <div class="you">
-        <span class="label">YOU</span>
-        <span class="level"><i id="you-level"></i></span>
-        <span class="pill" id="you-notes"></span>
       </div>
       <div class="inst" id="inst-tiles">
         ${INSTRUMENTS.map(
@@ -92,9 +74,61 @@ function skeleton(): string {
             </button>`,
         ).join('')}
       </div>
-      <div class="foot">
-        <button type="button" class="btn ghost" id="stop-jam">Stop</button>
-        <span class="hint" id="latency"></span>
+      <div class="row2">
+        <div class="zone zone--pink knob-zone">
+          <span class="zone-label">Creativity</span>
+          <div class="knob" id="creativity-knob" role="slider" tabindex="0"
+               aria-label="Creativity" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0">
+            <span class="ptr"></span>
+          </div>
+          <span class="knob-val" id="creativity-val"></span>
+          <input class="vh" type="range" id="creativity" min="0" max="1" step="0.05" aria-hidden="true" tabindex="-1" />
+        </div>
+        <div class="zone zone--blue">
+          <span class="zone-label">Genre</span>
+          <div class="chips" id="genre-chips">
+            ${GENRES.map(g => `<button type="button" class="chip" data-genre="${g}">${g}</button>`).join('')}
+          </div>
+          <select class="vh" id="genre" aria-label="Genre" tabindex="-1">
+            ${GENRES.map(g => `<option value="${g}">${cap(g)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="zone zone--yellow manual">
+          <span class="zone-label">Manual</span>
+          <div class="field">
+            <span class="fl">Tempo</span>
+            <span class="switch" id="tempoMode">
+              <button type="button" data-mode="locked">Locked</button>
+              <button type="button" data-mode="follow">Follow</button>
+            </span>
+          </div>
+          <div class="field">
+            <label for="bpm">Bpm</label>
+            <input type="number" id="bpm" min="40" max="240" placeholder="auto" />
+          </div>
+          <div class="field">
+            <label for="key">Key</label>
+            <select id="key">
+              <option value="auto">auto</option>
+              ${ALL_KEYS.map(
+                k =>
+                  `<option value="${k.root}-${k.mode}">${KEY_NAMES[k.root]} ${k.mode === 'major' ? 'maj' : 'min'}</option>`,
+              ).join('')}
+            </select>
+          </div>
+          <small class="hint" id="tempoMode-note" hidden>Follow needs the Patterns engine</small>
+        </div>
+      </div>
+      <div class="bottom">
+        <div class="zone zone--green you">
+          <span class="label">You</span>
+          <span class="level"><i id="you-level"></i></span>
+          <span class="pill" id="you-notes"></span>
+        </div>
+        <div class="foot">
+          <button type="button" class="btn" id="stop-jam">Stop</button>
+          <span class="hint" id="latency"></span>
+        </div>
       </div>
     </div>
   `;
@@ -102,17 +136,32 @@ function skeleton(): string {
 
 function wireControls(screen: HTMLElement, store: Store): void {
   const actions = (): LiveActions => actionsRef.get(screen)!;
-  screen.querySelector<HTMLSelectElement>('#genre')!.addEventListener('change', e => {
+  const genreSelect = screen.querySelector<HTMLSelectElement>('#genre')!;
+  genreSelect.addEventListener('change', e => {
     actions().setGenre((e.target as HTMLSelectElement).value as Genre);
+  });
+  // The chips are the visible control; the <select> stays the source of truth.
+  screen.querySelectorAll<HTMLButtonElement>('#genre-chips .chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      genreSelect.value = chip.dataset.genre!;
+      genreSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    });
   });
   const creativity = screen.querySelector<HTMLInputElement>('#creativity')!;
   creativity.addEventListener('input', () => {
     actions().setCreativity(Number(creativity.value));
   });
+  wireKnob(screen, creativity);
   screen.querySelectorAll<HTMLButtonElement>('#inst-tiles button').forEach(btn => {
     btn.addEventListener('click', () => actions().toggle(btn.dataset.inst as Instrument));
   });
-  screen.querySelector<HTMLButtonElement>('#stop-jam')!.addEventListener('click', () => actions().stop());
+  const stopBtn = screen.querySelector<HTMLButtonElement>('#stop-jam')!;
+  stopBtn.addEventListener('click', () => {
+    if (screen.classList.contains('stopping')) return;
+    // let the pads fade and the digits fall before the screen swaps back
+    screen.classList.add('stopping');
+    window.setTimeout(() => actions().stop(), 200);
+  });
 
   const bpmInput = screen.querySelector<HTMLInputElement>('#bpm')!;
   bpmInput.addEventListener('change', () => {
@@ -146,6 +195,50 @@ function wireControls(screen: HTMLElement, store: Store): void {
   void store;
 }
 
+/** Rotary knob that drives the hidden range input (drag up/down, arrow keys). */
+function wireKnob(screen: HTMLElement, input: HTMLInputElement): void {
+  const knob = screen.querySelector<HTMLElement>('#creativity-knob')!;
+  const step = Number(input.step) || 0.05;
+  const commit = (raw: number): void => {
+    const snapped = Math.min(1, Math.max(0, Math.round(raw / step) * step));
+    const next = Number(snapped.toFixed(3));
+    if (Number(input.value) === next) return;
+    input.value = String(next);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+
+  let drag: { y: number; from: number } | undefined;
+  knob.addEventListener('pointerdown', e => {
+    drag = { y: e.clientY, from: Number(input.value) };
+    knob.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  knob.addEventListener('pointermove', e => {
+    if (drag) commit(drag.from + (drag.y - e.clientY) / 160);
+  });
+  const release = (): void => {
+    drag = undefined;
+  };
+  knob.addEventListener('pointerup', release);
+  knob.addEventListener('pointercancel', release);
+
+  knob.addEventListener('keydown', e => {
+    const delta =
+      e.key === 'ArrowUp' || e.key === 'ArrowRight'
+        ? step
+        : e.key === 'ArrowDown' || e.key === 'ArrowLeft'
+          ? -step
+          : e.key === 'End'
+            ? 1
+            : e.key === 'Home'
+              ? -1
+              : 0;
+    if (!delta) return;
+    e.preventDefault();
+    commit(Number(input.value) + delta);
+  });
+}
+
 function update(screen: HTMLElement, s: AppState, changeLatencyMs: number): void {
   updateHeader(screen, s);
   updateReadouts(screen, s);
@@ -169,16 +262,64 @@ function updateHeader(screen: HTMLElement, s: AppState): void {
   }
 }
 
+const prevLocked = new WeakMap<HTMLElement, boolean>();
+const prevGenre = new WeakMap<HTMLElement, Genre>();
+
+/** Re-renders the tempo digits, optionally rolling them up odometer-style. */
+function setTempo(el: HTMLElement, text: string, roll: boolean): void {
+  if (el.dataset.text !== text) {
+    el.dataset.text = text;
+    el.innerHTML = [...text]
+      .map((ch, i) => `<b style="--d:${i * 40}ms">${ch === ' ' ? '&nbsp;' : escapeHtml(ch)}</b>`)
+      .join('');
+  }
+  if (!roll) return;
+  el.classList.remove('roll');
+  void el.offsetWidth;
+  el.classList.add('roll');
+}
+
+/** One-shot class that drives a CSS animation, cleared when it finishes. */
+function pulse(el: HTMLElement, cls: string, ms: number): void {
+  el.classList.remove(cls);
+  void el.offsetWidth;
+  el.classList.add(cls);
+  window.setTimeout(() => el.classList.remove(cls), ms);
+}
+
 function updateReadouts(screen: HTMLElement, s: AppState): void {
-  screen.querySelector<HTMLElement>('#ro-tempo')!.textContent = s.input.bpm ? String(Math.round(s.input.bpm)) : '—';
+  const justLocked = s.locked && prevLocked.get(screen) === false;
+  prevLocked.set(screen, s.locked);
+  screen.classList.toggle('locked', s.locked);
+  if (justLocked) {
+    screen.style.setProperty('--flash', GENRE_COLOR[s.genre]);
+    pulse(screen, 'flash', 200);
+  }
+
+  const genreChanged = prevGenre.has(screen) && prevGenre.get(screen) !== s.genre;
+  prevGenre.set(screen, s.genre);
+  if (genreChanged) {
+    screen.style.setProperty('--flash', GENRE_COLOR[s.genre]);
+    pulse(screen.querySelector<HTMLElement>('.readout')!, 'sweep', 320);
+    pulse(screen.querySelector<HTMLElement>('#inst-tiles')!, 'retint', 220);
+  }
+
   screen.querySelector<HTMLElement>('#ro-key')!.textContent = s.input.key ? keyName(s.input.key) : '—';
+  screen.querySelector<HTMLElement>('#ro-bar')!.textContent = String(s.bar);
+  updateBeats(screen, s);
 
   const genreSelect = screen.querySelector<HTMLSelectElement>('#genre')!;
   if (genreSelect.value !== s.genre) genreSelect.value = s.genre;
+  screen.querySelectorAll<HTMLButtonElement>('#genre-chips .chip').forEach(chip => {
+    chip.classList.toggle('on', chip.dataset.genre === s.genre);
+  });
 
   const creativity = screen.querySelector<HTMLInputElement>('#creativity')!;
   if (document.activeElement !== creativity) creativity.value = String(s.creativity);
   screen.querySelector<HTMLElement>('#creativity-val')!.textContent = s.creativity.toFixed(2);
+  const knob = screen.querySelector<HTMLElement>('#creativity-knob')!;
+  knob.style.setProperty('--k', String(s.creativity));
+  knob.setAttribute('aria-valuenow', s.creativity.toFixed(2));
 
   const lyriaFollow = s.engine === 'lyria';
   screen.querySelectorAll<HTMLButtonElement>('#tempoMode button').forEach(btn => {
@@ -188,15 +329,50 @@ function updateReadouts(screen: HTMLElement, s: AppState): void {
   const note = screen.querySelector<HTMLElement>('#tempoMode-note')!;
   note.hidden = !lyriaFollow;
 
-  const tempoEl = screen.querySelector<HTMLElement>('#ro-tempo')!;
+  let tempoText = s.input.bpm ? String(Math.round(s.input.bpm)) : '—';
   if (s.engine === 'lyria' && s.input.bpm) {
     const clamped = Math.min(200, Math.max(60, Math.round(s.input.bpm)));
-    if (clamped !== Math.round(s.input.bpm)) tempoEl.textContent = `${clamped} (clamped)`;
+    if (clamped !== Math.round(s.input.bpm)) tempoText = `${clamped} (clamped)`;
+  }
+  setTempo(screen.querySelector<HTMLElement>('#ro-tempo')!, tempoText, justLocked);
+}
+
+const lastBar = new WeakMap<HTMLElement, number>();
+
+/** Beat LEDs and the pad "breath": one bar-long CSS cycle, restarted on every bar callback. */
+function updateBeats(screen: HTMLElement, s: AppState): void {
+  const beats = screen.querySelector<HTMLElement>('#beats')!;
+  const tiles = screen.querySelector<HTMLElement>('#inst-tiles')!;
+  if (!s.locked || !s.input.bpm) {
+    beats.classList.remove('run');
+    tiles.classList.remove('run');
+    lastBar.delete(screen);
+    return;
+  }
+  screen.style.setProperty('--beat', `${60 / s.input.bpm}s`);
+  if (lastBar.get(screen) === s.bar && beats.classList.contains('run')) return;
+  lastBar.set(screen, s.bar);
+  for (const el of [beats, tiles]) {
+    el.classList.remove('run');
+    void el.offsetWidth; // reflow so the animation restarts on the downbeat
+    el.classList.add('run');
   }
 }
 
+const peakHold = new WeakMap<HTMLElement, { v: number; t: number }>();
+
 function updateYouStrip(screen: HTMLElement, s: AppState): void {
-  screen.querySelector<HTMLElement>('#you-level')!.style.width = `${Math.round(s.input.inputLevel * 100)}%`;
+  const level = Math.max(0, Math.min(1, s.input.inputLevel));
+  screen.querySelector<HTMLElement>('#you-level')!.style.width = `${Math.round(level * 100)}%`;
+
+  // peak-hold marker, decaying ~60% of full scale per second
+  const now = Date.now();
+  const held = peakHold.get(screen);
+  const decayed = held ? Math.max(0, held.v - ((now - held.t) / 1000) * 0.6) : 0;
+  const peak = Math.max(level, decayed);
+  peakHold.set(screen, { v: peak, t: now });
+  screen.querySelector<HTMLElement>('.you .level')!.style.setProperty('--peak', String(Math.round(peak * 100)));
+
   screen.querySelector<HTMLElement>('#you-notes')!.textContent = s.input.notesNow.length
     ? s.input.notesNow.map(noteName).join(' · ')
     : '—';
@@ -232,6 +408,7 @@ function updateTiles(screen: HTMLElement, s: AppState, changeLatencyMs: number):
           const settledText = stillOn ? 'playing' : 'off';
           textEl.textContent = settledText;
           meterEl.style.width = settledText === 'playing' ? '60%' : '0';
+          btn.classList.remove('pending');
         }, changeLatencyMs);
       }
       const pending = until[i] !== undefined && Date.now() < (until[i] as number);
@@ -243,6 +420,8 @@ function updateTiles(screen: HTMLElement, s: AppState, changeLatencyMs: number):
       text = !on ? 'off' : !s.locked ? 'off' : justJoined ? 'joins next bar' : 'playing';
     }
     btn.querySelector<HTMLElement>('.st-text')!.textContent = text;
+    // blinking LED while the engine settles the change
+    btn.classList.toggle('pending', text === 'joining…' || text === 'leaving…');
     const meter = btn.querySelector<HTMLElement>('.meter i')!;
     meter.style.width = text === 'playing' ? '60%' : '0';
   }
@@ -259,6 +438,10 @@ export function setLatency(root: HTMLElement, ms: number): void {
 
 function cap(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
