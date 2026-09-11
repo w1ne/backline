@@ -1,0 +1,384 @@
+:root {
+  --ui-bg: #111316;
+  --ui-panel: #1b1e22;
+  --ui-line: #2c3036;
+  --ui-text: #edeeea;
+  --ui-dim: #8b9096;
+  --accent: #c8256b;
+  --accent-ink: #fff;
+  --drums: #e0642b;
+  --bass: #2f6fd6;
+  --keys: #3fa36b;
+  --lead: #c8256b;
+  --display: 'Bricolage Grotesque', 'Instrument Sans', system-ui, sans-serif;
+  --body: 'Instrument Sans', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--ui-bg);
+  color: var(--ui-text);
+  font-family: var(--body);
+}
+
+#app {
+  min-height: 100vh;
+  padding: 16px;
+}
+
+.screen {
+  background: var(--ui-bg);
+  color: var(--ui-text);
+  max-width: 720px;
+  margin: 0 auto;
+  font-size: 14px;
+}
+
+.bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.logo {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: -0.01em;
+}
+
+.logo i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  background: var(--accent);
+  border-radius: 50%;
+  margin-right: 8px;
+  vertical-align: 1px;
+}
+
+.pill {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 3px 9px;
+  border: 1px solid var(--ui-line);
+  border-radius: 99px;
+  color: var(--ui-dim);
+}
+
+.pill.live {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.pill.live::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-right: 6px;
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.panel {
+  background: var(--ui-panel);
+  border: 1px solid var(--ui-line);
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.panel h4 {
+  margin: 0 0 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ui-dim);
+  font-weight: 600;
+}
+
+.choice {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.choice button {
+  padding: 8px 12px;
+  border: 1px solid var(--ui-line);
+  border-radius: 8px;
+  color: var(--ui-text);
+  background: transparent;
+  font-family: var(--body);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.choice button.on {
+  border-color: var(--accent);
+  background: rgba(200, 37, 107, 0.15);
+}
+
+.btn {
+  display: inline-block;
+  padding: 12px 18px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+  font-family: var(--body);
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.btn.ghost {
+  background: transparent;
+  border: 1px solid var(--ui-line);
+  color: var(--ui-text);
+}
+
+.readout {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.readout div {
+  background: var(--ui-panel);
+  border: 1px solid var(--ui-line);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.readout small {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ui-dim);
+}
+
+.readout strong {
+  font-family: var(--mono);
+  font-size: 26px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.readout select {
+  background: transparent;
+  color: var(--ui-text);
+  border: none;
+  font-family: var(--mono);
+  font-size: 18px;
+  line-height: 1.9;
+  font-weight: 600;
+}
+
+.creativity-panel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.creativity-panel label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--ui-dim);
+}
+
+.creativity-panel input[type='range'] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
+.creativity-panel .val {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.you {
+  margin: 14px 0;
+  background: var(--ui-panel);
+  border: 1px solid var(--ui-line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.you .label {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ui-dim);
+}
+
+.you .level {
+  flex: 1;
+  height: 8px;
+  background: var(--ui-line);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.you .level i {
+  display: block;
+  height: 100%;
+  background: var(--ui-text);
+}
+
+.inst {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.inst button {
+  border: 1px solid var(--ui-line);
+  border-radius: 10px;
+  padding: 12px;
+  position: relative;
+  min-height: 96px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: transparent;
+  color: var(--ui-text);
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--body);
+}
+
+.inst button.on {
+  background: var(--ui-panel);
+}
+
+.inst .name {
+  font-weight: 600;
+}
+
+.inst .st {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ui-dim);
+}
+
+.inst button.on .st {
+  color: var(--ui-text);
+}
+
+.inst .dot {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ui-line);
+}
+
+.inst .drums.on .dot {
+  background: var(--drums);
+}
+.inst .bass.on .dot {
+  background: var(--bass);
+}
+.inst .keys.on .dot {
+  background: var(--keys);
+}
+.inst .lead.on .dot {
+  background: var(--lead);
+}
+
+.meter {
+  height: 6px;
+  background: var(--ui-line);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.meter i {
+  display: block;
+  height: 100%;
+}
+
+.drums .meter i {
+  background: var(--drums);
+}
+.bass .meter i {
+  background: var(--bass);
+}
+.keys .meter i {
+  background: var(--keys);
+}
+.lead .meter i {
+  background: var(--lead);
+}
+
+.foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 14px;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.hint {
+  color: var(--ui-dim);
+}
+
+@media (max-width: 640px) {
+  .grid2,
+  .inst,
+  .readout {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 420px) {
+  .inst,
+  .readout,
+  .grid2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .pill.live::before {
+    animation: blink 1.2s infinite;
+  }
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0.3;
+  }
+}
