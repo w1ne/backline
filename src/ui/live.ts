@@ -21,12 +21,20 @@ export interface LiveActions {
   changeLatencyMs?: number;
 }
 
+const actionsRef = new WeakMap<HTMLElement, LiveActions>();
+
 export function renderLive(root: HTMLElement, store: Store, actions: LiveActions): void {
   let screen = root.querySelector<HTMLElement>('.screen[data-live]');
   if (!screen) {
     root.innerHTML = skeleton();
     screen = root.querySelector<HTMLElement>('.screen[data-live]')!;
-    wireControls(screen, store, actions);
+    actionsRef.set(screen, actions);
+    wireControls(screen, store);
+  } else {
+    // Refresh the stored actions reference so listeners wired once below always
+    // call into the latest closure (which may read fresher store state), instead
+    // of the actions object captured on the very first render.
+    actionsRef.set(screen, actions);
   }
   update(screen, store.state, actions.changeLatencyMs ?? 0);
 }
@@ -44,6 +52,7 @@ function skeleton(): string {
             <button type="button" data-mode="locked">Locked</button>
             <button type="button" data-mode="follow">Follow</button>
           </span>
+          <small class="hint" id="tempoMode-note" hidden>Follow needs the Patterns engine</small>
         </div>
         <div><small>Key</small><strong id="ro-key">&mdash;</strong></div>
         <div><small>Genre</small>
@@ -91,43 +100,47 @@ function skeleton(): string {
   `;
 }
 
-function wireControls(screen: HTMLElement, store: Store, actions: LiveActions): void {
+function wireControls(screen: HTMLElement, store: Store): void {
+  const actions = (): LiveActions => actionsRef.get(screen)!;
   screen.querySelector<HTMLSelectElement>('#genre')!.addEventListener('change', e => {
-    actions.setGenre((e.target as HTMLSelectElement).value as Genre);
+    actions().setGenre((e.target as HTMLSelectElement).value as Genre);
   });
   const creativity = screen.querySelector<HTMLInputElement>('#creativity')!;
   creativity.addEventListener('input', () => {
-    actions.setCreativity(Number(creativity.value));
+    actions().setCreativity(Number(creativity.value));
   });
   screen.querySelectorAll<HTMLButtonElement>('#inst-tiles button').forEach(btn => {
-    btn.addEventListener('click', () => actions.toggle(btn.dataset.inst as Instrument));
+    btn.addEventListener('click', () => actions().toggle(btn.dataset.inst as Instrument));
   });
-  screen.querySelector<HTMLButtonElement>('#stop-jam')!.addEventListener('click', () => actions.stop());
+  screen.querySelector<HTMLButtonElement>('#stop-jam')!.addEventListener('click', () => actions().stop());
 
   const bpmInput = screen.querySelector<HTMLInputElement>('#bpm')!;
   bpmInput.addEventListener('change', () => {
     const raw = bpmInput.value.trim();
     if (!raw) {
-      actions.setBpmOverride?.(undefined);
+      actions().setBpmOverride?.(undefined);
       return;
     }
     const bpm = Math.min(240, Math.max(40, Number(raw)));
     bpmInput.value = String(bpm);
-    actions.setBpmOverride?.(bpm);
+    actions().setBpmOverride?.(bpm);
   });
 
   const keySelect = screen.querySelector<HTMLSelectElement>('#key')!;
   keySelect.addEventListener('change', () => {
     if (keySelect.value === 'auto') {
-      actions.setKeyOverride?.(undefined);
+      actions().setKeyOverride?.(undefined);
       return;
     }
     const [root, mode] = keySelect.value.split('-');
-    actions.setKeyOverride?.({ root: Number(root), mode: mode as 'major' | 'minor' });
+    actions().setKeyOverride?.({ root: Number(root), mode: mode as 'major' | 'minor' });
   });
 
   screen.querySelectorAll<HTMLButtonElement>('#tempoMode button').forEach(btn => {
-    btn.addEventListener('click', () => actions.setTempoMode?.(btn.dataset.mode as 'locked' | 'follow'));
+    btn.addEventListener('click', () => {
+      if (btn.disabled) return;
+      actions().setTempoMode?.(btn.dataset.mode as 'locked' | 'follow');
+    });
   });
 
   void store;
@@ -147,7 +160,8 @@ function updateHeader(screen: HTMLElement, s: AppState): void {
     pill.textContent = s.error;
     pill.className = 'pill error';
   } else if (s.locked) {
-    pill.textContent = `live · bar ${s.bar}`;
+    const looping = s.loopsUpdatedAt !== undefined && Date.now() - s.loopsUpdatedAt < 3000 ? ' · looping' : '';
+    pill.textContent = `live · bar ${s.bar}${looping}`;
     pill.className = 'pill live';
   } else {
     pill.textContent = `listening… onsets ${s.input.onsets}/12`;
@@ -166,9 +180,19 @@ function updateReadouts(screen: HTMLElement, s: AppState): void {
   if (document.activeElement !== creativity) creativity.value = String(s.creativity);
   screen.querySelector<HTMLElement>('#creativity-val')!.textContent = s.creativity.toFixed(2);
 
+  const lyriaFollow = s.engine === 'lyria';
   screen.querySelectorAll<HTMLButtonElement>('#tempoMode button').forEach(btn => {
     btn.classList.toggle('on', btn.dataset.mode === s.tempoMode);
+    if (btn.dataset.mode === 'follow') btn.disabled = lyriaFollow;
   });
+  const note = screen.querySelector<HTMLElement>('#tempoMode-note')!;
+  note.hidden = !lyriaFollow;
+
+  const tempoEl = screen.querySelector<HTMLElement>('#ro-tempo')!;
+  if (s.engine === 'lyria' && s.input.bpm) {
+    const clamped = Math.min(200, Math.max(60, Math.round(s.input.bpm)));
+    if (clamped !== Math.round(s.input.bpm)) tempoEl.textContent = `${clamped} (clamped)`;
+  }
 }
 
 function updateYouStrip(screen: HTMLElement, s: AppState): void {

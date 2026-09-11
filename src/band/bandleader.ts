@@ -25,7 +25,7 @@ export class Bandleader {
     this.rng = mulberry32(seed);
     clock.onBar((bar, t) => this.onBar(bar, t));
   }
-  set(p: Partial<BandState>) {
+  set(p: Partial<Pick<BandState, 'genre' | 'key' | 'creativity'>>) {
     Object.assign(this.state, p);
   }
   setEnabled(i: Instrument, on: boolean) {

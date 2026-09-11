@@ -15,6 +15,8 @@ export interface AppState {
   bar: number;
   error: string | null;
   user: { login: string } | null;
+  loops: number;
+  loopsUpdatedAt: number | undefined;
 }
 
 const defaults: AppState = {
@@ -30,6 +32,8 @@ const defaults: AppState = {
   bar: 0,
   error: null,
   user: null,
+  loops: 0,
+  loopsUpdatedAt: undefined,
 };
 
 export class Store {

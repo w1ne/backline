@@ -23,6 +23,7 @@ const players = new Players();
 let lastFollowedBpm: number | undefined;
 
 async function start() {
+  store.update({ error: null });
   await players.init();
   players.setGenre(store.state.genre);
 
@@ -42,6 +43,10 @@ async function start() {
     setLatency(root, players.latencyMs());
   };
   band.onError = msg => store.update({ error: msg });
+  band.onStats = s => {
+    const increased = s.loops > store.state.loops;
+    store.update({ loops: s.loops, loopsUpdatedAt: increased ? Date.now() : store.state.loopsUpdatedAt });
+  };
 
   listener.onChange(input => {
     store.update({ input });
@@ -76,7 +81,7 @@ function stop() {
   band?.stop();
   listener?.stop();
   lastFollowedBpm = undefined;
-  store.update({ screen: 'setup', locked: false, bar: 0, tempoMode: 'locked' });
+  store.update({ screen: 'setup', locked: false, bar: 0, tempoMode: 'locked', error: null, loops: 0, loopsUpdatedAt: undefined });
 }
 
 store.subscribe(s => {
@@ -87,9 +92,12 @@ store.subscribe(s => {
   }
   renderLive(root, store, {
     toggle: i => {
-      const on = !s.enabled[i];
+      // Read live state, not the `s` snapshot from this subscribe callback,
+      // which would freeze `enabled` at whatever it was on the render that
+      // created this closure.
+      const on = !store.state.enabled[i];
       band?.setEnabled(i, on);
-      store.update({ enabled: { ...s.enabled, [i]: on } });
+      store.update({ enabled: { ...store.state.enabled, [i]: on } });
     },
     setGenre: g => {
       players.setGenre(g);
@@ -107,6 +115,14 @@ store.subscribe(s => {
       if (clamped !== undefined) {
         lastFollowedBpm = clamped;
         band?.setBpm(clamped);
+      } else {
+        // Override cleared: setOverride() above emits synchronously, so
+        // listener's input already reflects the recovered detected tempo.
+        const recovered = listener?.input.bpm;
+        if (recovered) {
+          lastFollowedBpm = recovered;
+          band?.setBpm(recovered);
+        }
       }
     },
     setKeyOverride: key => {
@@ -121,5 +137,8 @@ store.subscribe(s => {
   });
 });
 
-getSession().then(user => store.update({ user }));
+getSession().then(user => {
+  const clearSignInError = user && store.state.error === 'Sign in with GitHub to use Lyria';
+  store.update({ user, ...(clearSignInError ? { error: null } : {}) });
+});
 store.update({});

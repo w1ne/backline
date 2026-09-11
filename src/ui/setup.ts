@@ -3,7 +3,7 @@ import type { Genre } from '../types';
 import { login } from '../auth';
 import type { Store } from './state';
 
-export function renderSetup(root: HTMLElement, store: Store, onStart: () => void): void {
+export function renderSetup(root: HTMLElement, store: Store, onStart: () => void | Promise<void>): void {
   const { source, genre, engine, user, error } = store.state;
 
   root.innerHTML = `
@@ -59,15 +59,18 @@ export function renderSetup(root: HTMLElement, store: Store, onStart: () => void
     btn.addEventListener('click', () => store.update({ genre: btn.dataset.genre as Genre }));
   });
 
-  root.querySelector<HTMLButtonElement>('#github-login')?.addEventListener('click', () => login());
+  root.querySelector<HTMLButtonElement>('#github-login')?.addEventListener('click', () => {
+    store.update({ error: null });
+    login();
+  });
 
   const authRow = root.querySelector<HTMLElement>('#auth-row')!;
   root.querySelector<HTMLButtonElement>('#engine-lyria')!.addEventListener('click', () => {
-    store.update({ engine: 'lyria' });
+    store.update({ engine: 'lyria', error: null });
     authRow.style.display = '';
   });
   root.querySelector<HTMLButtonElement>('#engine-patterns')!.addEventListener('click', () => {
-    store.update({ engine: 'patterns' });
+    store.update({ engine: 'patterns', error: null });
     authRow.style.display = 'none';
   });
 
@@ -76,8 +79,26 @@ export function renderSetup(root: HTMLElement, store: Store, onStart: () => void
       store.update({ error: 'Sign in with GitHub to use Lyria' });
       return;
     }
-    onStart();
+    try {
+      const result = onStart();
+      if (result && typeof (result as Promise<void>).catch === 'function') {
+        (result as Promise<void>).catch(err => {
+          store.update({ error: readableStartError(err) });
+        });
+      }
+    } catch (err) {
+      store.update({ error: readableStartError(err) });
+    }
   });
+}
+
+function readableStartError(err: unknown): string {
+  const name = err instanceof DOMException ? err.name : undefined;
+  if (name === 'NotAllowedError') return 'Microphone access was denied. Allow it and try again.';
+  if (name === 'NotFoundError') return 'No microphone found.';
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/midi/i.test(msg)) return 'Web MIDI is unavailable. Try Chrome/Edge, or use the microphone instead.';
+  return `Could not start: ${msg}`;
 }
 
 function escapeHtml(s: string): string {

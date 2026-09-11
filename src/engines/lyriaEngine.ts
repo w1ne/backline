@@ -9,6 +9,7 @@ import { RELAY_URL } from '../config';
 const MODEL = 'models/lyria-realtime-exp';
 const COALESCE_MS = 250;
 const RESET_FADE_SEC = 0.15;
+const RESET_MIN_INTERVAL_MS = 8000;
 
 function sameKey(a: Key, b: Key): boolean {
   return a.root === b.root && a.mode === b.mode;
@@ -36,10 +37,15 @@ export class LyriaEngine implements BandEngine {
   private bpm = 0;
   private applyTimer?: ReturnType<typeof setTimeout>;
   private firstDirtyAt?: number;
+  /** true while an intentional stop() is in flight, so the resulting onclose is not reported as an error */
+  private stopping = false;
+  private bpmResetTimer?: ReturnType<typeof setTimeout>;
+  private lastBpmResetAt = 0;
 
   constructor(private ctx: AudioContext) {}
 
   async start(bpm: number, firstBarAt: number): Promise<void> {
+    this.stopping = false;
     this.bpm = bpm;
     this.player = new PcmPlayer(this.ctx);
     this.player.setBarSeconds(240 / bpm);
@@ -77,6 +83,7 @@ export class LyriaEngine implements BandEngine {
             this.onError?.(`Lyria: ${e?.message ?? 'connection error'}`);
           },
           onclose: e => {
+            if (this.stopping) return;
             this.onError?.(`Lyria: closed${e?.reason ? ` (${e.reason})` : ''}`);
           },
         },
@@ -102,12 +109,15 @@ export class LyriaEngine implements BandEngine {
   }
 
   stop(): void {
+    this.stopping = true;
     if (this.startTimer !== undefined) clearTimeout(this.startTimer);
     this.startTimer = undefined;
     if (this.barTimer !== undefined) clearInterval(this.barTimer);
     this.barTimer = undefined;
     if (this.applyTimer !== undefined) clearTimeout(this.applyTimer);
     this.applyTimer = undefined;
+    if (this.bpmResetTimer !== undefined) clearTimeout(this.bpmResetTimer);
+    this.bpmResetTimer = undefined;
     this.session?.stop();
     this.session?.close();
     this.session = undefined;
@@ -142,7 +152,36 @@ export class LyriaEngine implements BandEngine {
     if (bpm === this.bpm) return;
     this.bpm = bpm;
     this.player?.setBarSeconds(240 / bpm);
-    this.scheduleApply();
+    this.restartBarTimer(bpm);
+    this.scheduleBpmReset();
+  }
+
+  /** Restarts the running bar-tick interval at the new bpm's bar length, keeping the bar count going.
+   *  Does nothing before the first bar has started (start()'s initial delay timer is unaffected). */
+  private restartBarTimer(bpm: number): void {
+    if (this.barTimer === undefined) return;
+    clearInterval(this.barTimer);
+    const barLenMs = (240000 / bpm) | 0;
+    this.barTimer = setInterval(() => {
+      this.onBar?.(this.bar++);
+      if (this.player) this.onStats?.(this.player.stats);
+    }, barLenMs);
+  }
+
+  /** setBpm changes reset Lyria's generation context, which is audible as a hard cut. Rate-limit
+   *  those resets to at most one per RESET_MIN_INTERVAL_MS, coalescing rapid bpm changes so the
+   *  latest one wins. */
+  private scheduleBpmReset(): void {
+    const now = Date.now();
+    const wait = Math.max(0, RESET_MIN_INTERVAL_MS - (now - this.lastBpmResetAt));
+    if (this.bpmResetTimer !== undefined) clearTimeout(this.bpmResetTimer);
+    this.bpmResetTimer = setTimeout(() => {
+      this.bpmResetTimer = undefined;
+      this.lastBpmResetAt = Date.now();
+      this.applyAll(true).catch(err => {
+        this.onError?.(`Lyria: ${err instanceof Error ? err.message : String(err)}`);
+      });
+    }, wait);
   }
 
   /** Coalesces rapid control changes, firing at most COALESCE_MS after the FIRST change in a burst. */
