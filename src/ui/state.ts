@@ -1,9 +1,14 @@
 import type { BandInput, Genre, Instrument } from '../types';
 
+export const GEMINI_KEY_STORAGE = 'backline.geminiKey';
+
+export type EngineChoice = 'lyria' | 'patterns';
+
 export interface AppState {
   screen: 'setup' | 'live';
   source: 'mic' | 'midi';
   genre: Genre;
+  engine: EngineChoice;
   creativity: number;
   enabled: Record<Instrument, boolean>;
   input: BandInput;
@@ -11,10 +16,19 @@ export interface AppState {
   bar: number;
 }
 
+function hasStoredKey(): boolean {
+  try {
+    return !!localStorage.getItem(GEMINI_KEY_STORAGE);
+  } catch {
+    return false;
+  }
+}
+
 const defaults: AppState = {
   screen: 'setup',
   source: 'midi',
   genre: 'lofi',
+  engine: hasStoredKey() ? 'lyria' : 'patterns',
   creativity: 0.3,
   enabled: { drums: true, bass: false, keys: false, lead: false },
   input: { bpm: null, key: null, notesNow: [], inputLevel: 0 },

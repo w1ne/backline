@@ -17,6 +17,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@google/genai": "^2.22.0",
     "tone": "^15.1.22"
   },
   "devDependencies": {

@@ -10,10 +10,17 @@ export class Players implements PlayersLike {
   private genre: Genre = 'lofi';
 
   async init() {
-    Tone.setContext(new Tone.Context({ latencyHint: 'interactive' }));
+    if (!this.out) {
+      Tone.setContext(new Tone.Context({ latencyHint: 'interactive' }));
+      this.out = new Tone.Volume(-6).toDestination();
+    }
     await Tone.start();
-    this.out = new Tone.Volume(-6).toDestination();
     this.setGenre(this.genre);
+  }
+
+  /** The AudioContext backing this Players' Tone context; shared with LyriaEngine's PcmPlayer. */
+  rawContext(): AudioContext {
+    return Tone.getContext().rawContext as unknown as AudioContext;
   }
 
   latencyMs(): number {

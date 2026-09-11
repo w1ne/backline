@@ -1,9 +1,11 @@
 import { GENRES } from '../types';
 import type { Genre } from '../types';
+import { GEMINI_KEY_STORAGE } from './state';
 import type { Store } from './state';
 
 export function renderSetup(root: HTMLElement, store: Store, onStart: () => void): void {
-  const { source, genre } = store.state;
+  const { source, genre, engine } = store.state;
+  const storedKey = localStorage.getItem(GEMINI_KEY_STORAGE) ?? '';
 
   root.innerHTML = `
     <div class="screen">
@@ -29,6 +31,17 @@ export function renderSetup(root: HTMLElement, store: Store, onStart: () => void
           </div>
         </div>
       </div>
+      <div class="panel">
+        <h4>Engine</h4>
+        <div class="choice" id="engine-choice">
+          <button type="button" id="engine-lyria" class="${engine === 'lyria' ? 'on' : ''}">Lyria (API)</button>
+          <button type="button" id="engine-patterns" class="${engine === 'patterns' ? 'on' : ''}">Patterns (offline)</button>
+        </div>
+        <div id="key-row" style="${engine === 'lyria' ? '' : 'display:none'}">
+          <label for="geminiKey">Gemini API key</label>
+          <input type="password" id="geminiKey" value="${escapeAttr(storedKey)}" placeholder="AIza…" />
+        </div>
+      </div>
       <div class="foot">
         <span class="hint">Play four bars and the band will lock onto you. Use headphones.</span>
         <button type="button" class="btn" id="start-jam">Start jam</button>
@@ -43,7 +56,25 @@ export function renderSetup(root: HTMLElement, store: Store, onStart: () => void
     btn.addEventListener('click', () => store.update({ genre: btn.dataset.genre as Genre }));
   });
 
-  root.querySelector<HTMLButtonElement>('#start-jam')!.addEventListener('click', () => onStart());
+  const keyRow = root.querySelector<HTMLElement>('#key-row')!;
+  root.querySelector<HTMLButtonElement>('#engine-lyria')!.addEventListener('click', () => {
+    store.update({ engine: 'lyria' });
+    keyRow.style.display = '';
+  });
+  root.querySelector<HTMLButtonElement>('#engine-patterns')!.addEventListener('click', () => {
+    store.update({ engine: 'patterns' });
+    keyRow.style.display = 'none';
+  });
+
+  root.querySelector<HTMLButtonElement>('#start-jam')!.addEventListener('click', () => {
+    const keyInput = root.querySelector<HTMLInputElement>('#geminiKey');
+    if (keyInput) localStorage.setItem(GEMINI_KEY_STORAGE, keyInput.value.trim());
+    onStart();
+  });
+}
+
+function escapeAttr(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 }
 
 function cap(s: string): string {

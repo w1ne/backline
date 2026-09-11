@@ -1,21 +1,22 @@
 import './ui/styles.css';
 import * as Tone from 'tone';
-import { Store } from './ui/state';
+import { Store, GEMINI_KEY_STORAGE } from './ui/state';
 import { renderSetup } from './ui/setup';
 import { renderLive, setLatency } from './ui/live';
 import { Listener } from './listener/listener';
 import { MidiSource } from './listener/midiSource';
 import { MicSource } from './listener/micSource';
 import { Players } from './players/players';
-import { ToneClock } from './band/clock';
-import { Bandleader } from './band/bandleader';
 import { PATTERNS } from './patterns';
 import { INSTRUMENTS } from './types';
+import type { BandEngine } from './engines/engine';
+import { PatternEngine } from './engines/patternEngine';
+import { LyriaEngine } from './engines/lyriaEngine';
 
 const root = document.getElementById('app')!;
 const store = new Store();
 let listener: Listener | undefined;
-let band: Bandleader | undefined;
+let band: BandEngine | undefined;
 const players = new Players();
 
 async function start() {
@@ -26,10 +27,15 @@ async function start() {
   const perfOffset = Tone.now() - performance.now() / 1000; // MIDI times are performance.now-based
 
   listener = new Listener(source);
-  band = new Bandleader(new ToneClock(), players, PATTERNS);
+  if (store.state.engine === 'lyria') {
+    const apiKey = localStorage.getItem(GEMINI_KEY_STORAGE) ?? '';
+    band = new LyriaEngine(apiKey, players.rawContext());
+  } else {
+    band = new PatternEngine(players, PATTERNS);
+  }
   band.set({ genre: store.state.genre, creativity: store.state.creativity });
   INSTRUMENTS.forEach(i => band!.setEnabled(i, store.state.enabled[i]));
-  band.onBarCb = bar => {
+  band.onBar = bar => {
     store.update({ bar });
     setLatency(root, players.latencyMs());
   };
@@ -86,6 +92,7 @@ store.subscribe(s => {
     setKeyOverride: key => {
       listener?.setOverride({ key });
     },
+    changeLatencyMs: band?.changeLatencyMs,
   });
 });
 

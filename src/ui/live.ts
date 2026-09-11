@@ -16,6 +16,8 @@ export interface LiveActions {
   stop(): void;
   setBpmOverride?(bpm: number | undefined): void;
   setKeyOverride?(key: { root: number; mode: 'major' | 'minor' } | undefined): void;
+  /** ms a toggled instrument spends showing "joining…"/"leaving…" before it settles */
+  changeLatencyMs?: number;
 }
 
 export function renderLive(root: HTMLElement, store: Store, actions: LiveActions): void {
@@ -25,7 +27,7 @@ export function renderLive(root: HTMLElement, store: Store, actions: LiveActions
     screen = root.querySelector<HTMLElement>('.screen[data-live]')!;
     wireControls(screen, store, actions);
   }
-  update(screen, store.state);
+  update(screen, store.state, actions.changeLatencyMs ?? 0);
 }
 
 function skeleton(): string {
@@ -121,11 +123,11 @@ function wireControls(screen: HTMLElement, store: Store, actions: LiveActions): 
   void store;
 }
 
-function update(screen: HTMLElement, s: AppState): void {
+function update(screen: HTMLElement, s: AppState, changeLatencyMs: number): void {
   updateHeader(screen, s);
   updateReadouts(screen, s);
   updateYouStrip(screen, s);
-  updateTiles(screen, s);
+  updateTiles(screen, s, changeLatencyMs);
   updateFooter(screen, s);
 }
 
@@ -160,21 +162,44 @@ function updateYouStrip(screen: HTMLElement, s: AppState): void {
 }
 
 const enabledAtBar = new WeakMap<HTMLElement, Partial<Record<Instrument, number>>>();
+// engines with changeLatencyMs > 0 (e.g. Lyria) settle on a wall-clock timer instead of a bar
+const pendingUntil = new WeakMap<HTMLElement, Partial<Record<Instrument, number>>>();
+const lastOn = new WeakMap<HTMLElement, Partial<Record<Instrument, boolean>>>();
 
-function updateTiles(screen: HTMLElement, s: AppState): void {
+function updateTiles(screen: HTMLElement, s: AppState, changeLatencyMs: number): void {
   if (!enabledAtBar.has(screen)) enabledAtBar.set(screen, {});
+  if (!pendingUntil.has(screen)) pendingUntil.set(screen, {});
+  if (!lastOn.has(screen)) lastOn.set(screen, {});
   const since = enabledAtBar.get(screen)!;
+  const until = pendingUntil.get(screen)!;
+  const last = lastOn.get(screen)!;
 
   for (const i of INSTRUMENTS) {
     const btn = screen.querySelector<HTMLButtonElement>(`#inst-tiles button[data-inst="${i}"]`)!;
     const on = s.enabled[i];
     btn.classList.toggle('on', on);
 
-    if (on && since[i] === undefined) since[i] = s.bar;
-    if (!on) since[i] = undefined;
-
-    const justJoined = on && since[i] !== undefined && s.bar <= (since[i] as number);
-    const text = !on ? 'off' : !s.locked ? 'off' : justJoined ? 'joins next bar' : 'playing';
+    let text: string;
+    if (changeLatencyMs > 0) {
+      if (last[i] !== on) {
+        until[i] = Date.now() + changeLatencyMs;
+        last[i] = on;
+        window.setTimeout(() => {
+          const textEl = btn.querySelector<HTMLElement>('.st-text')!;
+          const meterEl = btn.querySelector<HTMLElement>('.meter i')!;
+          const settledText = on ? 'playing' : 'off';
+          textEl.textContent = settledText;
+          meterEl.style.width = settledText === 'playing' ? '60%' : '0';
+        }, changeLatencyMs);
+      }
+      const pending = until[i] !== undefined && Date.now() < (until[i] as number);
+      text = !s.locked ? 'off' : pending ? (on ? 'joining…' : 'leaving…') : on ? 'playing' : 'off';
+    } else {
+      if (on && since[i] === undefined) since[i] = s.bar;
+      if (!on) since[i] = undefined;
+      const justJoined = on && since[i] !== undefined && s.bar <= (since[i] as number);
+      text = !on ? 'off' : !s.locked ? 'off' : justJoined ? 'joins next bar' : 'playing';
+    }
     btn.querySelector<HTMLElement>('.st-text')!.textContent = text;
     const meter = btn.querySelector<HTMLElement>('.meter i')!;
     meter.style.width = text === 'playing' ? '60%' : '0';
