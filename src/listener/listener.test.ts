@@ -50,4 +50,36 @@ describe('Listener', () => {
     for (let i = 0; i < 8; i++) { f.note(-1, 0.8, t); t += 60 / 140; }
     expect(l.input.bpm!).toBeCloseTo(lockedBpm, 5);
   });
+
+  it('freezes at the followed bpm when switching back to locked, and further onsets do not change it', async () => {
+    const f = new Fake(); const l = new Listener(f); await l.start();
+    let t = 1;
+    for (let i = 0; i < 12; i++) { f.note(-1, 0.8, t); t += 0.6; } // lock at 100bpm
+
+    l.setTempoMode('follow');
+    for (let i = 0; i < 24; i++) { f.note(-1, 0.8, t); t += 60 / 140; } // player speeds toward 140
+    const followedBpm = l.input.bpm!;
+    expect(followedBpm).toBeGreaterThan(110); // drifted well above the original 100bpm lock
+
+    l.setTempoMode('locked');
+    expect(l.input.bpm!).toBeCloseTo(followedBpm, 5); // frozen, not snapped back to 100
+
+    const frozenBpm = l.input.bpm!;
+    for (let i = 0; i < 16; i++) { f.note(-1, 0.8, t); t += 60 / 200; } // fast onsets while locked
+    expect(l.input.bpm!).toBeCloseTo(frozenBpm, 5);
+  });
+
+  it('re-entering follow mode after a freeze seeds the follower from the frozen bpm', async () => {
+    const f = new Fake(); const l = new Listener(f); await l.start();
+    let t = 1;
+    for (let i = 0; i < 12; i++) { f.note(-1, 0.8, t); t += 0.6; } // lock at 100bpm
+
+    l.setTempoMode('follow');
+    for (let i = 0; i < 24; i++) { f.note(-1, 0.8, t); t += 60 / 140; }
+    const followedBpm = l.input.bpm!;
+
+    l.setTempoMode('locked');
+    l.setTempoMode('follow');
+    expect(l.input.bpm!).toBeCloseTo(followedBpm, 5); // no snap back to the 100bpm lock
+  });
 });

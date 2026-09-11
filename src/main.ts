@@ -13,6 +13,7 @@ import { INSTRUMENTS } from './types';
 import type { BandEngine } from './engines/engine';
 import { PatternEngine } from './engines/patternEngine';
 import { LyriaEngine } from './engines/lyriaEngine';
+import { forwardBpm } from './band/bpmForward';
 
 const root = document.getElementById('app')!;
 const store = new Store();
@@ -58,8 +59,9 @@ async function start() {
     } else if (
       store.state.locked &&
       store.state.tempoMode === 'follow' &&
+      !listener!.hasBpmOverride &&
       input.bpm &&
-      (lastFollowedBpm === undefined || Math.abs(input.bpm - lastFollowedBpm) >= band!.bpmStep)
+      forwardBpm(lastFollowedBpm, input.bpm, band!.bpmStep)
     ) {
       lastFollowedBpm = input.bpm;
       band!.setBpm(input.bpm);
@@ -102,12 +104,16 @@ store.subscribe(s => {
     setBpmOverride: bpm => {
       const clamped = bpm === undefined ? undefined : Math.min(240, Math.max(40, bpm));
       listener?.setOverride({ bpm: clamped });
-      if (clamped !== undefined) band?.setBpm(clamped);
+      if (clamped !== undefined) {
+        lastFollowedBpm = clamped;
+        band?.setBpm(clamped);
+      }
     },
     setKeyOverride: key => {
       listener?.setOverride({ key });
     },
     setTempoMode: m => {
+      lastFollowedBpm = undefined;
       listener?.setTempoMode(m);
       store.update({ tempoMode: m });
     },

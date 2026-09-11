@@ -19,15 +19,23 @@ export class Listener {
   private mode: 'locked' | 'follow' = 'locked';
   private follower?: TempoFollower;
   private followBpm: number | null = null;
+  /** bpm to report while locked after having followed — freezes where the follower left off
+   * instead of snapping back to the original lock estimate */
+  private frozenBpm: number | null = null;
 
   constructor(private source: Source) {}
 
   setTempoMode(m: 'locked' | 'follow') {
-    this.mode = m;
+    if (m === this.mode) return;
     if (m === 'locked') {
+      this.frozenBpm = this.followBpm ?? this.frozenBpm;
+      this.follower = undefined;
+      this.followBpm = null;
+    } else {
       this.follower = undefined;
       this.followBpm = null;
     }
+    this.mode = m;
     this.emit();
   }
 
@@ -35,7 +43,7 @@ export class Listener {
     await this.source.start((n, v, t) => {
       this.tempo.push(t);
       if (this.tempo.locked && this.mode === 'follow') {
-        this.follower ??= new TempoFollower(this.tempo.locked.bpm);
+        this.follower ??= new TempoFollower(this.frozenBpm ?? this.tempo.locked.bpm);
         this.followBpm = this.follower.push(t);
       }
       this.onsetCount++;
@@ -54,9 +62,15 @@ export class Listener {
 
   onChange(cb: (i: BandInput) => void) { this.cbs.push(cb); }
 
+  get hasBpmOverride(): boolean { return this.override.bpm !== undefined; }
+
   get input(): BandInput {
     return {
-      bpm: this.override.bpm ?? (this.mode === 'follow' ? this.followBpm : null) ?? this.tempo.locked?.bpm ?? null,
+      bpm:
+        this.override.bpm ??
+        (this.mode === 'follow' ? this.followBpm ?? this.frozenBpm : this.frozenBpm) ??
+        this.tempo.locked?.bpm ??
+        null,
       key: this.override.key ?? this.keyDet.key,
       notesNow: [...new Set(this.recent.map(r => r.n))],
       inputLevel: this.level,
