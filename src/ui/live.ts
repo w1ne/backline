@@ -133,7 +133,10 @@ function update(screen: HTMLElement, s: AppState, changeLatencyMs: number): void
 
 function updateHeader(screen: HTMLElement, s: AppState): void {
   const pill = screen.querySelector<HTMLElement>('#live-pill')!;
-  if (s.locked) {
+  if (s.error) {
+    pill.textContent = s.error;
+    pill.className = 'pill error';
+  } else if (s.locked) {
     pill.textContent = `live · bar ${s.bar}`;
     pill.className = 'pill live';
   } else {
@@ -187,7 +190,8 @@ function updateTiles(screen: HTMLElement, s: AppState, changeLatencyMs: number):
         window.setTimeout(() => {
           const textEl = btn.querySelector<HTMLElement>('.st-text')!;
           const meterEl = btn.querySelector<HTMLElement>('.meter i')!;
-          const settledText = on ? 'playing' : 'off';
+          const stillOn = last[i];
+          const settledText = stillOn ? 'playing' : 'off';
           textEl.textContent = settledText;
           meterEl.style.width = settledText === 'playing' ? '60%' : '0';
         }, changeLatencyMs);

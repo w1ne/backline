@@ -14,6 +14,7 @@ export interface AppState {
   input: BandInput;
   locked: boolean;
   bar: number;
+  error: string | null;
 }
 
 function hasStoredKey(): boolean {
@@ -34,6 +35,7 @@ const defaults: AppState = {
   input: { bpm: null, key: null, notesNow: [], inputLevel: 0, onsets: 0 },
   locked: false,
   bar: 0,
+  error: null,
 };
 
 export class Store {

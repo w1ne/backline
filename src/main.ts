@@ -39,6 +39,7 @@ async function start() {
     store.update({ bar });
     setLatency(root, players.latencyMs());
   };
+  band.onError = msg => store.update({ error: msg });
 
   listener.onChange(input => {
     store.update({ input });
@@ -48,8 +49,10 @@ async function start() {
       const barLen = 240 / input.bpm;
       let first = db;
       while (first < Tone.now() + 0.1) first += barLen;
-      band!.start(input.bpm, first);
       store.update({ locked: true });
+      band!.start(input.bpm, first).catch(err => {
+        store.update({ error: `Lyria: ${err instanceof Error ? err.message : String(err)}` });
+      });
     }
   });
 
@@ -88,6 +91,7 @@ store.subscribe(s => {
     setBpmOverride: bpm => {
       const clamped = bpm === undefined ? undefined : Math.min(240, Math.max(40, bpm));
       listener?.setOverride({ bpm: clamped });
+      if (clamped !== undefined) band?.setBpm(clamped);
     },
     setKeyOverride: key => {
       listener?.setOverride({ key });

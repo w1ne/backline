@@ -27,13 +27,16 @@ interface Scheduled {
 export class PcmPlayer {
   private queue: Scheduled[] = [];
   private lastEnd = 0;
-  private cutUntil = 0; // pushed chunks scheduled before this are dropped after a cut
   private pendingFadeIn = false;
+  /** lead time before the next push's scheduled start, when there's no continuous audio to chain onto */
+  private nextLead: number;
 
   constructor(
     private ctx: AudioContext,
     private bufferAheadSec = 3,
-  ) {}
+  ) {
+    this.nextLead = bufferAheadSec;
+  }
 
   push(chunk: Uint8Array): void {
     const floats = pcm16ToFloat32(chunk);
@@ -45,8 +48,11 @@ export class PcmPlayer {
       for (let i = 0; i < frames; i++) data[i] = floats[i * CHANNELS + ch];
     }
 
-    const startAt = Math.max(this.ctx.currentTime + this.bufferAheadSec, this.lastEnd);
-    if (startAt < this.cutUntil) return; // scheduled before the cut point; drop
+    // Chain onto continuous playback; only insert a lead gap when starting cold
+    // (first chunk ever) or right after a cut, which uses a short 0.2s lead
+    // instead of the full 3s buffer-ahead.
+    const startAt = this.lastEnd > this.ctx.currentTime ? this.lastEnd : this.ctx.currentTime + this.nextLead;
+    this.nextLead = this.bufferAheadSec;
 
     const gain = this.ctx.createGain();
     gain.connect(this.ctx.destination);
@@ -61,6 +67,10 @@ export class PcmPlayer {
     const source = this.ctx.createBufferSource();
     source.buffer = buffer;
     source.connect(gain);
+    source.onended = () => {
+      source.disconnect();
+      gain.disconnect();
+    };
     source.start(startAt);
 
     const endTime = startAt + buffer.duration;
@@ -75,19 +85,18 @@ export class PcmPlayer {
     const cutAt = now + fadeSec;
     for (const s of this.queue) {
       if (s.endTime <= now) continue;
-      const startedAlready = s.gain.gain.value !== undefined;
-      void startedAlready;
       try {
+        const holdValue = s.gain.gain.value;
         s.gain.gain.cancelScheduledValues(now);
-        s.gain.gain.setValueAtTime(s.gain.gain.value, now);
+        s.gain.gain.setValueAtTime(holdValue, now);
         s.gain.gain.linearRampToValueAtTime(0, cutAt);
       } catch {
         // ignore nodes that already ended
       }
       s.source.stop(cutAt);
     }
-    this.lastEnd = Math.max(this.lastEnd, cutAt);
-    this.cutUntil = cutAt;
+    this.lastEnd = cutAt;
+    this.nextLead = 0.2;
     this.pendingFadeIn = true;
     this.prune();
   }
@@ -103,15 +112,22 @@ export class PcmPlayer {
       } catch {
         // already stopped
       }
+      s.source.disconnect();
+      s.gain.disconnect();
     }
     this.queue = [];
     this.lastEnd = 0;
-    this.cutUntil = 0;
+    this.nextLead = this.bufferAheadSec;
     this.pendingFadeIn = false;
   }
 
   private prune(): void {
     const now = this.ctx.currentTime;
+    const stale = this.queue.filter(s => s.endTime <= now);
+    for (const s of stale) {
+      s.source.disconnect();
+      s.gain.disconnect();
+    }
     this.queue = this.queue.filter(s => s.endTime > now);
   }
 }

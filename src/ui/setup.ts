@@ -56,6 +56,10 @@ export function renderSetup(root: HTMLElement, store: Store, onStart: () => void
     btn.addEventListener('click', () => store.update({ genre: btn.dataset.genre as Genre }));
   });
 
+  root.querySelector<HTMLInputElement>('#geminiKey')?.addEventListener('input', e => {
+    localStorage.setItem(GEMINI_KEY_STORAGE, (e.target as HTMLInputElement).value.trim());
+  });
+
   const keyRow = root.querySelector<HTMLElement>('#key-row')!;
   root.querySelector<HTMLButtonElement>('#engine-lyria')!.addEventListener('click', () => {
     store.update({ engine: 'lyria' });
