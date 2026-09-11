@@ -144,7 +144,8 @@ const SUBPROTOCOL_PREFIX = "bl.";
 // @google/genai SDK builds when pointed at this Worker via httpOptions.baseUrl
 // (any apiVersion segment, e.g. v1alpha).
 function isBidiGenerateMusicPath(pathname: string): boolean {
-  return /^\/ws\/.*BidiGenerateMusic$/.test(pathname);
+  // The genai SDK joins baseUrl + path with a double slash; accept both.
+  return /^\/+ws\/.*BidiGenerateMusic$/.test(pathname);
 }
 
 async function handleLyria(req: Request, env: Env): Promise<Response> {
@@ -184,7 +185,8 @@ async function handleLyria(req: Request, env: Env): Promise<Response> {
   // Proxy to the same "/ws/.../BidiGenerateMusic" path on Google's API,
   // ignoring whatever `key` the client sent and using the real server-side
   // key instead.
-  const upstreamUrl = new URL(`https://generativelanguage.googleapis.com${url.pathname}`);
+  const upstreamPath = url.pathname.replace(/^\/+/, "/");
+  const upstreamUrl = new URL(`https://generativelanguage.googleapis.com${upstreamPath}`);
   upstreamUrl.protocol = "wss:";
   upstreamUrl.searchParams.set("key", env.GEMINI_API_KEY);
 
