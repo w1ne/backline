@@ -1,5 +1,6 @@
 import type { BandInput, Key } from '../types';
 import { TempoLock } from './tempoLock';
+import { TempoFollower } from './tempoFollower';
 import { KeyDetector } from './keyDetector';
 
 export interface Source {
@@ -15,12 +16,28 @@ export class Listener {
   private onsetCount = 0;
   private override: { bpm?: number; key?: Key } = {};
   private cbs: ((i: BandInput) => void)[] = [];
+  private mode: 'locked' | 'follow' = 'locked';
+  private follower?: TempoFollower;
+  private followBpm: number | null = null;
 
   constructor(private source: Source) {}
+
+  setTempoMode(m: 'locked' | 'follow') {
+    this.mode = m;
+    if (m === 'locked') {
+      this.follower = undefined;
+      this.followBpm = null;
+    }
+    this.emit();
+  }
 
   async start() {
     await this.source.start((n, v, t) => {
       this.tempo.push(t);
+      if (this.tempo.locked && this.mode === 'follow') {
+        this.follower ??= new TempoFollower(this.tempo.locked.bpm);
+        this.followBpm = this.follower.push(t);
+      }
       this.onsetCount++;
       if (n >= 0) {
         this.keyDet.addNote(n, v);
@@ -39,7 +56,7 @@ export class Listener {
 
   get input(): BandInput {
     return {
-      bpm: this.override.bpm ?? this.tempo.locked?.bpm ?? null,
+      bpm: this.override.bpm ?? (this.mode === 'follow' ? this.followBpm : null) ?? this.tempo.locked?.bpm ?? null,
       key: this.override.key ?? this.keyDet.key,
       notesNow: [...new Set(this.recent.map(r => r.n))],
       inputLevel: this.level,

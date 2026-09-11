@@ -1,7 +1,11 @@
 const MIN = 60, MAX = 180, MIN_ONSETS = 12;
 
 export function estimateTempo(onsets: number[]): { bpm: number; downbeat: number } | null {
-  if (onsets.length < MIN_ONSETS) return null;
+  return bpmFromOnsets(onsets, MIN_ONSETS);
+}
+
+export function bpmFromOnsets(onsets: number[], minOnsets: number): { bpm: number; downbeat: number } | null {
+  if (onsets.length < minOnsets) return null;
   const iois: number[] = [];
   for (let i = 1; i < onsets.length; i++) {
     const d = onsets[i] - onsets[i - 1];

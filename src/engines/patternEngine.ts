@@ -6,6 +6,7 @@ import type { BandEngine } from './engine';
 /** Wraps the existing Bandleader + ToneClock + Players behind the BandEngine interface. */
 export class PatternEngine implements BandEngine {
   readonly changeLatencyMs = 0;
+  readonly bpmStep = 0.5;
   private band: Bandleader;
   onBar?: (bar: number) => void;
 

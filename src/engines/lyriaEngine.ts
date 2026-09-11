@@ -17,6 +17,7 @@ function sameKey(a: Key, b: Key): boolean {
 /** Streams a Lyria RealTime session and keeps its prompts/config in sync with BandState. */
 export class LyriaEngine implements BandEngine {
   readonly changeLatencyMs = 600;
+  readonly bpmStep = 2;
   onBar?: (bar: number) => void;
   onError?: (msg: string) => void;
 

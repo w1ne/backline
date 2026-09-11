@@ -30,4 +30,24 @@ describe('Listener', () => {
     expect(l.input.key).toBeNull();
     expect(l.input.notesNow).toEqual([]);
   });
+
+  it('in follow mode, tracks a player who speeds up after lock', async () => {
+    const f = new Fake(); const l = new Listener(f); await l.start();
+    l.setTempoMode('follow');
+    let t = 1;
+    for (let i = 0; i < 12; i++) { f.note(-1, 0.8, t); t += 0.5; } // lock at 120bpm
+    const lockedBpm = l.input.bpm!;
+    expect(lockedBpm).toBeCloseTo(120, 0);
+    for (let i = 0; i < 8; i++) { f.note(-1, 0.8, t); t += 60 / 140; } // player speeds to 140
+    expect(l.input.bpm!).toBeGreaterThan(lockedBpm);
+  });
+
+  it('in locked mode, ignores post-lock speed changes', async () => {
+    const f = new Fake(); const l = new Listener(f); await l.start();
+    let t = 1;
+    for (let i = 0; i < 12; i++) { f.note(-1, 0.8, t); t += 0.5; } // lock at 120bpm
+    const lockedBpm = l.input.bpm!;
+    for (let i = 0; i < 8; i++) { f.note(-1, 0.8, t); t += 60 / 140; }
+    expect(l.input.bpm!).toBeCloseTo(lockedBpm, 5);
+  });
 });

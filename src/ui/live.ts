@@ -16,6 +16,7 @@ export interface LiveActions {
   stop(): void;
   setBpmOverride?(bpm: number | undefined): void;
   setKeyOverride?(key: { root: number; mode: 'major' | 'minor' } | undefined): void;
+  setTempoMode?(m: 'locked' | 'follow'): void;
   /** ms a toggled instrument spends showing "joining…"/"leaving…" before it settles */
   changeLatencyMs?: number;
 }
@@ -38,7 +39,12 @@ function skeleton(): string {
         <span class="pill" id="live-pill"></span>
       </div>
       <div class="readout">
-        <div><small>Tempo</small><strong id="ro-tempo">&mdash;</strong></div>
+        <div><small>Tempo</small><strong id="ro-tempo">&mdash;</strong>
+          <span class="toggle" id="tempoMode">
+            <button type="button" data-mode="locked">Locked</button>
+            <button type="button" data-mode="follow">Follow</button>
+          </span>
+        </div>
         <div><small>Key</small><strong id="ro-key">&mdash;</strong></div>
         <div><small>Genre</small>
           <select id="genre">
@@ -120,6 +126,10 @@ function wireControls(screen: HTMLElement, store: Store, actions: LiveActions): 
     actions.setKeyOverride?.({ root: Number(root), mode: mode as 'major' | 'minor' });
   });
 
+  screen.querySelectorAll<HTMLButtonElement>('#tempoMode button').forEach(btn => {
+    btn.addEventListener('click', () => actions.setTempoMode?.(btn.dataset.mode as 'locked' | 'follow'));
+  });
+
   void store;
 }
 
@@ -155,6 +165,10 @@ function updateReadouts(screen: HTMLElement, s: AppState): void {
   const creativity = screen.querySelector<HTMLInputElement>('#creativity')!;
   if (document.activeElement !== creativity) creativity.value = String(s.creativity);
   screen.querySelector<HTMLElement>('#creativity-val')!.textContent = s.creativity.toFixed(2);
+
+  screen.querySelectorAll<HTMLButtonElement>('#tempoMode button').forEach(btn => {
+    btn.classList.toggle('on', btn.dataset.mode === s.tempoMode);
+  });
 }
 
 function updateYouStrip(screen: HTMLElement, s: AppState): void {

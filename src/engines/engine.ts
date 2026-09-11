@@ -6,6 +6,8 @@ export interface BandEngine {
   set(p: Partial<Pick<BandState, 'genre' | 'key' | 'creativity'>>): void;
   setEnabled(i: Instrument, on: boolean): void;
   setBpm(bpm: number): void;
+  /** smallest bpm change worth forwarding in follow mode */
+  readonly bpmStep: number;
   onBar?: (bar: number) => void;
   /** called with a human-readable message when the engine hits an unrecoverable error */
   onError?: (msg: string) => void;

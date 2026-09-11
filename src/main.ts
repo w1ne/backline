@@ -19,6 +19,7 @@ const store = new Store();
 let listener: Listener | undefined;
 let band: BandEngine | undefined;
 const players = new Players();
+let lastFollowedBpm: number | undefined;
 
 async function start() {
   await players.init();
@@ -50,9 +51,18 @@ async function start() {
       let first = db;
       while (first < Tone.now() + 0.1) first += barLen;
       store.update({ locked: true });
+      lastFollowedBpm = input.bpm;
       band!.start(input.bpm, first).catch(err => {
         store.update({ error: `Lyria: ${err instanceof Error ? err.message : String(err)}` });
       });
+    } else if (
+      store.state.locked &&
+      store.state.tempoMode === 'follow' &&
+      input.bpm &&
+      (lastFollowedBpm === undefined || Math.abs(input.bpm - lastFollowedBpm) >= band!.bpmStep)
+    ) {
+      lastFollowedBpm = input.bpm;
+      band!.setBpm(input.bpm);
     }
   });
 
@@ -63,7 +73,8 @@ async function start() {
 function stop() {
   band?.stop();
   listener?.stop();
-  store.update({ screen: 'setup', locked: false, bar: 0 });
+  lastFollowedBpm = undefined;
+  store.update({ screen: 'setup', locked: false, bar: 0, tempoMode: 'locked' });
 }
 
 store.subscribe(s => {
@@ -95,6 +106,10 @@ store.subscribe(s => {
     },
     setKeyOverride: key => {
       listener?.setOverride({ key });
+    },
+    setTempoMode: m => {
+      listener?.setTempoMode(m);
+      store.update({ tempoMode: m });
     },
     changeLatencyMs: band?.changeLatencyMs,
   });

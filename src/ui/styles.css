@@ -198,6 +198,31 @@ body {
   font-weight: 600;
 }
 
+.toggle {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.toggle button {
+  background: transparent;
+  color: var(--ui-dim);
+  border: 1px solid var(--ui-line);
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+
+.toggle button.on {
+  background: var(--ui-line);
+  color: var(--ui-text);
+}
+
 .creativity-panel {
   display: flex;
   align-items: center;

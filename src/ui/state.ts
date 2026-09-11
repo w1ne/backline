@@ -11,6 +11,7 @@ export interface AppState {
   enabled: Record<Instrument, boolean>;
   input: BandInput;
   locked: boolean;
+  tempoMode: 'locked' | 'follow';
   bar: number;
   error: string | null;
   user: { login: string } | null;
@@ -25,6 +26,7 @@ const defaults: AppState = {
   enabled: { drums: true, bass: false, keys: false, lead: false },
   input: { bpm: null, key: null, notesNow: [], inputLevel: 0, onsets: 0 },
   locked: false,
+  tempoMode: 'locked',
   bar: 0,
   error: null,
   user: null,
