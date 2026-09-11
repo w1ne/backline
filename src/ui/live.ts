@@ -137,7 +137,7 @@ function updateHeader(screen: HTMLElement, s: AppState): void {
     pill.textContent = `live · bar ${s.bar}`;
     pill.className = 'pill live';
   } else {
-    pill.textContent = 'listening…';
+    pill.textContent = `listening… onsets ${s.input.onsets}/12`;
     pill.className = 'pill';
   }
 }

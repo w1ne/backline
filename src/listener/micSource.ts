@@ -24,7 +24,7 @@ export class MicSource implements Source {
       let s = 0;
       for (let i = 0; i < buf.length; i++) s += buf[i] * buf[i];
       const rms = Math.sqrt(s / buf.length);
-      onLevel(Math.min(1, rms * 8));
+      onLevel(Math.min(1, rms * 20));
       if (onset.process(buf, t)) {
         const hz = detectPitchHz(buf, ctx.sampleRate);
         onNote(hz ? hzToMidi(hz) : -1, Math.min(1, rms * 8), t);

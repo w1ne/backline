@@ -10,6 +10,7 @@ export interface BandInput {
   key: Key | null;
   notesNow: number[];
   inputLevel: number;
+  onsets: number;
 }
 
 export interface NoteEvent { time: number; note: number; duration: number; velocity: number }

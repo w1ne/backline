@@ -31,7 +31,7 @@ const defaults: AppState = {
   engine: hasStoredKey() ? 'lyria' : 'patterns',
   creativity: 0.3,
   enabled: { drums: true, bass: false, keys: false, lead: false },
-  input: { bpm: null, key: null, notesNow: [], inputLevel: 0 },
+  input: { bpm: null, key: null, notesNow: [], inputLevel: 0, onsets: 0 },
   locked: false,
   bar: 0,
 };

@@ -12,6 +12,7 @@ export class Listener {
   private keyDet = new KeyDetector();
   private recent: { n: number; t: number }[] = [];
   private level = 0;
+  private onsetCount = 0;
   private override: { bpm?: number; key?: Key } = {};
   private cbs: ((i: BandInput) => void)[] = [];
 
@@ -20,6 +21,7 @@ export class Listener {
   async start() {
     await this.source.start((n, v, t) => {
       this.tempo.push(t);
+      this.onsetCount++;
       if (n >= 0) {
         this.keyDet.addNote(n, v);
         this.recent.push({ n, t });
@@ -41,6 +43,7 @@ export class Listener {
       key: this.override.key ?? this.keyDet.key,
       notesNow: [...new Set(this.recent.map(r => r.n))],
       inputLevel: this.level,
+      onsets: this.onsetCount,
     };
   }
 
