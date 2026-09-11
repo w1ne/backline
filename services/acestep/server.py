@@ -33,8 +33,6 @@ Env vars:
                     downloaded on first use -- see README)
 """
 
-from __future__ import annotations
-
 import argparse
 import asyncio
 import io
@@ -176,8 +174,15 @@ class AceStepModel:
         # the default <ace repo>/checkpoints.
         env = dict(os.environ)
         env.setdefault("ACESTEP_CHECKPOINTS_DIR", self.model_dir)
+        # Invoke the venv's acestep-api binary directly rather than "uv run
+        # acestep-api": "uv run" re-syncs the environment against
+        # pyproject.toml/uv.lock on every invocation, which silently reverts
+        # any manual uvicorn/websockets version pin applied to this shared
+        # .venv (see README -- this was the actual cause of the /ws 403,
+        # not a uvicorn/websockets/starlette version mismatch).
+        acestep_bin = os.path.join(ACE_REPO_DIR, ".venv", "bin", "acestep-api")
         self._http_proc = subprocess.Popen(
-            ["uv", "run", "acestep-api", "--host", "127.0.0.1", "--port", "8010"],
+            [acestep_bin, "--host", "127.0.0.1", "--port", "8010"],
             cwd=ACE_REPO_DIR,
             env=env,
         )
