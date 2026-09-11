@@ -8,6 +8,10 @@ export interface Source {
   stop(): void;
 }
 
+export type SourceKind = 'mic' | 'midi';
+export type SourceState = 'off' | 'on' | 'denied' | 'none';
+export type SourceStatus = { mic: SourceState; midi: SourceState };
+
 export class Listener {
   private tempo = new TempoLock();
   private keyDet = new KeyDetector();
@@ -16,14 +20,21 @@ export class Listener {
   private onsetCount = 0;
   private override: { bpm?: number; key?: Key } = {};
   private cbs: ((i: BandInput) => void)[] = [];
+  private statusCbs: ((s: SourceStatus) => void)[] = [];
   private mode: 'locked' | 'follow' = 'locked';
   private follower?: TempoFollower;
   private followBpm: number | null = null;
   /** bpm to report while locked after having followed — freezes where the follower left off
    * instead of snapping back to the original lock estimate */
   private frozenBpm: number | null = null;
+  private sources: Source[];
+  private kinds: SourceKind[];
+  private status: SourceStatus = { mic: 'off', midi: 'off' };
 
-  constructor(private source: Source) {}
+  constructor(sources: Source[], kinds?: SourceKind[]) {
+    this.sources = sources;
+    this.kinds = kinds ?? sources.map((_, i) => (i === 0 ? 'midi' : 'mic'));
+  }
 
   setTempoMode(m: 'locked' | 'follow') {
     if (m === this.mode) return;
@@ -40,7 +51,7 @@ export class Listener {
   }
 
   async start() {
-    await this.source.start((n, v, t) => {
+    const onNote = (n: number, v: number, t: number) => {
       this.tempo.push(t);
       if (this.tempo.locked && this.mode === 'follow') {
         this.follower ??= new TempoFollower(this.frozenBpm ?? this.tempo.locked.bpm);
@@ -53,14 +64,33 @@ export class Listener {
         this.recent = this.recent.filter(r => t - r.t < 0.5);
       }
       this.emit();
-    }, lvl => { this.level = lvl; this.emit(); });
+    };
+    const onLevel = (lvl: number) => { this.level = lvl; this.emit(); };
+
+    await Promise.all(
+      this.sources.map(async (source, i) => {
+        const kind = this.kinds[i];
+        try {
+          await source.start(onNote, onLevel);
+          const getStatus = (source as { getStatus?(): SourceState }).getStatus;
+          this.status = { ...this.status, [kind]: getStatus ? getStatus.call(source) : 'on' };
+        } catch {
+          this.status = { ...this.status, [kind]: 'denied' };
+        }
+      }),
+    );
+    this.emitStatus();
   }
 
-  stop() { this.source.stop(); }
+  stop() { this.sources.forEach(s => s.stop()); }
 
   setOverride(p: { bpm?: number; key?: Key }) { Object.assign(this.override, p); this.emit(); }
 
   onChange(cb: (i: BandInput) => void) { this.cbs.push(cb); }
+
+  onSourceStatus(cb: (s: SourceStatus) => void) { this.statusCbs.push(cb); }
+
+  get sourceStatus(): SourceStatus { return this.status; }
 
   get hasBpmOverride(): boolean { return this.override.bpm !== undefined; }
 
@@ -81,4 +111,6 @@ export class Listener {
   get downbeat() { return this.tempo.locked?.downbeat ?? null; }
 
   private emit() { const i = this.input; this.cbs.forEach(c => c(i)); }
+
+  private emitStatus() { const s = this.status; this.statusCbs.forEach(c => c(s)); }
 }

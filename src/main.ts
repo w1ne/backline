@@ -1,8 +1,7 @@
 import './ui/styles.css';
 import * as Tone from 'tone';
 import { Store } from './ui/state';
-import { getSession } from './auth';
-import { renderSetup } from './ui/setup';
+import { getSession, login } from './auth';
 import { renderLive, setLatency } from './ui/live';
 import { Listener } from './listener/listener';
 import { MidiSource } from './listener/midiSource';
@@ -23,16 +22,24 @@ let band: BandEngine | undefined;
 const players = new Players();
 let lastFollowedBpm: number | undefined;
 
-async function start() {
+async function power() {
   store.update({ error: null });
   await players.init();
   players.setGenre(store.state.genre);
 
-  const source = store.state.source === 'mic' ? new MicSource() : new MidiSource();
+  let engine = store.state.engine;
+  let engineNote: string | null = null;
+  if (engine === 'lyria' && !store.state.user) {
+    engine = 'patterns';
+    engineNote = 'LYRIA NEEDS SIGN-IN · USING PATTERNS';
+  }
+
+  const midi = new MidiSource();
+  const mic = new MicSource();
   const perfOffset = Tone.now() - performance.now() / 1000; // MIDI times are performance.now-based
 
-  listener = new Listener(source);
-  if (store.state.engine === 'lyria') {
+  listener = new Listener([midi, mic], ['midi', 'mic']);
+  if (engine === 'lyria') {
     band = new LyriaEngine(players.rawContext());
   } else {
     band = new PatternEngine(players, PATTERNS);
@@ -49,11 +56,13 @@ async function start() {
     store.update({ loops: s.loops, loopsUpdatedAt: increased ? Date.now() : store.state.loopsUpdatedAt });
   };
 
+  listener.onSourceStatus(sources => store.update({ sources: { ...sources } }));
+
   listener.onChange(input => {
     store.update({ input });
     if (input.key) band!.set({ key: input.key });
     if (input.bpm && !store.state.locked) {
-      const db = listener!.downbeat! + (store.state.source === 'midi' ? perfOffset : 0);
+      const db = listener!.downbeat! + perfOffset;
       const barLen = 240 / input.bpm;
       let first = db;
       while (first < Tone.now() + 0.1) first += barLen;
@@ -74,24 +83,36 @@ async function start() {
     }
   });
 
+  store.update({ power: 'on', error: engineNote ?? null });
   await listener.start();
-  store.update({ screen: 'live' });
+  store.update({ sources: { ...listener.sourceStatus } });
 }
 
-function stop() {
+function powerOff() {
   band?.stop();
   listener?.stop();
+  listener = undefined;
   lastFollowedBpm = undefined;
-  store.update({ screen: 'setup', locked: false, bar: 0, tempoMode: 'locked', error: null, loops: 0, loopsUpdatedAt: undefined });
+  store.update({
+    power: 'off',
+    sources: { mic: 'off', midi: 'off' },
+    locked: false,
+    bar: 0,
+    tempoMode: 'locked',
+    error: null,
+    loops: 0,
+    loopsUpdatedAt: undefined,
+    input: { bpm: null, key: null, notesNow: [], inputLevel: 0, onsets: 0 },
+  });
 }
 
 store.subscribe(s => {
-  if (s.screen === 'setup') {
-    root.innerHTML = '';
-    renderSetup(root, store, start);
-    return;
-  }
   renderLive(root, store, {
+    power: () => {
+      power().catch(err => {
+        store.update({ error: err instanceof Error ? err.message : String(err) });
+      });
+    },
     toggle: i => {
       // Read live state, not the `s` snapshot from this subscribe callback,
       // which would freeze `enabled` at whatever it was on the render that
@@ -106,11 +127,13 @@ store.subscribe(s => {
       band?.set({ genre: g });
       store.update({ genre: g });
     },
+    setEngine: e => store.update({ engine: e }),
+    signIn: () => login(),
     setCreativity: c => {
       band?.set({ creativity: c });
       store.update({ creativity: c });
     },
-    stop,
+    powerOff,
     setBpmOverride: bpm => {
       const clamped = bpm === undefined ? undefined : Math.min(240, Math.max(40, bpm));
       listener?.setOverride({ bpm: clamped });
@@ -137,6 +160,7 @@ store.subscribe(s => {
     },
     changeLatencyMs: band?.changeLatencyMs,
   });
+  void s;
 });
 
 installDebug({
@@ -152,10 +176,11 @@ getSession().then(user => {
 });
 store.update({});
 
-// ?demo=1 paints the live screen with sample state (design review / screenshots only).
+// ?demo=1 paints the live panel with sample state (design review / screenshots only).
 if (new URLSearchParams(location.search).has('demo')) {
   store.update({
-    screen: 'live',
+    power: 'on',
+    sources: { mic: 'on', midi: 'on' },
     genre: 'funk',
     creativity: 0.65,
     locked: true,

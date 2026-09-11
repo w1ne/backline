@@ -1,10 +1,11 @@
 import type { BandInput, Genre, Instrument } from '../types';
+import type { SourceStatus } from '../listener/listener';
 
 export type EngineChoice = 'lyria' | 'patterns';
 
 export interface AppState {
-  screen: 'setup' | 'live';
-  source: 'mic' | 'midi';
+  power: 'off' | 'on';
+  sources: SourceStatus;
   genre: Genre;
   engine: EngineChoice;
   creativity: number;
@@ -20,8 +21,8 @@ export interface AppState {
 }
 
 const defaults: AppState = {
-  screen: 'setup',
-  source: 'midi',
+  power: 'off',
+  sources: { mic: 'off', midi: 'off' },
   genre: 'lofi',
   engine: 'patterns',
   creativity: 0.3,
@@ -37,7 +38,12 @@ const defaults: AppState = {
 };
 
 export class Store {
-  state: AppState = { ...defaults, enabled: { ...defaults.enabled }, input: { ...defaults.input } };
+  state: AppState = {
+    ...defaults,
+    enabled: { ...defaults.enabled },
+    input: { ...defaults.input },
+    sources: { ...defaults.sources },
+  };
   private cbs: ((s: AppState) => void)[] = [];
 
   update(p: Partial<AppState>): void {
