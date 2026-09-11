@@ -49,6 +49,34 @@ describe('LyriaEngine control coalescing', () => {
     expect(sessionMock.resetContext).not.toHaveBeenCalled();
   });
 
+  it('routes a throw in onmessage (e.g. bad audio chunk) to onError instead of an unhandled rejection', async () => {
+    const rejections: unknown[] = [];
+    const onUnhandled = (reason: unknown) => rejections.push(reason);
+    process.on('unhandledRejection', onUnhandled);
+
+    try {
+      const engine = new LyriaEngine(fakeCtx());
+      const onError = vi.fn();
+      engine.onError = onError;
+      await engine.start(100, 0);
+
+      const { onmessage } = connectMock.mock.calls[0][0].callbacks;
+      // fakeCtx has no createBuffer/etc., so pushing a real chunk throws
+      // synchronously inside the callback — reproducing the SDK's real
+      // audioChunks message shape.
+      onmessage({ serverContent: { audioChunks: [{ data: 'AAAA' }] } });
+
+      // Flush microtasks so any unhandled rejection would have been reported.
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(onError).toHaveBeenCalled();
+      expect(rejections).toHaveLength(0);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
+  });
+
   it('coalesces 10 rapid changes into exactly one applyAll within 250ms of the first', async () => {
     const engine = new LyriaEngine(fakeCtx());
     await engine.start(100, 0);

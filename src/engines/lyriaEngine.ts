@@ -57,11 +57,20 @@ export class LyriaEngine implements BandEngine {
         model: MODEL,
         callbacks: {
           onmessage: msg => {
-            const chunks = msg?.serverContent?.audioChunks;
-            if (!chunks) return;
-            for (const chunk of chunks) {
-              if (!chunk.data) continue;
-              this.player!.push(base64ToBytes(chunk.data));
+            // The @google/genai SDK invokes this callback from inside an async
+            // handler with no .catch (`void handleWebSocketMessage(...)`), so any
+            // synchronous throw here (malformed base64, AudioContext already
+            // closed, etc.) would otherwise surface as an unhandled promise
+            // rejection with no message. Catch it and route to onError instead.
+            try {
+              const chunks = msg?.serverContent?.audioChunks;
+              if (!chunks) return;
+              for (const chunk of chunks) {
+                if (!chunk.data) continue;
+                this.player!.push(base64ToBytes(chunk.data));
+              }
+            } catch (err) {
+              this.onError?.(`Lyria: ${err instanceof Error ? err.message : String(err)}`);
             }
           },
           onerror: e => {
