@@ -1,7 +1,6 @@
 import './ui/styles.css';
 import * as Tone from 'tone';
 import { Store } from './ui/state';
-import { getSession, login } from './auth';
 import { renderLive, setLatency } from './ui/live';
 import { Listener } from './listener/listener';
 import { MidiSource } from './listener/midiSource';
@@ -28,12 +27,7 @@ async function power() {
   await players.init();
   players.setGenre(store.state.genre);
 
-  let engine = store.state.engine;
-  let engineNote: string | null = null;
-  if (engine === 'lyria' && !store.state.user) {
-    engine = 'patterns';
-    engineNote = 'LYRIA NEEDS SIGN-IN · USING PATTERNS';
-  }
+  const engine = store.state.engine;
 
   const midi = new MidiSource();
   const mic = new MicSource();
@@ -86,7 +80,7 @@ async function power() {
     }
   });
 
-  store.update({ power: 'on', error: engineNote ?? null });
+  store.update({ power: 'on', error: null });
   await listener.start();
   store.update({ sources: { ...listener.sourceStatus } });
 }
@@ -131,7 +125,6 @@ store.subscribe(s => {
       store.update({ genre: g });
     },
     setEngine: e => store.update({ engine: e }),
-    signIn: () => login(),
     setCreativity: c => {
       band?.set({ creativity: c });
       store.update({ creativity: c });
@@ -173,10 +166,6 @@ installDebug({
   },
 });
 
-getSession().then(user => {
-  const clearSignInError = user && store.state.error === 'Sign in with GitHub to use Lyria';
-  store.update({ user, ...(clearSignInError ? { error: null } : {}) });
-});
 store.update({});
 
 // ?demo=1 paints the live panel with sample state (design review / screenshots only).

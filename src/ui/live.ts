@@ -17,7 +17,6 @@ export interface LiveActions {
   toggle(i: Instrument): void;
   setGenre(g: Genre): void;
   setEngine(e: 'lyria' | 'patterns' | 'acestep'): void;
-  signIn(): void;
   setCreativity(c: number): void;
   setBpmOverride?(bpm: number | undefined): void;
   setKeyOverride?(key: { root: number; mode: 'major' | 'minor' } | undefined): void;
@@ -108,8 +107,6 @@ function skeleton(): string {
             <button type="button" id="engine-lyria" data-engine="lyria">Lyria</button>
             <button type="button" id="engine-acestep" data-engine="acestep">Ace</button>
           </span>
-          <button type="button" class="btn" id="github-login" hidden>Sign in with GitHub</button>
-          <span class="hint" id="signed-in-as" hidden></span>
         </div>
         <div class="zone zone--yellow manual">
           <span class="zone-label">Manual</span>
@@ -197,7 +194,6 @@ function wireControls(screen: HTMLElement, store: Store): void {
   screen.querySelectorAll<HTMLButtonElement>('#engine-choice button').forEach(btn => {
     btn.addEventListener('click', () => actions().setEngine(btn.dataset.engine as 'lyria' | 'patterns' | 'acestep'));
   });
-  screen.querySelector<HTMLButtonElement>('#github-login')!.addEventListener('click', () => actions().signIn());
 
   const bpmInput = screen.querySelector<HTMLInputElement>('#bpm')!;
   bpmInput.addEventListener('change', () => {
@@ -307,12 +303,6 @@ function updateEngine(screen: HTMLElement, s: AppState): void {
   screen.querySelectorAll<HTMLButtonElement>('#engine-choice button').forEach(btn => {
     btn.classList.toggle('on', btn.dataset.engine === s.engine);
   });
-  const loginBtn = screen.querySelector<HTMLButtonElement>('#github-login')!;
-  const signedIn = screen.querySelector<HTMLElement>('#signed-in-as')!;
-  const showAuth = s.engine === 'lyria';
-  loginBtn.hidden = !showAuth || !!s.user;
-  signedIn.hidden = !showAuth || !s.user;
-  if (s.user) signedIn.textContent = `SIGNED IN AS ${s.user.login}`;
 }
 
 function updateHeader(screen: HTMLElement, s: AppState): void {

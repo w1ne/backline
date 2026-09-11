@@ -6,13 +6,26 @@ export interface Env {
   GITHUB_CLIENT_SECRET: string;
   SESSION_SECRET: string;
   GITHUB_TOKEN: string;
-  ALLOWED_ORIGIN: string;
+  /** Comma-separated list of origins the app is served from. */
+  ALLOWED_ORIGINS: string;
   REPO: string;
   ACESTEP_UPSTREAM?: string;
 }
 
 const SESSION_TTL_SECONDS = 12 * 60 * 60;
 const COOKIE_NAME = "bl_session";
+
+/** The app's origins, in preference order (the first is the canonical one). */
+export function allowedOrigins(env: Env): string[] {
+  return (env.ALLOWED_ORIGINS ?? "")
+    .split(",")
+    .map(o => o.trim())
+    .filter(Boolean);
+}
+
+export function isAllowedOrigin(origin: string | null, env: Env): boolean {
+  return !!origin && allowedOrigins(env).includes(origin);
+}
 
 /**
  * Normalizes one inbound WebSocket frame into something `send()` forwards
@@ -59,10 +72,14 @@ function pipe(from: WebSocket, to: WebSocket): void {
   });
 }
 
-function corsHeaders(env: Env): HeadersInit {
+/** Reflects the caller's origin when it is one of ours, else the canonical one. */
+function corsHeaders(req: Request, env: Env): HeadersInit {
+  const origin = req.headers.get("Origin");
+  const allowed = allowedOrigins(env);
   return {
-    "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN,
+    "Access-Control-Allow-Origin": isAllowedOrigin(origin, env) ? origin! : (allowed[0] ?? ""),
     "Access-Control-Allow-Credentials": "true",
+    Vary: "Origin",
   };
 }
 
@@ -100,15 +117,32 @@ function forbiddenPage(login: string | null): Response {
 
 export function isAllowedRedirect(url: string, env: Env): boolean {
   try {
-    return new URL(url).origin === env.ALLOWED_ORIGIN;
+    return allowedOrigins(env).includes(new URL(url).origin);
   } catch {
     return false;
   }
 }
 
+/**
+ * Where `/auth/login` sends a caller that named no `redirect`. The app lives at
+ * the site root on its own domain but under `/backline/` on shylenko.com, so the
+ * default follows whichever origin the relay was reached through: requests to
+ * `api.<domain>` default to `https://<domain>/`.
+ */
+export function defaultRedirect(req: Request, env: Env): string {
+  const host = new URL(req.url).hostname;
+  const origins = allowedOrigins(env);
+  if (host.startsWith("api.")) {
+    const sibling = `https://${host.slice("api.".length)}`;
+    if (origins.includes(sibling)) return `${sibling}/`;
+  }
+  const first = origins[0] ?? "";
+  return first === "https://shylenko.com" ? `${first}/backline/` : `${first}/`;
+}
+
 async function handleLogin(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
-  const redirect = url.searchParams.get("redirect") || `${env.ALLOWED_ORIGIN}/backline/`;
+  const redirect = url.searchParams.get("redirect") || defaultRedirect(req, env);
   if (!isAllowedRedirect(redirect, env)) {
     return new Response("invalid redirect", { status: 400 });
   }
@@ -176,12 +210,72 @@ async function handleMe(req: Request, env: Env): Promise<Response> {
   const token = readCookie(req, COOKIE_NAME);
   const session = token ? await verifySession(env.SESSION_SECRET, token) : null;
   if (!session) {
-    return new Response("unauthorized", { status: 401, headers: corsHeaders(env) });
+    return new Response("unauthorized", { status: 401, headers: corsHeaders(req, env) });
   }
   return new Response(JSON.stringify({ login: session.login }), {
     status: 200,
-    headers: { ...corsHeaders(env), "Content-Type": "application/json" },
+    headers: { ...corsHeaders(req, env), "Content-Type": "application/json" },
   });
+}
+
+// --- Upgrade admission control -------------------------------------------
+//
+// The WebSocket routes are not behind a login: anyone loading the app can use
+// them. What keeps the upstream keys from being a free API for the whole
+// internet is (a) an Origin allowlist, which browsers set on every WebSocket
+// upgrade and scripts cannot forge from another page, and (b) a per-IP cap on
+// how many upgrades one caller may open per minute.
+//
+// The counter lives in the isolate, so it is per-colo and resets on eviction.
+// That is deliberate: it is a cheap brake on runaway clients, not a billing
+// guarantee, and it costs no storage round-trip on the hot path.
+
+const UPGRADE_LIMIT = 6;
+const UPGRADE_WINDOW_MS = 60_000;
+const upgradeHits = new Map<string, number[]>();
+
+/** True if this IP may open another upgrade now; records the attempt when so. */
+export function allowUpgrade(ip: string, now: number = Date.now()): boolean {
+  const recent = (upgradeHits.get(ip) ?? []).filter(t => now - t < UPGRADE_WINDOW_MS);
+  if (recent.length >= UPGRADE_LIMIT) {
+    upgradeHits.set(ip, recent);
+    return false;
+  }
+  recent.push(now);
+  upgradeHits.set(ip, recent);
+  // Keep the map from growing without bound in a long-lived isolate: whenever
+  // it gets large, drop every entry whose window has fully expired.
+  if (upgradeHits.size > 1000) {
+    for (const [k, v] of upgradeHits) {
+      if (v.every(t => now - t >= UPGRADE_WINDOW_MS)) upgradeHits.delete(k);
+    }
+  }
+  return true;
+}
+
+/** Test-only: forget every recorded upgrade. */
+export function resetUpgradeLimit(): void {
+  upgradeHits.clear();
+}
+
+/**
+ * Shared gate for the WebSocket routes. Returns a Response to send back when
+ * the request should not proceed, or null when it may.
+ */
+export function guardUpgrade(req: Request, env: Env): Response | null {
+  // A browser always sends Origin on a WebSocket upgrade, so a missing one is
+  // a non-browser caller and is refused along with any foreign origin.
+  if (!isAllowedOrigin(req.headers.get("Origin"), env)) {
+    return new Response("forbidden origin", { status: 403 });
+  }
+  if (req.headers.get("Upgrade") !== "websocket") {
+    return new Response("expected websocket upgrade", { status: 426 });
+  }
+  const ip = req.headers.get("cf-connecting-ip") ?? "unknown";
+  if (!allowUpgrade(ip)) {
+    return new Response("too many requests", { status: 429, headers: { "Retry-After": "60" } });
+  }
+  return null;
 }
 
 // True for any "/ws/.../BidiGenerateMusic" path, matching the URL shape the
@@ -280,22 +374,11 @@ async function proxyWebSocket(upstreamUrl: string, keepaliveMs?: number): Promis
   });
 }
 
-async function handleLyria(req: Request, env: Env): Promise<Response> {
-  const origin = req.headers.get("Origin");
-  if (origin && origin !== env.ALLOWED_ORIGIN) {
-    return new Response("forbidden origin", { status: 403 });
-  }
+export async function handleLyria(req: Request, env: Env): Promise<Response> {
+  const denied = guardUpgrade(req, env);
+  if (denied) return denied;
 
   const url = new URL(req.url);
-
-  // Auth: bl_session cookie only.
-  const token = readCookie(req, COOKIE_NAME);
-  const session = token ? await verifySession(env.SESSION_SECRET, token) : null;
-  if (!session) return new Response("unauthorized", { status: 401 });
-
-  if (req.headers.get("Upgrade") !== "websocket") {
-    return new Response("expected websocket upgrade", { status: 426 });
-  }
 
   // Proxy to the same "/ws/.../BidiGenerateMusic" path on Google's API,
   // ignoring whatever `key` the client sent and using the real server-side
@@ -318,22 +401,11 @@ export function isAceStepPath(pathname: string): boolean {
 const ACESTEP_KEEPALIVE_MS = 30_000;
 
 export async function handleAceStep(req: Request, env: Env): Promise<Response> {
-  const origin = req.headers.get("Origin");
-  if (origin && origin !== env.ALLOWED_ORIGIN) {
-    return new Response("forbidden origin", { status: 403 });
-  }
-
-  // Auth: bl_session cookie only.
-  const token = readCookie(req, COOKIE_NAME);
-  const session = token ? await verifySession(env.SESSION_SECRET, token) : null;
-  if (!session) return new Response("unauthorized", { status: 401 });
+  const denied = guardUpgrade(req, env);
+  if (denied) return denied;
 
   if (!env.ACESTEP_UPSTREAM) {
     return new Response("acestep upstream not configured", { status: 503 });
-  }
-
-  if (req.headers.get("Upgrade") !== "websocket") {
-    return new Response("expected websocket upgrade", { status: 426 });
   }
 
   // ACESTEP_UPSTREAM is the full wss://.../ws URL of the RunPod-hosted pod,

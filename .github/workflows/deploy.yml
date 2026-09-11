@@ -21,3 +21,18 @@ jobs:
     steps:
       - id: d
         uses: actions/deploy-pages@v4
+  # soundofthe.world serves the app from the site root, so it needs its own
+  # build with base "/" — the GitHub Pages one above is based at /backline/.
+  pages:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - run: npx vite build --base=/ --outDir dist-root
+      - run: npx wrangler@3 pages deploy dist-root --project-name backline --branch main --commit-dirty=true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

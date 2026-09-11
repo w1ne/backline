@@ -1,55 +1,67 @@
-import { describe, expect, it } from "vitest";
-import { handleAceStep } from "../src/index";
+import { beforeEach, describe, expect, it } from "vitest";
+import { handleAceStep, resetUpgradeLimit } from "../src/index";
 import type { Env } from "../src/index";
-import { signSession } from "../src/session";
 
-const SECRET = "test-secret-value";
+const APP_ORIGIN = "https://soundofthe.world";
 
 function baseEnv(overrides: Partial<Env> = {}): Env {
   return {
     GEMINI_API_KEY: "unused",
     GITHUB_CLIENT_ID: "unused",
     GITHUB_CLIENT_SECRET: "unused",
-    SESSION_SECRET: SECRET,
+    SESSION_SECRET: "test-secret-value",
     GITHUB_TOKEN: "unused",
-    ALLOWED_ORIGIN: "https://shylenko.com",
+    ALLOWED_ORIGINS: "https://soundofthe.world,https://shylenko.com",
     REPO: "w1ne/backline",
     ...overrides,
   } as Env;
 }
 
-async function cookieHeader(): Promise<string> {
-  const exp = Math.floor(Date.now() / 1000) + 3600;
-  const token = await signSession(SECRET, { login: "w1ne", exp });
-  return `bl_session=${token}`;
+function upgradeRequest(headers: Record<string, string> = {}): Request {
+  return new Request("https://api.soundofthe.world/acestep", {
+    headers: { Upgrade: "websocket", Origin: APP_ORIGIN, "cf-connecting-ip": "203.0.113.7", ...headers },
+  });
 }
 
+beforeEach(() => resetUpgradeLimit());
+
 describe("handleAceStep", () => {
-  it("rejects a request with no session cookie", async () => {
+  it("rejects a foreign Origin", async () => {
     const env = baseEnv({ ACESTEP_UPSTREAM: "wss://example.runpod.net/ws" });
-    const req = new Request("https://backline-relay.example.workers.dev/acestep", {
-      headers: { Upgrade: "websocket" },
-    });
-    const resp = await handleAceStep(req, env);
-    expect(resp.status).toBe(401);
+    const resp = await handleAceStep(upgradeRequest({ Origin: "https://evil.example" }), env);
+    expect(resp.status).toBe(403);
   });
 
-  it("returns 503 when ACESTEP_UPSTREAM is not configured", async () => {
-    const env = baseEnv(); // no ACESTEP_UPSTREAM
-    const req = new Request("https://backline-relay.example.workers.dev/acestep", {
-      headers: { Upgrade: "websocket", Cookie: await cookieHeader() },
+  it("rejects a request with no Origin at all", async () => {
+    const env = baseEnv({ ACESTEP_UPSTREAM: "wss://example.runpod.net/ws" });
+    const req = new Request("https://api.soundofthe.world/acestep", {
+      headers: { Upgrade: "websocket", "cf-connecting-ip": "203.0.113.7" },
     });
     const resp = await handleAceStep(req, env);
+    expect(resp.status).toBe(403);
+  });
+
+  it("no longer requires a session cookie", async () => {
+    const env = baseEnv(); // no ACESTEP_UPSTREAM — gets past the gate to the 503
+    const resp = await handleAceStep(upgradeRequest(), env);
     expect(resp.status).toBe(503);
     expect(await resp.text()).toBe("acestep upstream not configured");
   });
 
-  it("rejects a disallowed Origin even with a valid session", async () => {
-    const env = baseEnv({ ACESTEP_UPSTREAM: "wss://example.runpod.net/ws" });
-    const req = new Request("https://backline-relay.example.workers.dev/acestep", {
-      headers: { Upgrade: "websocket", Cookie: await cookieHeader(), Origin: "https://evil.example" },
-    });
-    const resp = await handleAceStep(req, env);
-    expect(resp.status).toBe(403);
+  it("returns 429 on the seventh upgrade from one IP within a minute", async () => {
+    const env = baseEnv(); // 503 means the request passed the gate
+    for (let i = 0; i < 6; i++) {
+      const resp = await handleAceStep(upgradeRequest(), env);
+      expect(resp.status).toBe(503);
+    }
+    const seventh = await handleAceStep(upgradeRequest(), env);
+    expect(seventh.status).toBe(429);
+  });
+
+  it("counts the cap per client IP, not globally", async () => {
+    const env = baseEnv();
+    for (let i = 0; i < 6; i++) await handleAceStep(upgradeRequest(), env);
+    const other = await handleAceStep(upgradeRequest({ "cf-connecting-ip": "198.51.100.4" }), env);
+    expect(other.status).toBe(503);
   });
 });

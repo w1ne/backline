@@ -1,19 +1,25 @@
 # backline-relay
 
-Cloudflare Worker that lets the static Backline web app (https://shylenko.com/backline/)
-use Google's Lyria RealTime music API without shipping the Gemini API key to the
-browser, gated to GitHub users who are collaborators on `w1ne/backline`.
+Cloudflare Worker that lets the static Backline web app use Google's Lyria
+RealTime music API, and the ACE-Step pod, without shipping either credential to
+the browser.
 
-Deployed at https://backline-relay.shylenkoa.workers.dev.
+There is no sign-in. The relay accepts requests only from the app's own origins
+(`ALLOWED_ORIGINS`) and caps how many WebSocket upgrades a single client IP may
+open per minute, which is what keeps the upstream keys from being a free API for
+anyone who finds the hostname.
+
+Deployed at https://backline-relay.shylenkoa.workers.dev, and (once the
+soundofthe.world zone exists in the account) at https://api.soundofthe.world.
 
 ## Endpoints
 
 - `GET /health` — plaintext `ok`.
-- `GET /auth/login?redirect=<url>` — starts GitHub OAuth, redirects to GitHub.
-- `GET /auth/callback` — GitHub OAuth callback, sets the `bl_session` cookie and
-  redirects back to `redirect`, or shows a 403 page if the user is not a
-  collaborator.
-- `GET /auth/me` — `{ "login": "..." }` if the session cookie is valid, else 401.
+- `GET /auth/*` — the old GitHub sign-in (`/auth/login`, `/auth/callback`,
+  `/auth/me`). Still wired up and still working, but nothing calls it: the app
+  no longer signs anyone in, so `/auth/me` just answers `401`. Kept so the
+  routes can be revived without rebuilding them; delete them if a future
+  change makes that decision permanent.
 - `GET /ws/.../BidiGenerateMusic` (any `apiVersion` segment, e.g.
   `google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateMusic`)
   — WebSocket upgrade. This is the path the official `@google/genai` SDK
@@ -25,11 +31,12 @@ Deployed at https://backline-relay.shylenkoa.workers.dev.
   `GET /lyria` is kept as a plain alias to the same handler for callers that
   don't go through the SDK.
 
-  Auth: the `bl_session` cookie only. The cookie is `SameSite=None; Secure`,
-  so browsers send it on the cross-site WebSocket upgrade without any extra
-  wiring from the app.
-- `GET /acestep` — WebSocket upgrade, same Origin check and `bl_session`
-  cookie auth as `/lyria`, proxying to the ACE-Step pod at
+  Admission: `Origin` must be one of `ALLOWED_ORIGINS` — a missing `Origin`
+  is refused too, since browsers always send one on a WebSocket upgrade — and
+  the client IP (`cf-connecting-ip`) must be under the upgrade rate limit.
+  Foreign or absent origin is `403`, over the limit is `429`.
+- `GET /acestep` — WebSocket upgrade, same admission check as `/lyria`,
+  proxying to the ACE-Step pod at
   `env.ACESTEP_UPSTREAM` (a full `wss://…/ws` URL, kept as a Worker secret
   so pod ids don't land in git). Returns `503` with body
   `acestep upstream not configured` if the secret isn't set. The Worker
@@ -60,32 +67,28 @@ the GitHub collaborators API and is never exposed to clients.
 `SESSION_SECRET` should be a long random string (e.g. `openssl rand -hex 32`);
 it signs both the session cookie and the OAuth `state` parameter.
 
-### GitHub OAuth App setup
+### Origins
 
-Create a GitHub OAuth App (https://github.com/settings/developers) with:
+`ALLOWED_ORIGINS` in `wrangler.toml` is the comma-separated list of origins the
+app is served from — currently `https://soundofthe.world,https://shylenko.com`.
+It is the allowlist for the WebSocket routes, the value reflected in
+`Access-Control-Allow-Origin`, and the set of redirects `/auth/login` accepts.
+Add an origin here before serving the app from it.
 
-- Homepage URL: `https://shylenko.com/backline/`
-- Authorization callback URL: `https://backline-relay.<account>.workers.dev/auth/callback`
-
-Use its Client ID / Client Secret for `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`.
+The `GITHUB_*` secrets are only needed by the unused `/auth/*` routes; the
+OAuth App's callback URL is still `https://backline-relay.<account>.workers.dev/auth/callback`.
 
 ## How the app uses it
 
-This is implemented in `src/auth.ts`, `src/config.ts`, and
-`src/engines/lyriaEngine.ts`. No Gemini key is ever entered or stored in the
-browser; the setup screen (`src/ui/setup.ts`) just shows a "Sign in with
-GitHub" button when signed out.
+This is implemented in `src/config.ts` and `src/engines/lyriaEngine.ts`. No
+Gemini key is ever entered or stored in the browser, and the app does no
+sign-in: picking the Lyria engine connects straight away.
 
 ```js
-// src/auth.ts: kick off login if not already authenticated
-location.href = RELAY_URL + '/auth/login?redirect=' + encodeURIComponent(location.href);
-
-// src/engines/lyriaEngine.ts: once authenticated (cookie set on this origin
-// via SameSite=None), point the official SDK at the Worker instead of Google
-// directly. The SDK will open wss://<worker host>/ws/.../BidiGenerateMusic?key=relay
-// itself; the Worker authenticates the request via the bl_session cookie sent
-// along with the WebSocket upgrade (browsers send SameSite=None cookies on
-// cross-site WS upgrades) and ignores the placeholder "relay" key.
+// src/engines/lyriaEngine.ts: point the official SDK at the Worker instead of
+// Google directly. The SDK opens wss://<worker host>/ws/.../BidiGenerateMusic?key=relay
+// itself; the Worker admits the upgrade on its Origin (which the browser sets
+// and a page on another site cannot forge) and ignores the placeholder key.
 import { GoogleGenAI } from '@google/genai';
 const ai = new GoogleGenAI({
   apiKey: 'relay', // placeholder; the Worker supplies the real key
@@ -93,17 +96,19 @@ const ai = new GoogleGenAI({
 });
 ```
 
-Where `RELAY_URL` (`src/config.ts`) defaults to
-`https://backline-relay.shylenkoa.workers.dev`, overridable via
-`VITE_RELAY_URL`.
+Where `RELAY_URL` (`src/config.ts`) is `https://api.soundofthe.world` when the
+app is served from `soundofthe.world`, and
+`https://backline-relay.shylenkoa.workers.dev` everywhere else
+(shylenko.com/backline/, pages.dev previews, localhost). `VITE_RELAY_URL`
+overrides both at build time.
 
 ## Browser support
 
-Sign-in currently works in Chrome. Safari and Firefox block the third-party
-`bl_session` cookie because `workers.dev` is on the Public Suffix List, which
-makes the relay and the app look like unrelated sites to those browsers'
-cross-site cookie rules. The fix is to move the relay to a `shylenko.com`
-subdomain (e.g. `relay.shylenko.com`) so the cookie is same-site with the app.
+All browsers, since nothing depends on a cross-site cookie any more. (While
+sign-in existed, Safari and Firefox blocked the `bl_session` cookie because
+`workers.dev` is on the Public Suffix List, which made the relay and the app
+look like unrelated sites. Serving the relay from `api.soundofthe.world` makes
+it same-site with the app, so the `/auth/*` routes would work there too.)
 
 ## Development
 

@@ -2,6 +2,17 @@ name = "backline-relay"
 main = "src/index.ts"
 compatibility_date = "2026-09-11"
 
+# Keep the workers.dev hostname live: it is what https://shylenko.com/backline/
+# talks to. Wrangler turns this off by default as soon as `routes` is set, so it
+# has to stay explicit once the custom domain below is enabled.
+workers_dev = true
+
+# The relay also answers on the app's own apex domain, so that the app and the
+# relay are same-site. Enable this once the soundofthe.world zone exists in the
+# Cloudflare account — `wrangler deploy` fails with "Can't infer zone from
+# route" until then.
+# routes = [{ pattern = "api.soundofthe.world", custom_domain = true }]
+
 [vars]
-ALLOWED_ORIGIN = "https://shylenko.com"
+ALLOWED_ORIGINS = "https://soundofthe.world,https://shylenko.com"
 REPO = "w1ne/backline"

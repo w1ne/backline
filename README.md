@@ -7,7 +7,7 @@ https://shylenko.com/backline/spec/
 
 ## Try it
 
-https://shylenko.com/backline/ — use headphones (the app listens through the
+https://soundofthe.world (also at https://shylenko.com/backline/) — use headphones (the app listens through the
 mic, so speaker playback feeds back into the tempo/key detection). Choose mic
 or MIDI as input and play four bars; the app locks tempo and key from that.
 On the live screen you can toggle each of the four instruments (drums, bass,
@@ -25,8 +25,9 @@ re-estimating it from your playing, clamped and ramped so it never jumps).
   used for the Follow tempo mode.
 - **Lyria** (`src/engines/lyriaEngine.ts`) — Google's Lyria RealTime model,
   reached through our Cloudflare Worker relay so the API key never goes to
-  the browser. Sign in with GitHub; only collaborators on `w1ne/backline` are
-  let through. Measured on 2026-09-11: about 3 s to first audio; a control
+  the browser. No sign-in: the relay accepts requests only from the app's own
+  origins and caps how many connections one IP may open per minute. Measured
+  on 2026-09-11: about 3 s to first audio; a control
   change (toggle, genre, creativity) lands audibly about 0.5 s later because
   the engine resets context and crossfades the seam; audio delivery ran at
   roughly 0.75x real time, so expect occasional stalls or catch-up. Magenta
@@ -50,7 +51,7 @@ Deploy is push to `main`.
 - `src/band/` — the clock and bandleader that drive bars and schedule instruments.
 - `src/patterns/` — per-genre note patterns (lofi, funk, rock, jazz).
 - `src/players/` — Tone.js sound sets that turn scheduled notes into audio.
-- `src/engines/` — the two `BandEngine` implementations (patterns, Lyria).
+- `src/engines/` — the `BandEngine` implementations (patterns, Lyria, ACE-Step).
 - `src/ui/` — the two app screens (setup, live) and app state.
 - `src/music/` — scales and key helpers shared across the above.
 
@@ -69,8 +70,8 @@ built per genre from Tone.js instruments or samples.
 
 ## Relay deploy
 
-See `relay/README.md` for deploying the Cloudflare Worker (GitHub OAuth app
-setup, secrets, endpoints).
+See `relay/README.md` for deploying the Cloudflare Worker (secrets, endpoints,
+origin allowlist).
 
 ## Demo tips
 
