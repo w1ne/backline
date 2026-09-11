@@ -11,7 +11,11 @@ Hackathon build: 50 hours, 5+ people, browser only, no network on the critical p
 ## In v1
 
 - Input: MIDI (Web MIDI) or mic (Web Audio).
-- Tempo lock from the first 4 bars, then fixed. Manual BPM override.
+- Tempo from the first 4 bars, then one of two modes (toggle on the live screen):
+  - **Locked** (default): BPM fixed after lock.
+  - **Follow**: BPM keeps tracking the player. Re-estimated every bar from the last 8 onsets, clamped to ±8% per bar, ramped over one beat so it never jumps.
+- Manual BPM override.
+- Latency is a hard requirement: audio context `latencyHint: 'interactive'`, no lookahead beyond one bar, measured round-trip (`baseLatency + outputLatency`) shown on the live screen. Target under 30 ms on the demo laptop; over 60 ms is a bug.
 - Key detection (major/minor, 12 roots) from notes played; manual override.
 - Four instruments: drums, bass, keys, lead. On/off, applied on the next bar.
 - Four genres: lofi, funk, rock, jazz. Switchable live, applied on the next bar.
@@ -21,7 +25,7 @@ Hackathon build: 50 hours, 5+ people, browser only, no network on the critical p
 
 ## Not in v1
 
-Following tempo drift after lock, chord following, replay/export (screen C), mixer, effects, text prompts, multiplayer, any generative model.
+Chord following, replay/export (screen C), mixer, effects, text prompts, multiplayer, any generative model.
 
 ## Architecture
 
@@ -48,6 +52,7 @@ interface Key { root: number /* 0=C … 11=B */; mode: 'major' | 'minor' }
 - `MidiSource`: Web MIDI note-on timestamps and note numbers.
 - `MicSource`: Web Audio → `OnsetDetector` (spectral flux onsets → timestamps) and `PitchTracker` (autocorrelation pitch per frame → note numbers).
 - `TempoLock`: takes onset timestamps; once it has ≥4 bars' worth (≥12 onsets), estimates BPM by inter-onset-interval histogram clustering in 60–180 BPM, locks, and reports the downbeat phase (the timestamp of the first onset). Pure function, tested with synthetic timestamps.
+- `TempoFollower`: after lock, in Follow mode, re-runs the same estimator on a sliding window of the last 8 onsets each bar and returns a new BPM clamped to ±8% of the current one. `Clock.setBpm(bpm)` ramps `Transport.bpm` over one beat.
 - `KeyDetector`: pitch-class histogram → Krumhansl-Schmuckler correlation against 24 key profiles. Pure function, tested.
 
 ### Bandleader (`src/band/`)
