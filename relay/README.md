@@ -64,32 +64,36 @@ Use its Client ID / Client Secret for `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET
 
 ## How the app uses it
 
-From the static Backline page:
+This is implemented in `src/auth.ts`, `src/config.ts`, and
+`src/engines/lyriaEngine.ts`. No Gemini key is ever entered or stored in the
+browser; the setup screen (`src/ui/setup.ts`) just shows a "Sign in with
+GitHub" button when signed out.
 
 ```js
-// kick off login if not already authenticated
-location = relay + '/auth/login?redirect=' + encodeURIComponent(location.href);
+// src/auth.ts: kick off login if not already authenticated
+location.href = RELAY_URL + '/auth/login?redirect=' + encodeURIComponent(location.href);
 
-// once authenticated (cookie set on this origin via SameSite=None), point the
-// official SDK at the Worker instead of Google directly. The SDK will open
-// wss://<worker host>/ws/.../BidiGenerateMusic?key=relay itself; the Worker
-// authenticates the request via the bl_session cookie sent along with the
-// WebSocket upgrade (browsers send SameSite=None cookies on cross-site WS
-// upgrades) and ignores the placeholder "relay" key.
+// src/engines/lyriaEngine.ts: once authenticated (cookie set on this origin
+// via SameSite=None), point the official SDK at the Worker instead of Google
+// directly. The SDK will open wss://<worker host>/ws/.../BidiGenerateMusic?key=relay
+// itself; the Worker authenticates the request via the bl_session cookie sent
+// along with the WebSocket upgrade (browsers send SameSite=None cookies on
+// cross-site WS upgrades) and ignores the placeholder "relay" key.
 import { GoogleGenAI } from '@google/genai';
 const ai = new GoogleGenAI({
   apiKey: 'relay', // placeholder; the Worker supplies the real key
-  httpOptions: { baseUrl: relay }, // e.g. https://backline-relay.<account>.workers.dev
+  httpOptions: { baseUrl: RELAY_URL, apiVersion: 'v1alpha' },
 });
 ```
 
-Where `relay` is `https://backline-relay.<account>.workers.dev`.
+Where `RELAY_URL` (`src/config.ts`) defaults to
+`https://backline-relay.shylenkoa.workers.dev`, overridable via
+`VITE_RELAY_URL`.
 
-If the browser context doesn't send the session cookie on the WebSocket
-upgrade (e.g. cookies blocked), fall back to a manual `new
-WebSocket(relayWs + '/lyria')` with `?t=<token>` or a `bl.<token>`
-subprotocol, using the session token returned by `/auth/me` or held from
-the callback redirect.
+The `@google/genai` SDK gives websockets no hook to attach headers or a
+subprotocol, so the `?t=<token>` and `bl.<token>` fallbacks the Worker
+supports are not wired up from the app yet — auth relies solely on the
+`bl_session` cookie being sent on the cross-site WebSocket upgrade.
 
 ## Development
 

@@ -4,6 +4,7 @@ import type { BandState, Instrument, Key } from '../types';
 import type { BandEngine } from './engine';
 import { promptsFor, configFor } from './lyriaMap';
 import { PcmPlayer } from './pcmPlayer';
+import { RELAY_URL } from '../config';
 
 const MODEL = 'models/lyria-realtime-exp';
 const COALESCE_MS = 250;
@@ -34,14 +35,21 @@ export class LyriaEngine implements BandEngine {
   private applyTimer?: ReturnType<typeof setTimeout>;
   private firstDirtyAt?: number;
 
-  constructor(private apiKey: string, private ctx: AudioContext) {}
+  constructor(private ctx: AudioContext) {}
 
   async start(bpm: number, firstBarAt: number): Promise<void> {
     this.bpm = bpm;
     this.player = new PcmPlayer(this.ctx);
 
     try {
-      const client = new GoogleGenAI({ apiKey: this.apiKey, apiVersion: 'v1alpha' });
+      // apiKey is a placeholder the relay Worker ignores; auth is via the bl_session
+      // cookie (SameSite=None; Secure) sent on the cross-site WebSocket upgrade. The
+      // @google/genai SDK gives websockets no hook for extra headers/subprotocols, so
+      // there's no way to also send a token-based fallback here.
+      const client = new GoogleGenAI({
+        apiKey: 'relay',
+        httpOptions: { baseUrl: RELAY_URL, apiVersion: 'v1alpha' },
+      });
       this.session = await client.live.music.connect({
         model: MODEL,
         callbacks: {

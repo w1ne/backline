@@ -39,7 +39,7 @@ describe('LyriaEngine control coalescing', () => {
   });
 
   it('does not resetContext when set() key is unchanged', async () => {
-    const engine = new LyriaEngine('key', fakeCtx());
+    const engine = new LyriaEngine(fakeCtx());
     await engine.start(100, 0);
     sessionMock.resetContext.mockClear();
 
@@ -50,7 +50,7 @@ describe('LyriaEngine control coalescing', () => {
   });
 
   it('coalesces 10 rapid changes into exactly one applyAll within 250ms of the first', async () => {
-    const engine = new LyriaEngine('key', fakeCtx());
+    const engine = new LyriaEngine(fakeCtx());
     await engine.start(100, 0);
     sessionMock.resetContext.mockClear();
     sessionMock.setWeightedPrompts.mockClear();

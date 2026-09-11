@@ -1,11 +1,10 @@
 import { GENRES } from '../types';
 import type { Genre } from '../types';
-import { GEMINI_KEY_STORAGE } from './state';
+import { login } from '../auth';
 import type { Store } from './state';
 
 export function renderSetup(root: HTMLElement, store: Store, onStart: () => void): void {
-  const { source, genre, engine } = store.state;
-  const storedKey = localStorage.getItem(GEMINI_KEY_STORAGE) ?? '';
+  const { source, genre, engine, user, error } = store.state;
 
   root.innerHTML = `
     <div class="screen">
@@ -37,11 +36,15 @@ export function renderSetup(root: HTMLElement, store: Store, onStart: () => void
           <button type="button" id="engine-lyria" class="${engine === 'lyria' ? 'on' : ''}">Lyria (API)</button>
           <button type="button" id="engine-patterns" class="${engine === 'patterns' ? 'on' : ''}">Patterns (offline)</button>
         </div>
-        <div id="key-row" style="${engine === 'lyria' ? '' : 'display:none'}">
-          <label for="geminiKey">Gemini API key</label>
-          <input type="password" id="geminiKey" value="${escapeAttr(storedKey)}" placeholder="AIza…" />
+        <div id="auth-row" style="${engine === 'lyria' ? '' : 'display:none'}">
+          ${
+            user
+              ? `<span class="hint">Signed in as ${escapeHtml(user.login)}</span>`
+              : `<button type="button" class="btn" id="github-login">Sign in with GitHub</button>`
+          }
         </div>
       </div>
+      ${error ? `<div class="hint" id="setup-error" style="color:#f66">${escapeHtml(error)}</div>` : ''}
       <div class="foot">
         <span class="hint">Play four bars and the band will lock onto you. Use headphones.</span>
         <button type="button" class="btn" id="start-jam">Start jam</button>
@@ -56,29 +59,29 @@ export function renderSetup(root: HTMLElement, store: Store, onStart: () => void
     btn.addEventListener('click', () => store.update({ genre: btn.dataset.genre as Genre }));
   });
 
-  root.querySelector<HTMLInputElement>('#geminiKey')?.addEventListener('input', e => {
-    localStorage.setItem(GEMINI_KEY_STORAGE, (e.target as HTMLInputElement).value.trim());
-  });
+  root.querySelector<HTMLButtonElement>('#github-login')?.addEventListener('click', () => login());
 
-  const keyRow = root.querySelector<HTMLElement>('#key-row')!;
+  const authRow = root.querySelector<HTMLElement>('#auth-row')!;
   root.querySelector<HTMLButtonElement>('#engine-lyria')!.addEventListener('click', () => {
     store.update({ engine: 'lyria' });
-    keyRow.style.display = '';
+    authRow.style.display = '';
   });
   root.querySelector<HTMLButtonElement>('#engine-patterns')!.addEventListener('click', () => {
     store.update({ engine: 'patterns' });
-    keyRow.style.display = 'none';
+    authRow.style.display = 'none';
   });
 
   root.querySelector<HTMLButtonElement>('#start-jam')!.addEventListener('click', () => {
-    const keyInput = root.querySelector<HTMLInputElement>('#geminiKey');
-    if (keyInput) localStorage.setItem(GEMINI_KEY_STORAGE, keyInput.value.trim());
+    if (store.state.engine === 'lyria' && !store.state.user) {
+      store.update({ error: 'Sign in with GitHub to use Lyria' });
+      return;
+    }
     onStart();
   });
 }
 
-function escapeAttr(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function cap(s: string): string {

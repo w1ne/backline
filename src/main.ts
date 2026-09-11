@@ -1,6 +1,7 @@
 import './ui/styles.css';
 import * as Tone from 'tone';
-import { Store, GEMINI_KEY_STORAGE } from './ui/state';
+import { Store } from './ui/state';
+import { getSession } from './auth';
 import { renderSetup } from './ui/setup';
 import { renderLive, setLatency } from './ui/live';
 import { Listener } from './listener/listener';
@@ -28,8 +29,7 @@ async function start() {
 
   listener = new Listener(source);
   if (store.state.engine === 'lyria') {
-    const apiKey = localStorage.getItem(GEMINI_KEY_STORAGE) ?? '';
-    band = new LyriaEngine(apiKey, players.rawContext());
+    band = new LyriaEngine(players.rawContext());
   } else {
     band = new PatternEngine(players, PATTERNS);
   }
@@ -100,4 +100,5 @@ store.subscribe(s => {
   });
 });
 
+getSession().then(user => store.update({ user }));
 store.update({});
