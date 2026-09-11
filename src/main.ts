@@ -124,7 +124,38 @@ store.subscribe(s => {
       band?.set({ genre: g });
       store.update({ genre: g });
     },
-    setEngine: e => store.update({ engine: e }),
+    setEngine: e => {
+      const prevEngine = store.state.engine;
+      store.update({ engine: e });
+      if (store.state.power !== 'on' || !band || e === prevEngine) return;
+      // Power-cycle the band engine in place, at the same bpm/key, instead of
+      // making the user power off first.
+      const bpm = lastFollowedBpm ?? store.state.input.bpm ?? undefined;
+      const key = store.state.input.key ?? undefined;
+      band.stop();
+      band =
+        e === 'lyria'
+          ? new LyriaEngine(players.rawContext())
+          : e === 'acestep'
+            ? new AceStepEngine(players.rawContext())
+            : new PatternEngine(players, PATTERNS);
+      band.set({ genre: store.state.genre, creativity: store.state.creativity, key: key ?? undefined });
+      INSTRUMENTS.forEach(i => band!.setEnabled(i, store.state.enabled[i]));
+      band.onBar = bar => {
+        store.update({ bar });
+        setLatency(root, players.latencyMs());
+      };
+      band.onError = msg => store.update({ error: msg });
+      band.onStats = s => {
+        const increased = s.loops > store.state.loops;
+        store.update({ loops: s.loops, loopsUpdatedAt: increased ? Date.now() : store.state.loopsUpdatedAt });
+      };
+      if (bpm) {
+        band.start(bpm, Tone.now() + 0.1).catch(err => {
+          store.update({ error: `${e}: ${err instanceof Error ? err.message : String(err)}` });
+        });
+      }
+    },
     setCreativity: c => {
       band?.set({ creativity: c });
       store.update({ creativity: c });

@@ -297,6 +297,11 @@ function updatePower(screen: HTMLElement, s: AppState): void {
   screen.querySelector<HTMLElement>('#power-key')!.hidden = on;
   screen.querySelector<HTMLElement>('#power-off-key')!.hidden = !on;
   screen.querySelectorAll<HTMLElement>('#inst-tiles, .row2 .zone').forEach(el => el.classList.toggle('dimmed', !on));
+  // Pads, the creativity knob, and manual tempo/key overrides need a running
+  // band; ENGINE and GENRE only set state, so they stay clickable while off.
+  screen
+    .querySelectorAll<HTMLElement>('#inst-tiles, .row2 .knob-zone, .row2 .manual')
+    .forEach(el => el.classList.toggle('inert', !on));
 }
 
 function updateEngine(screen: HTMLElement, s: AppState): void {
