@@ -25,7 +25,8 @@ describe('Listener', () => {
   it('midi -1 advances tempo but leaves key and notesNow untouched', async () => {
     const f = new Fake(); const l = new Listener(f); await l.start();
     const seq = [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1];
-    seq.forEach((n, i) => f.note(n, 0.8, 1 + i * 0.5));
+    seq.forEach((n, i) => f.note(n, 0.8, 1 + i * 0.5)); // 120 bpm quarter notes
+    expect(l.input.bpm).toBeCloseTo(120, 0);
     expect(l.input.key).toBeNull();
     expect(l.input.notesNow).toEqual([]);
   });
