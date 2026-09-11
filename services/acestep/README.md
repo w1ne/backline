@@ -106,22 +106,87 @@ duration; RTF < 1.0 means faster than real time). Requires a GPU and
 downloaded/baked weights -- not runnable in this development
 environment, which has neither.
 
-## Verification status
+## Verification status (RunPod A40, ca1e85fe9430179831e6bc6be790c332190a3866)
 
-- `python -m py_compile server.py` passes in this environment.
-- `docker build` was attempted locally (see below) to validate the
-  Dockerfile syntax and the `git clone` + `uv sync` steps; it was not
-  run to completion with weight download or GPU access, since this
-  machine has no GPU and the point of the build is to run ACE-Step.
-- The exact Python API call (`acestep.handler.AceStepHandler`,
-  `acestep.inference.generate_music` / `GenerationParams` field names)
-  is **unverified** against the ACE-Step-1.5 source at the pinned
-  commit -- it was not fetched in this session. `server.py` wraps that
-  call defensively and falls back to driving the documented HTTP API
-  (`acestep-api` subprocess, `/release_task` + `/query_result`) if the
-  in-process import/call raises, so the service should still work even
-  if the in-process signature is wrong, at the cost of an extra
-  process + HTTP hop.
-- 44.1 kHz -> 48 kHz resampling, PCM16 framing, and the WS protocol are
-  implemented per the task spec but not exercised end-to-end against a
-  live ACE-Step model.
+Generation pipeline (the hard part) is verified end-to-end on a real GPU:
+
+- Weights auto-download on first `/release_task` into
+  `<ace repo>/checkpoints` (confirmed path: `ACESTEP_CHECKPOINTS_DIR`, see
+  fixes below) -- turbo DiT (4.8 GB) + VAE (0.3 GB) + a 5Hz LM (0.6B/1.7B/4B,
+  auto-selected) download in well under a minute on a fast link.
+- 6 chained blocks (1x `text2music` + 5x `complete` with `track_classes`,
+  2 bars @ 100 BPM = 4.8 s each, `batch_size=1`) all succeeded:
+  block 0 (`text2music`) wall=4.23s (RTF 0.88, includes LM warmup), blocks
+  1-5 (`complete`, chained off the previous block's wav) wall=2.05-2.07s
+  each (RTF ~0.43). VRAM: ~17.3 GB / 49.1 GB used with the turbo DiT + 0.6B
+  LM loaded.
+- Output is real audio (verified by inspecting wav files), 48 kHz as
+  configured via `audio_format=wav` in the request body.
+
+Fixes made to `server.py` after reading the real ACE-Step 1.5 source
+(`acestep/handler.py`, `acestep/inference.py`,
+`acestep/api/http/release_task_models.py`, `acestep/api/job_generation_setup.py`,
+`acestep/api/http/release_task_param_parser.py`, `acestep/api/http/query_result_service.py`):
+
+- **Dropped the in-process path entirely.** `AceStepHandler()` takes no
+  constructor args (not `checkpoint_dir=...`) and needs a separate,
+  manually-wired `LLMHandler`; `generate_music(dit_handler, llm_handler,
+  params, config, ...)` needs both handlers plus a `GenerationConfig`;
+  `GenerationParams` field names don't match what the draft used
+  (`caption` not `prompt`, `keyscale` not `key_scale`, `duration` not
+  `audio_duration`, `src_audio` not `src_audio_path`); and `track_classes`
+  isn't a `GenerationParams` field at all -- it's rendered into the
+  `instruction` prompt text by `job_generation_setup.py::_resolve_instruction`.
+  The HTTP subprocess is the only generation path now.
+- **Port 8010, not 8001**: `acestep-api`'s own CLI default is 8001, but
+  RunPod's nginx already owns 8001 on the pod (matches the note already in
+  this README) -- confirmed live, the original in-process/HTTP fallback
+  code had the right port constant but the CLI wasn't told to use it.
+- **`ACESTEP_CHECKPOINTS_DIR`, not `ACE_MODEL_DIR`/`ACESTEP_MODEL_DIR`**
+  (`acestep/model_downloader.py::get_checkpoints_dir`) -- the made-up env
+  var name in the original Dockerfile/server.py had no effect; weights
+  always went to the default `<ace repo>/checkpoints`.
+- **`guidance` -> `guidance_scale`** in the `/release_task` body
+  (`server.py`, `_generate_http`): `release_task_param_parser.py`'s
+  `PARAM_ALIASES` only recognizes `guidance_scale`/`guidanceScale`, so the
+  original body's `"guidance"` key was silently ignored and every request
+  used the request model's default of 7.0.
+- **`/query_result` response shape was wrong.** Real shape is
+  `{"data": [{"task_id", "status": 0|1|2, "result": "<JSON list of
+  candidate dicts>", "progress_text"}]}` (0=queued/running, 1=succeeded,
+  2=failed) -- not `{task_id: {...}}` as the draft assumed. Each
+  candidate's audio path comes back as `"file": "/v1/audio?path=<urlencoded
+  local path>"`; since this service and the acestep-api subprocess share a
+  filesystem, the path is decoded and read directly (`_local_path_from_audio_url`)
+  instead of an extra HTTP round trip.
+- **`/release_task` rejects absolute paths outside the system temp dir**
+  (`acestep/api/http/release_task_audio_paths.py::validate_audio_path`).
+  `server.py`'s own `_write_temp_wav` already uses `tempfile.mkstemp()`
+  with no explicit dir (so it lands in `/tmp`), which happens to satisfy
+  this -- documented here because a naive change to write chained-block
+  wavs elsewhere (e.g. next to the checkpoints) will break `complete` tasks
+  with `400 absolute audio file paths are not allowed`.
+- Added `batch_size=1` and `use_random_seed=False` to every request body --
+  the server's own default `batch_size` is 2, which doubles compute for no
+  benefit here (we only ever consume one candidate).
+- subprocess now sets `cwd=ACE_REPO_DIR` (new env var, default
+  `/opt/ace-step`, matches the Dockerfile) -- `uv run acestep-api` needs a
+  `pyproject.toml` in its cwd; the original code didn't set `cwd` at all
+  and only worked by accident if the whole service happened to be launched
+  from inside the ACE-Step checkout.
+
+**Known unresolved gap**: the WebSocket endpoint (`/ws`) itself was not
+validated end-to-end in this session. `curl`/`websockets` handshakes
+against a running `server.py` (uvicorn 0.40.0, starlette 0.50.0, websockets
+16.0, as pinned by ACE-Step's own `uv sync`) got rejected with a bare
+`403 Forbidden` before `websocket.accept()` ever ran, even though
+`app.routes` shows `/ws` registered correctly. Root cause not found before
+the RunPod time budget ran out -- likely a version interaction in the
+`websockets`/`starlette`/`uvicorn` combination ACE-Step's `uv sync` pins
+(this repo's own `requirements.txt` pins looser bounds; worth trying
+`pip install "uvicorn[standard]==0.30.*" "websockets<15"` in that venv, or
+testing the WS handshake against a bare FastAPI app with no ACE-Step
+imports to isolate whether it's dependency-version or app-code related).
+The block-generation pipeline underneath (`/release_task` + `/query_result`,
+exercised directly and via `AceStepModel.generate()`) is fully verified;
+only the WebSocket transport layer needs a follow-up pass.

@@ -4,23 +4,33 @@ Loads ACE-Step 1.5 once at process start and serves 2-bar (configurable)
 audio blocks over a WebSocket, quantized to the caller's bpm/key so a
 browser band can be assembled from consecutive blocks.
 
-Two ways to reach ACE-Step, selected automatically:
+Reaches ACE-Step by driving the bundled HTTP API (`uv run acestep-api`,
+entry point `acestep.api_server:main`) as a subprocess, using
+`POST /release_task` + `POST /query_result`. This was verified end-to-end
+against the ACE-Step 1.5 repo at commit
+ca1e85fe9430179831e6bc6be790c332190a3866 on an A40 GPU.
 
-1. In-process Python API (`acestep.handler.AceStepHandler` /
-   `acestep.inference.generate_music`) -- preferred, avoids a second
-   process and an HTTP round trip. The exact call signature is taken from
-   the ACE-Step 1.5 repo at commit ca1e85fe9430179831e6bc6be790c332190a3866;
-   see NOTE(unverified) below -- this could not be exercised in this
-   environment (no GPU, no network access to the model weights), so the
-   call is wrapped defensively and falls back to (2) if it raises.
-2. The bundled HTTP API (`uv run acestep-api`) driven as a subprocess,
-   using `POST /release_task` + `POST /query_result` as documented in the
-   task brief. This path is what `--bench` and production actually
-   exercise if the in-process import fails.
+An in-process path (calling `acestep.handler.AceStepHandler` /
+`acestep.inference.generate_music` directly) was evaluated and rejected:
+`AceStepHandler()` takes no constructor args and needs a separate
+`LLMHandler` plus manual `initialize_service()` wiring; `generate_music`
+requires *both* handlers plus a `GenerationConfig` (batch size / seeds /
+output format); `GenerationParams` uses different field names than the
+HTTP request (`caption` not `prompt`, `keyscale` not `key_scale`,
+`duration` not `audio_duration`, `src_audio` not `src_audio_path`); and
+`track_classes` isn't a `GenerationParams` field at all -- it's rendered
+into the `instruction` prompt text by
+`acestep/api/job_generation_setup.py::_resolve_instruction` before ever
+reaching `generate_music`. Reimplementing that translation layer
+in-process would just be a worse copy of `acestep/api_server.py`, so the
+HTTP subprocess is the only generation path.
 
 Env vars:
   PORT           -- listen port (default 8080)
-  ACE_MODEL_DIR  -- where ACE-Step should look for / cache weights
+  ACE_MODEL_DIR  -- where ACE-Step should look for / cache weights (passed
+                    through as ACESTEP_MODEL_DIR isn't a real ACE-Step env
+                    var; weights live under <ace repo>/checkpoints and are
+                    downloaded on first use -- see README)
 """
 
 from __future__ import annotations
@@ -46,6 +56,7 @@ log = logging.getLogger("acestep-server")
 
 PORT = int(os.environ.get("PORT", "8080"))
 MODEL_DIR = os.environ.get("ACE_MODEL_DIR", "/workspace/models")
+ACE_REPO_DIR = os.environ.get("ACE_REPO_DIR", "/opt/ace-step")
 MODEL_OUTPUT_SR = 44100  # ACE-Step 1.5 renders at 44.1 kHz; we resample to 48 kHz for the client.
 TARGET_SR = 48000
 INFERENCE_STEPS = 8
@@ -108,6 +119,20 @@ def resample_to_48k(audio: np.ndarray, src_sr: int) -> np.ndarray:
     return out
 
 
+def _local_path_from_audio_url(file_url: str) -> str:
+    """"/v1/audio?path=%2Fworkspace%2F..." -> "/workspace/...". The
+    acestep-api subprocess and this process share a filesystem (same
+    container), so the file is read directly instead of over HTTP."""
+    from urllib.parse import urlparse, parse_qs, unquote
+
+    parsed = urlparse(file_url)
+    qs = parse_qs(parsed.query)
+    path = qs.get("path", [None])[0]
+    if not path:
+        raise RuntimeError(f"could not parse local path out of audio url: {file_url}")
+    return unquote(path)
+
+
 def float_to_pcm16(audio: np.ndarray) -> bytes:
     clipped = np.clip(audio, -1.0, 1.0)
     return (clipped * 32767.0).astype("<i2").tobytes()
@@ -128,42 +153,32 @@ class GenParams:
 
 
 class AceStepModel:
-    """Wraps the ACE-Step model, preferring the in-process Python API and
-    falling back to the bundled HTTP server if that import/call fails.
+    """Drives the bundled ACE-Step HTTP API as a subprocess.
+
+    Note: RunPod's own nginx already listens on port 8001 (the port the
+    acestep-api CLI defaults to), so this binds the subprocess to 8010
+    instead -- confirmed by hitting a real pod (see README).
     """
 
     def __init__(self, model_dir: str):
         self.model_dir = model_dir
-        self._handler = None
         self._http_proc: Optional[subprocess.Popen] = None
         self._http_base = "http://127.0.0.1:8010"
-        self._mode = None  # 'inprocess' | 'http'
 
     def load(self) -> None:
-        try:
-            self._load_inprocess()
-            self._mode = "inprocess"
-            log.info("ACE-Step loaded in-process")
-        except Exception:
-            log.exception("in-process ACE-Step load failed, falling back to HTTP subprocess")
-            self._start_http_server()
-            self._mode = "http"
-
-    def _load_inprocess(self) -> None:
-        # NOTE(unverified): exact constructor kwargs for AceStepHandler are taken from the
-        # task brief description of acestep/api/http/release_task_models.py and
-        # acestep.handler.AceStepHandler; not confirmed against the repo source in this
-        # environment. If the signature differs, this raises and we fall back to HTTP.
-        from acestep.handler import AceStepHandler  # type: ignore
-
-        self._handler = AceStepHandler(checkpoint_dir=self.model_dir)
-        self._handler.load()
+        self._start_http_server()
 
     def _start_http_server(self) -> None:
+        # The real env var (acestep/model_downloader.py:get_checkpoints_dir)
+        # is ACESTEP_CHECKPOINTS_DIR, not ACE_MODEL_DIR/ACESTEP_MODEL_DIR --
+        # the original draft used a made-up name that ACE-Step never reads,
+        # so ACE_MODEL_DIR silently had no effect and weights always went to
+        # the default <ace repo>/checkpoints.
         env = dict(os.environ)
-        env.setdefault("ACE_MODEL_DIR", self.model_dir)
+        env.setdefault("ACESTEP_CHECKPOINTS_DIR", self.model_dir)
         self._http_proc = subprocess.Popen(
             ["uv", "run", "acestep-api", "--host", "127.0.0.1", "--port", "8010"],
+            cwd=ACE_REPO_DIR,
             env=env,
         )
         import urllib.request
@@ -172,8 +187,11 @@ class AceStepModel:
         while time.time() < deadline:
             try:
                 urllib.request.urlopen(f"{self._http_base}/health", timeout=2)
+                log.info("acestep-api subprocess healthy")
                 return
             except Exception:
+                if self._http_proc.poll() is not None:
+                    raise RuntimeError("acestep-api subprocess exited during startup")
                 time.sleep(2)
         raise RuntimeError("acestep-api subprocess did not become healthy in time")
 
@@ -191,35 +209,18 @@ class AceStepModel:
         self.generate(params)
 
     def generate(self, params: GenParams) -> np.ndarray:
-        if self._mode == "inprocess":
-            return self._generate_inprocess(params)
         return self._generate_http(params)
 
-    def _generate_inprocess(self, params: GenParams) -> np.ndarray:
-        # NOTE(unverified): GenerationParams/generate_music signature per task brief;
-        # adjust field names to match acestep.inference if they differ.
-        from acestep.inference import GenerationParams, generate_music  # type: ignore
-
-        gp = GenerationParams(
-            task_type=params.task_type,
-            prompt=params.prompt,
-            bpm=params.bpm,
-            key_scale=params.key_scale,
-            audio_duration=params.audio_duration,
-            inference_steps=params.inference_steps,
-            guidance_scale=params.guidance,
-            seed=params.seed,
-            src_audio_path=params.src_audio_path,
-            track_classes=params.track_classes,
-        )
-        result = generate_music(self._handler, gp)
-        audio = np.asarray(result.audio, dtype=np.float32)
-        sr = getattr(result, "sample_rate", MODEL_OUTPUT_SR)
-        return resample_to_48k(audio, sr)
-
     def _generate_http(self, params: GenParams) -> np.ndarray:
-        import urllib.request
-
+        # Field names below match acestep/api/http/release_task_param_parser.py's
+        # PARAM_ALIASES exactly (verified against the real /release_task route):
+        # "prompt", "key_scale", "audio_duration", "guidance_scale" (NOT
+        # "guidance" -- the original draft used the wrong key and every
+        # request would silently fall back to the request model's guidance_scale
+        # default of 7.0), "src_audio_path", "track_classes". audio_format=wav
+        # avoids mp3 lossy round-tripping and skips an extra ffmpeg decode.
+        # batch_size=1 avoids generating (and paying for) 2 candidates per
+        # block -- the server's own default is 2.
         body = {
             "task_type": params.task_type,
             "prompt": params.prompt,
@@ -227,13 +228,18 @@ class AceStepModel:
             "key_scale": params.key_scale,
             "audio_duration": params.audio_duration,
             "inference_steps": params.inference_steps,
-            "guidance": params.guidance,
+            "guidance_scale": params.guidance,
             "seed": params.seed,
+            "use_random_seed": False,
+            "batch_size": 1,
+            "audio_format": "wav",
         }
         if params.src_audio_path:
             body["src_audio_path"] = params.src_audio_path
         if params.track_classes:
             body["track_classes"] = params.track_classes
+
+        import urllib.request
 
         req = urllib.request.Request(
             f"{self._http_base}/release_task",
@@ -243,9 +249,17 @@ class AceStepModel:
         )
         with urllib.request.urlopen(req, timeout=60) as resp:
             release = json.loads(resp.read())
-        task_id = release["task_id"]
+        task_id = release["data"]["task_id"]
 
-        deadline = time.time() + 120
+        # /query_result's actual response shape (verified live):
+        # {"data": [{"task_id", "status": 0|1|2, "result": <JSON-encoded
+        # list of per-candidate dicts>, "progress_text"}]}. status 1 =
+        # succeeded, 2 = failed, 0 = queued/running. Each candidate's
+        # "file" is "/v1/audio?path=<urlencoded local path>" -- since this
+        # process runs on the same host as the acestep-api subprocess, the
+        # local path is decoded and read directly instead of round-tripping
+        # over HTTP.
+        deadline = time.time() + 300
         out_path = None
         while time.time() < deadline:
             q = urllib.request.Request(
@@ -255,12 +269,21 @@ class AceStepModel:
                 method="POST",
             )
             with urllib.request.urlopen(q, timeout=30) as resp:
-                result = json.loads(resp.read())
-            entry = result.get(task_id) or (result.get("results") or {}).get(task_id)
-            if entry and entry.get("status") == "done":
-                out_path = entry["audio_path"]
+                envelope = json.loads(resp.read())
+            entries = envelope.get("data") or []
+            entry = next((e for e in entries if e.get("task_id") == task_id), None)
+            if entry is None:
+                raise RuntimeError(f"ACE-Step task {task_id} missing from query_result response")
+            status = entry.get("status")
+            if status == 2:
+                raise RuntimeError(f"ACE-Step task {task_id} failed: {entry.get('progress_text')}")
+            if status == 1:
+                candidates = json.loads(entry["result"])
+                if not candidates or not candidates[0].get("file"):
+                    raise RuntimeError(f"ACE-Step task {task_id} succeeded with no audio file")
+                out_path = _local_path_from_audio_url(candidates[0]["file"])
                 break
-            time.sleep(0.3)
+            time.sleep(1.0)
         if out_path is None:
             raise RuntimeError(f"ACE-Step task {task_id} timed out")
 

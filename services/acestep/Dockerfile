@@ -4,7 +4,8 @@ FROM runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PIP_NO_CACHE_DIR=1 \
-    ACE_MODEL_DIR=/workspace/models \
+    ACESTEP_CHECKPOINTS_DIR=/workspace/models \
+    ACE_REPO_DIR=/opt/ace-step \
     PORT=8080
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -21,18 +22,22 @@ RUN git clone https://github.com/ace-step/ACE-Step-1.5.git ace-step \
     && uv sync
 
 # --- Weights ---
-# Baking weights in keeps cold start fast but adds ~8.5 GB (4.8 GB DiT-turbo +
-# 3.7 GB LM) on top of the CUDA devel base (~9-10 GB) and the uv-synced deps
-# (~3-4 GB with torch already in the base image) -- roughly 20-22 GB total,
-# right at the edge of the "~20 GB" budget in the task brief. Default here is
-# to download at first container start into ACE_MODEL_DIR (mount a RunPod
-# network volume at /workspace so weights persist across pod restarts); pass
-# --build-arg BAKE_WEIGHTS=1 to bake them in instead if registry/pull time
-# matters more than image size.
+# Baking weights in keeps cold start fast but adds several GB on top of the
+# CUDA devel base (~9-10 GB) and the uv-synced deps (~3-4 GB with torch
+# already in the base image). Default here is to download at first
+# container start into ACESTEP_CHECKPOINTS_DIR (mount a RunPod network
+# volume at /workspace so weights persist across pod restarts); pass
+# --build-arg BAKE_WEIGHTS=1 to pre-fetch the turbo DiT + VAE + default 5Hz
+# LM at build time instead, via the real download helper
+# (acestep.api.model_download.ensure_model_downloaded -- verified against
+# the ACE-Step 1.5 source; the previous draft called a made-up
+# AceStepHandler(checkpoint_dir=...) constructor that doesn't exist).
 ARG BAKE_WEIGHTS=0
 RUN if [ "$BAKE_WEIGHTS" = "1" ]; then \
-        cd /opt/ace-step && mkdir -p ${ACE_MODEL_DIR} && \
-        uv run python -c "from acestep.handler import AceStepHandler; AceStepHandler(checkpoint_dir='${ACE_MODEL_DIR}').load()" ; \
+        cd /opt/ace-step && mkdir -p ${ACESTEP_CHECKPOINTS_DIR} && \
+        uv run python -c "\
+from acestep.api.model_download import ensure_model_downloaded; \
+[ensure_model_downloaded(m, '${ACESTEP_CHECKPOINTS_DIR}') for m in ('acestep-v15-turbo', 'vae', 'acestep-5Hz-lm-0.6B')]" ; \
     fi
 
 WORKDIR /opt/backline-acestep
@@ -40,8 +45,7 @@ COPY requirements.txt ./
 RUN /opt/ace-step/.venv/bin/pip install -r requirements.txt
 COPY server.py ./
 
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/opt/ace-step
+ENV PYTHONUNBUFFERED=1
 EXPOSE 8080
 
 CMD ["/opt/ace-step/.venv/bin/python", "server.py"]
