@@ -77,6 +77,36 @@ describe('LyriaEngine control coalescing', () => {
     }
   });
 
+  it('handles every server message shape without throwing or erroring', async () => {
+    // The shapes the live session actually delivers. Only audioChunks carries
+    // audio; the others must be ignored quietly rather than treated as a fault.
+    const rejections: unknown[] = [];
+    const onUnhandled = (reason: unknown) => rejections.push(reason);
+    process.on('unhandledRejection', onUnhandled);
+
+    try {
+      const engine = new LyriaEngine(fakeCtx());
+      const onError = vi.fn();
+      engine.onError = onError;
+      await engine.start(100, 0);
+
+      const { onmessage } = connectMock.mock.calls[0][0].callbacks;
+      onmessage({ setupComplete: {} });
+      onmessage({ filteredPrompt: { text: 'death metal', filteredReason: 'blocked' } });
+      onmessage({});
+      onmessage({ serverContent: {} });
+      onmessage({ serverContent: { audioChunks: [] } });
+
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(onError).not.toHaveBeenCalled();
+      expect(rejections).toHaveLength(0);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
+  });
+
   it('coalesces 10 rapid changes into exactly one applyAll within 250ms of the first', async () => {
     const engine = new LyriaEngine(fakeCtx());
     await engine.start(100, 0);

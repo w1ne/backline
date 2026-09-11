@@ -13,6 +13,51 @@ export interface Env {
 const SESSION_TTL_SECONDS = 12 * 60 * 60;
 const COOKIE_NAME = "bl_session";
 
+/**
+ * Normalizes one inbound WebSocket frame into something `send()` forwards
+ * verbatim.
+ *
+ * A binary frame does not always arrive as an ArrayBuffer: depending on the
+ * runtime's compatibility date it can be a Blob (the web-standard
+ * `binaryType: "blob"` default). `send()` accepts only strings and buffers, so
+ * handing it a Blob coerces it with String() and every frame becomes the
+ * 13-byte text "[object Blob]" — which is what the browser then fails to
+ * JSON.parse.
+ */
+export async function toSendable(data: unknown): Promise<string | ArrayBuffer> {
+  if (typeof data === "string") return data;
+  if (data instanceof ArrayBuffer) return data;
+  if (ArrayBuffer.isView(data)) {
+    const view = data as ArrayBufferView;
+    return view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength) as ArrayBuffer;
+  }
+  if (data && typeof (data as Blob).arrayBuffer === "function") return (data as Blob).arrayBuffer();
+  throw new TypeError(`unforwardable WebSocket frame: ${Object.prototype.toString.call(data)}`);
+}
+
+/** Forwards every frame from one socket to the other, preserving frame order
+ *  even when a frame needs an async conversion. */
+function pipe(from: WebSocket, to: WebSocket): void {
+  // Ask for ArrayBuffers where the runtime supports it, so the common path
+  // needs no conversion at all.
+  try {
+    (from as { binaryType?: string }).binaryType = "arraybuffer";
+  } catch {
+    /* runtime pins binaryType; toSendable() still handles whatever arrives */
+  }
+  let tail: Promise<void> = Promise.resolve();
+  from.addEventListener("message", (ev: MessageEvent) => {
+    const converted = toSendable(ev.data);
+    tail = tail.then(async () => {
+      try {
+        to.send(await converted);
+      } catch {
+        /* peer already closed, or an unforwardable frame */
+      }
+    });
+  });
+}
+
 function corsHeaders(env: Env): HeadersInit {
   return {
     "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN,
@@ -190,20 +235,8 @@ async function handleLyria(req: Request, env: Env): Promise<Response> {
   const server = pair[1];
   server.accept();
 
-  server.addEventListener("message", (ev: MessageEvent) => {
-    try {
-      upstream.send(ev.data as string | ArrayBuffer);
-    } catch {
-      /* upstream already closed */
-    }
-  });
-  upstream.addEventListener("message", (ev: MessageEvent) => {
-    try {
-      server.send(ev.data as string | ArrayBuffer);
-    } catch {
-      /* client already closed */
-    }
-  });
+  pipe(server, upstream);
+  pipe(upstream, server);
 
   server.addEventListener("close", (ev: CloseEvent) => {
     try {

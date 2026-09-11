@@ -1,6 +1,7 @@
 import { GENRES, INSTRUMENTS } from '../types';
 import type { Genre, Instrument } from '../types';
 import { keyName } from '../music/scales';
+import { DEBUG } from '../debug';
 import type { AppState, Store } from './state';
 
 const KEY_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -135,6 +136,9 @@ function skeleton(): string {
 }
 
 function wireControls(screen: HTMLElement, store: Store): void {
+  // ?debug=1: how many times this element had listeners attached. Anything but
+  // "1" means a re-render re-wired it and every click fires N handlers.
+  if (DEBUG) screen.dataset.wired = String(Number(screen.dataset.wired ?? 0) + 1);
   const actions = (): LiveActions => actionsRef.get(screen)!;
   const genreSelect = screen.querySelector<HTMLSelectElement>('#genre')!;
   genreSelect.addEventListener('change', e => {
@@ -382,6 +386,25 @@ const enabledAtBar = new WeakMap<HTMLElement, Partial<Record<Instrument, number>
 // engines with changeLatencyMs > 0 (e.g. Lyria) settle on a wall-clock timer instead of a bar
 const pendingUntil = new WeakMap<HTMLElement, Partial<Record<Instrument, number>>>();
 const lastOn = new WeakMap<HTMLElement, Partial<Record<Instrument, boolean>>>();
+// newest state per screen, so a settle timer can re-derive its label instead of
+// writing one straight to the DOM behind update()'s back
+const lastState = new WeakMap<HTMLElement, AppState>();
+
+/**
+ * The label under an instrument tile.
+ *
+ * A tile is that instrument's mute button, so the label must always follow
+ * `on`. Whether the band has locked a tempo yet is a separate axis and must
+ * never be reported as "off": doing so made every tile read "off" while the
+ * band was still listening, so toggling an instrument looked like it did
+ * nothing, and the label contradicted the tile's own lit/unlit state.
+ */
+export function tileLabel(on: boolean, locked: boolean, pending: boolean, justJoined: boolean): string {
+  if (!on) return locked && pending ? 'leaving…' : 'off';
+  if (!locked) return 'ready';
+  if (pending) return 'joining…';
+  return justJoined ? 'joins next bar' : 'playing';
+}
 
 function updateTiles(screen: HTMLElement, s: AppState, changeLatencyMs: number): void {
   if (!enabledAtBar.has(screen)) enabledAtBar.set(screen, {});
@@ -390,35 +413,34 @@ function updateTiles(screen: HTMLElement, s: AppState, changeLatencyMs: number):
   const since = enabledAtBar.get(screen)!;
   const until = pendingUntil.get(screen)!;
   const last = lastOn.get(screen)!;
+  lastState.set(screen, s);
 
   for (const i of INSTRUMENTS) {
     const btn = screen.querySelector<HTMLButtonElement>(`#inst-tiles button[data-inst="${i}"]`)!;
     const on = s.enabled[i];
     btn.classList.toggle('on', on);
 
-    let text: string;
+    let pending = false;
+    let justJoined = false;
     if (changeLatencyMs > 0) {
       if (last[i] !== on) {
         until[i] = Date.now() + changeLatencyMs;
         last[i] = on;
+        // Re-render once the settle window closes. By then last[i] === on, so
+        // this schedules no further timer.
         window.setTimeout(() => {
-          const textEl = btn.querySelector<HTMLElement>('.st-text')!;
-          const meterEl = btn.querySelector<HTMLElement>('.meter i')!;
-          const stillOn = last[i];
-          const settledText = stillOn ? 'playing' : 'off';
-          textEl.textContent = settledText;
-          meterEl.style.width = settledText === 'playing' ? '60%' : '0';
-          btn.classList.remove('pending');
+          const fresh = lastState.get(screen);
+          if (fresh) updateTiles(screen, fresh, changeLatencyMs);
         }, changeLatencyMs);
       }
-      const pending = until[i] !== undefined && Date.now() < (until[i] as number);
-      text = !s.locked ? 'off' : pending ? (on ? 'joining…' : 'leaving…') : on ? 'playing' : 'off';
+      pending = until[i] !== undefined && Date.now() < (until[i] as number);
     } else {
       if (on && since[i] === undefined) since[i] = s.bar;
       if (!on) since[i] = undefined;
-      const justJoined = on && since[i] !== undefined && s.bar <= (since[i] as number);
-      text = !on ? 'off' : !s.locked ? 'off' : justJoined ? 'joins next bar' : 'playing';
+      justJoined = on && since[i] !== undefined && s.bar <= (since[i] as number);
     }
+
+    const text = tileLabel(on, s.locked, pending, justJoined);
     btn.querySelector<HTMLElement>('.st-text')!.textContent = text;
     // blinking LED while the engine settles the change
     btn.classList.toggle('pending', text === 'joining…' || text === 'leaving…');
