@@ -29,6 +29,7 @@ export class Players implements PlayersLike {
   }
 
   schedule(inst: Instrument, events: NoteEvent[], barStart: number, bpm: number) {
+    if (!(bpm > 0)) return;
     if (!this.set) return;
     const spb = 60 / bpm;
     for (const e of events) {

@@ -27,9 +27,9 @@ Hackathon build: 50 hours, 5+ people, browser only, no network on the critical p
 
 Two engines behind one `BandEngine` interface, chosen on the setup screen:
 
-- **Lyria RealTime (Gemini API)** — the primary sound on any laptop. Our listener steers it: bpm, scale (from the detected key), weighted genre/instrument prompts, mute_drums/mute_bass for toggles, temperature+density from Creativity. Measured 2026-09-11: 3 s to first audio, every control change audible ~2.0–2.6 s later (one bar), `resetContext()` ~0.3 s but cuts audio (used only for key/bpm). Fixed 2 s chunks, ~3 s playback buffer. One session per jam (reconnects hit 429). API key entered by the user (ephemeral tokens don't work with Lyria).
+- **Lyria RealTime (Gemini API)** — the any-laptop engine. Our listener steers it: bpm, scale (from the detected key), weighted genre/instrument prompts, mute_drums/mute_bass for toggles, temperature+density from Creativity. Measured 2026-09-11: 3 s to first audio, every control change audible ~2.0–2.6 s later (one bar), `resetContext()` ~0.3 s but cuts audio, so the engine resets on every change and crossfades the seam (150 ms): toggles audible in ~0.5 s. Fixed 2 s chunks, ~3 s playback buffer. One session per jam (reconnects hit 429). API key entered by the user (ephemeral tokens don't work with Lyria).
 - **Patterns (offline)** — rule-based pattern banks + Tone.js. Zero network, zero change latency, guaranteed in key. Fallback and the tempo-Follow engine.
-- **Magenta RealTime 2 on the team M3 Pro** (planned, `bench/mrt2/`) — ~200 ms control latency and MIDI-pitch conditioning, served over a WebSocket from the Mac. Benchmark first.
+- **Magenta RealTime 2 on the team M3 Pro** (`bench/mrt2/`) — the live demo engine: ~200 ms control latency and MIDI-pitch conditioning, served over a WebSocket from the Mac. Benchmark first, then it becomes the default when reachable.
 
 ## Not in v1
 
