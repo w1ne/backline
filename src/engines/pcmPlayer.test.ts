@@ -108,3 +108,66 @@ function getLastSource(player: PcmPlayer): FakeBufferSourceNode {
   const queue = (player as unknown as { queue: { source: FakeBufferSourceNode }[] }).queue;
   return queue[queue.length - 1].source;
 }
+
+function getLastBuffer(player: PcmPlayer): { duration: number } {
+  const queue = (player as unknown as { queue: { source: FakeBufferSourceNode }[] }).queue;
+  return queue[queue.length - 1].source.buffer as { duration: number };
+}
+
+describe('PcmPlayer underrun gap-filler', () => {
+  let ctx: FakeAudioContext;
+
+  beforeEach(() => {
+    ctx = new FakeAudioContext();
+  });
+
+  it('loops the last bar when the stream underruns', () => {
+    const player = new PcmPlayer(ctx as unknown as AudioContext, 3);
+    player.setBarSeconds(2.18); // 110 bpm
+    ctx.currentTime = 10;
+    player.push(stereoChunk(48000 * 2)); // starts at 13 (10 + bufferAheadSec), ends at 15
+    player.push(stereoChunk(48000 * 2)); // chains on, ends at 17
+    const lastEndBeforeUnderrun = 17;
+    ctx.currentTime = lastEndBeforeUnderrun - 0.2; // gap = 0.2s < LOW_WATER (0.25s)
+
+    player.checkUnderrun();
+
+    const src = getLastSource(player);
+    const buf = getLastBuffer(player);
+    expect(src.startedAt).toBeCloseTo(lastEndBeforeUnderrun, 5);
+    expect(buf.duration).toBeCloseTo(2.18, 5);
+    expect(player.stats.loops).toBe(1);
+  });
+
+  it('schedules a push arriving during a loop at the loop end, not now + bufferAheadSec', () => {
+    const player = new PcmPlayer(ctx as unknown as AudioContext, 3);
+    player.setBarSeconds(2.18);
+    ctx.currentTime = 10;
+    player.push(stereoChunk(48000 * 2)); // starts at 13, ends at 15
+    player.push(stereoChunk(48000 * 2)); // chains on, ends at 17
+    ctx.currentTime = 17 - 0.2;
+    player.checkUnderrun(); // schedules a loop segment: 17 -> 19.18
+
+    ctx.currentTime = 17.5;
+    player.push(stereoChunk(100)); // a real chunk arrives mid-loop
+    const src = getLastSource(player);
+    expect(src.startedAt).toBeCloseTo(19.18, 5);
+  });
+
+  it('does not loop after cut() clears the ring (no material)', () => {
+    const player = new PcmPlayer(ctx as unknown as AudioContext, 3);
+    player.setBarSeconds(2.18);
+    ctx.currentTime = 10;
+    player.push(stereoChunk(48000 * 2)); // starts at 13, ends at 15
+    player.push(stereoChunk(48000 * 2)); // chains on, ends at 17
+    ctx.currentTime = 11;
+    player.cut(0.15); // clears the ring; lastEnd becomes 11.15
+
+    const lastEndAfterCut = 11.15;
+    ctx.currentTime = lastEndAfterCut - 0.2;
+    const loopsBefore = player.stats.loops;
+    player.checkUnderrun();
+
+    expect(player.stats.loops).toBe(loopsBefore);
+  });
+});

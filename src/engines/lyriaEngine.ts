@@ -20,6 +20,7 @@ export class LyriaEngine implements BandEngine {
   readonly bpmStep = 2;
   onBar?: (bar: number) => void;
   onError?: (msg: string) => void;
+  onStats?: (s: { loops: number; starvedSec: number }) => void;
 
   private state: BandState = {
     genre: 'lofi',
@@ -41,6 +42,7 @@ export class LyriaEngine implements BandEngine {
   async start(bpm: number, firstBarAt: number): Promise<void> {
     this.bpm = bpm;
     this.player = new PcmPlayer(this.ctx);
+    this.player.setBarSeconds(240 / bpm);
 
     try {
       // apiKey is a placeholder the relay Worker ignores; auth is via the bl_session
@@ -84,6 +86,7 @@ export class LyriaEngine implements BandEngine {
       this.startTimer = undefined;
       this.barTimer = setInterval(() => {
         this.onBar?.(this.bar++);
+        if (this.player) this.onStats?.(this.player.stats);
       }, barLenMs);
       this.onBar?.(this.bar++);
     }, delay);
@@ -129,6 +132,7 @@ export class LyriaEngine implements BandEngine {
   setBpm(bpm: number): void {
     if (bpm === this.bpm) return;
     this.bpm = bpm;
+    this.player?.setBarSeconds(240 / bpm);
     this.scheduleApply();
   }
 
