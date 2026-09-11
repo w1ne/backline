@@ -187,13 +187,20 @@ async function handleLyria(req: Request, env: Env): Promise<Response> {
   // key instead.
   const upstreamPath = url.pathname.replace(/^\/+/, "/");
   const upstreamUrl = new URL(`https://generativelanguage.googleapis.com${upstreamPath}`);
-  upstreamUrl.protocol = "wss:";
+  // Workers open outbound WebSockets with an https:// URL plus the Upgrade
+  // header; a wss:// scheme throws inside fetch().
   upstreamUrl.searchParams.set("key", env.GEMINI_API_KEY);
 
-  const upstreamResp = await fetch(upstreamUrl.toString(), { headers: { Upgrade: "websocket" } });
+  let upstreamResp: Response;
+  try {
+    upstreamResp = await fetch(upstreamUrl.toString(), { headers: { Upgrade: "websocket" } });
+  } catch (e) {
+    return new Response(`upstream connect failed: ${(e as Error).message}`, { status: 502 });
+  }
   const upstream = upstreamResp.webSocket;
   if (!upstream) {
-    return new Response("upstream did not upgrade", { status: 502 });
+    const body = await upstreamResp.text().catch(() => "");
+    return new Response(`upstream did not upgrade: ${upstreamResp.status} ${body.slice(0, 200)}`, { status: 502 });
   }
   upstream.accept();
 
