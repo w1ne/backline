@@ -4,6 +4,8 @@ Cloudflare Worker that lets the static Backline web app (https://shylenko.com/ba
 use Google's Lyria RealTime music API without shipping the Gemini API key to the
 browser, gated to GitHub users who are collaborators on `w1ne/backline`.
 
+Deployed at https://backline-relay.shylenkoa.workers.dev.
+
 ## Endpoints
 
 - `GET /health` — plaintext `ok`.
@@ -23,13 +25,9 @@ browser, gated to GitHub users who are collaborators on `w1ne/backline`.
   `GET /lyria` is kept as a plain alias to the same handler for callers that
   don't go through the SDK.
 
-  Auth (checked in this order): a `bl_session` cookie; a `?t=<token>` query
-  param carrying the same signed token; or a `Sec-WebSocket-Protocol` value
-  `bl.<token>` — used because the `@google/genai` SDK controls the WebSocket
-  URL and offers no hook to add headers, cookies, or query params to the
-  upgrade request it makes, but does let callers set a WebSocket subprotocol.
-  The Worker echoes the matched subprotocol back on the 101 response, as
-  required by the WebSocket protocol when a subprotocol was requested.
+  Auth: the `bl_session` cookie only. The cookie is `SameSite=None; Secure`,
+  so browsers send it on the cross-site WebSocket upgrade without any extra
+  wiring from the app.
 
 ## Deploy
 
@@ -90,10 +88,13 @@ Where `RELAY_URL` (`src/config.ts`) defaults to
 `https://backline-relay.shylenkoa.workers.dev`, overridable via
 `VITE_RELAY_URL`.
 
-The `@google/genai` SDK gives websockets no hook to attach headers or a
-subprotocol, so the `?t=<token>` and `bl.<token>` fallbacks the Worker
-supports are not wired up from the app yet — auth relies solely on the
-`bl_session` cookie being sent on the cross-site WebSocket upgrade.
+## Browser support
+
+Sign-in currently works in Chrome. Safari and Firefox block the third-party
+`bl_session` cookie because `workers.dev` is on the Public Suffix List, which
+makes the relay and the app look like unrelated sites to those browsers'
+cross-site cookie rules. The fix is to move the relay to a `shylenko.com`
+subdomain (e.g. `relay.shylenko.com`) so the cookie is same-site with the app.
 
 ## Development
 
@@ -109,6 +110,4 @@ npm test            # vitest run — cookie/state sign+verify unit tests
   Fetch API behavior (the URL is opaque to the runtime), not something specific
   to the WebSocket upgrade path, which Cloudflare's docs describe only in terms
   of the `Upgrade` header handling
-  (https://developers.cloudflare.com/workers/examples/websockets/). Not
-  independently verified against Google's Lyria endpoint since deploying is
-  out of scope here.
+  (https://developers.cloudflare.com/workers/examples/websockets/).

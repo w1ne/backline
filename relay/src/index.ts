@@ -52,9 +52,9 @@ function forbiddenPage(login: string | null): Response {
   );
 }
 
-function isAllowedRedirect(url: string, env: Env): boolean {
+export function isAllowedRedirect(url: string, env: Env): boolean {
   try {
-    return url.startsWith(env.ALLOWED_ORIGIN);
+    return new URL(url).origin === env.ALLOWED_ORIGIN;
   } catch {
     return false;
   }
@@ -138,8 +138,6 @@ async function handleMe(req: Request, env: Env): Promise<Response> {
   });
 }
 
-const SUBPROTOCOL_PREFIX = "bl.";
-
 // True for any "/ws/.../BidiGenerateMusic" path, matching the URL shape the
 // @google/genai SDK builds when pointed at this Worker via httpOptions.baseUrl
 // (any apiVersion segment, e.g. v1alpha).
@@ -156,25 +154,8 @@ async function handleLyria(req: Request, env: Env): Promise<Response> {
 
   const url = new URL(req.url);
 
-  // Auth: cookie, then ?t=<token> fallback, then Sec-WebSocket-Protocol
-  // "bl.<token>" (used by SDK-driven clients that cannot set headers/cookies
-  // or control the query string on the upgrade request).
-  let token = readCookie(req, COOKIE_NAME);
-  if (!token) token = url.searchParams.get("t");
-  let matchedProtocol: string | null = null;
-  if (!token) {
-    const protoHeader = req.headers.get("Sec-WebSocket-Protocol");
-    if (protoHeader) {
-      for (const raw of protoHeader.split(",")) {
-        const p = raw.trim();
-        if (p.startsWith(SUBPROTOCOL_PREFIX)) {
-          token = p.slice(SUBPROTOCOL_PREFIX.length);
-          matchedProtocol = p;
-          break;
-        }
-      }
-    }
-  }
+  // Auth: bl_session cookie only.
+  const token = readCookie(req, COOKIE_NAME);
   const session = token ? await verifySession(env.SESSION_SECRET, token) : null;
   if (!session) return new Response("unauthorized", { status: 401 });
 
@@ -256,7 +237,6 @@ async function handleLyria(req: Request, env: Env): Promise<Response> {
   return new Response(null, {
     status: 101,
     webSocket: client,
-    ...(matchedProtocol ? { headers: { "Sec-WebSocket-Protocol": matchedProtocol } } : {}),
   });
 }
 
