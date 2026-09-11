@@ -56,9 +56,11 @@ function skeleton(): string {
   return `
     <div class="screen" data-live>
       <div class="bar">
-        <h1 class="logo">Back<i>line</i></h1>
+        <div class="bar-top">
+          <h1 class="logo">Back<i>line</i></h1>
+          <span class="pill" id="live-pill"></span>
+        </div>
         <span class="lcd" id="lcd"></span>
-        <span class="pill" id="live-pill"></span>
       </div>
       <div class="readout">
         <div class="ro-tempo"><small>Tempo</small><strong id="ro-tempo">&mdash;</strong></div>
@@ -297,11 +299,7 @@ function updatePower(screen: HTMLElement, s: AppState): void {
   screen.classList.toggle('powered', on);
   screen.querySelector<HTMLElement>('#power-key')!.hidden = on;
   screen.querySelector<HTMLElement>('#power-off-key')!.hidden = !on;
-  screen
-    .querySelectorAll<HTMLElement>(
-      '#genre-chips, .knob-zone, .inst, .manual, .engine, #inst-tiles, #creativity-knob',
-    )
-    .forEach(el => el.classList.toggle('dimmed', !on));
+  screen.querySelectorAll<HTMLElement>('#inst-tiles, .row2 .zone').forEach(el => el.classList.toggle('dimmed', !on));
 }
 
 function updateEngine(screen: HTMLElement, s: AppState): void {

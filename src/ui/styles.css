@@ -65,8 +65,20 @@ body {
   box-shadow: 12px 12px 0 var(--orange);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   font-size: 14px;
+}
+
+/* Above the phone/tablet breakpoint the panel fits one viewport with no page
+   scroll: a fixed grid of rows, the middle one (controls) doing the flexing. */
+@media (min-width: 901px) {
+  .screen {
+    display: grid;
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+    height: calc(100vh - 32px);
+    max-height: 820px;
+    overflow: hidden;
+  }
 }
 
 /* ---------- wordmark ---------- */
@@ -76,10 +88,30 @@ body {
   border-radius: 12px;
   padding: 12px 16px;
   display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bar-top {
+  display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
   flex-wrap: wrap;
+}
+
+.lcd {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: var(--screen);
+  color: var(--led);
+  border-radius: 8px;
+  padding: 8px 12px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .logo {
@@ -312,20 +344,11 @@ body {
   padding: 16px 34px;
 }
 
-.lcd {
-  font-family: var(--mono);
-  font-size: 12px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  background: var(--ink);
-  color: #7fffb0;
-  border-radius: 8px;
-  padding: 8px 12px;
-  flex: 1;
-  text-align: center;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+#power-key,
+#power-off-key {
+  font-size: clamp(16px, 2.4vw, 22px);
+  padding: 14px 28px;
+  flex: 0 0 auto;
 }
 
 .dimmed {
@@ -674,8 +697,15 @@ body {
 
 .row2 {
   display: grid;
-  grid-template-columns: minmax(0, 210px) minmax(0, 1fr) minmax(0, 290px);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
+  min-height: 0;
+}
+
+.row2 .zone {
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
 .bottom {
@@ -747,11 +777,11 @@ body {
 
 .chips {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(78px, 1fr));
-  grid-auto-rows: minmax(64px, 92px);
-  align-content: center;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
   gap: 10px;
   flex: 1;
+  min-height: 0;
 }
 
 .chip {
@@ -795,6 +825,37 @@ body {
   background: var(--c);
 }
 
+/* ---------- live: engine block ---------- */
+
+.engine {
+  justify-content: center;
+  align-items: stretch;
+  gap: 10px;
+  text-align: center;
+}
+
+.engine .switch {
+  width: 100%;
+  justify-content: center;
+}
+
+.engine .switch button {
+  flex: 1;
+  text-align: center;
+}
+
+.engine #github-login {
+  font-size: 12px;
+  padding: 10px 12px;
+  font-family: var(--mono);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+}
+
+.engine #signed-in-as {
+  color: var(--panel);
+}
+
 /* ---------- live: manual panel ---------- */
 
 .manual {
@@ -823,13 +884,19 @@ body {
 .manual input[type='number'],
 .manual select {
   font-family: var(--mono);
-  font-size: 14px;
+  font-size: 13px;
   color: var(--ink);
   background: var(--panel);
   border: 3px solid var(--ink);
   border-radius: 9px;
-  padding: 8px 10px;
-  width: 118px;
+  padding: 6px 8px;
+  width: 92px;
+  min-width: 0;
+}
+
+.manual #tempoMode button {
+  padding: 8px 8px;
+  font-size: 10px;
 }
 
 #tempoMode-note {
@@ -912,15 +979,15 @@ body {
 /* ---------- live footer ---------- */
 
 .screen[data-live] .foot {
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: center;
-  gap: 6px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
 }
 
 .screen[data-live] .foot .hint {
   flex: 0 0 auto;
-  text-align: center;
+  text-align: right;
 }
 
 #latency {
@@ -949,8 +1016,14 @@ body {
 
 /* ---------- responsive ---------- */
 
-@media (max-width: 760px) {
-  .row2,
+@media (max-width: 900px) {
+  .row2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: minmax(160px, auto);
+  }
+  .row2 .zone {
+    height: auto;
+  }
   .bottom {
     grid-template-columns: 1fr;
   }
@@ -958,6 +1031,12 @@ body {
     flex-direction: row;
     justify-content: space-between;
     text-align: left;
+  }
+}
+
+@media (max-width: 640px) {
+  .row2 {
+    grid-template-columns: 1fr;
   }
 }
 
