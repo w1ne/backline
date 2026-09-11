@@ -3,51 +3,62 @@ import type { Genre } from '../types';
 import { login } from '../auth';
 import type { Store } from './state';
 
+// the drop-in only plays on the first paint, not on every state re-render
+let introPlayed = false;
+
 export function renderSetup(root: HTMLElement, store: Store, onStart: () => void | Promise<void>): void {
   const { source, genre, engine, user, error } = store.state;
+  const intro = introPlayed ? '' : ' intro';
+  introPlayed = true;
 
   root.innerHTML = `
-    <div class="screen">
+    <div class="screen${intro}">
       <div class="bar">
-        <span class="logo"><i></i>Backline</span>
+        <h1 class="logo">Back<i>line</i></h1>
+        <span class="swatches" aria-hidden="true">
+          <span style="--c:var(--orange)"></span><span style="--c:var(--yellow)"></span><span style="--c:var(--blue)"></span><span style="--c:var(--green)"></span><span style="--c:var(--pink)"></span>
+        </span>
         <span class="pill">ready</span>
       </div>
       <div class="grid2">
-        <div class="panel">
+        <div class="zone zone--orange">
           <h4>Your input</h4>
           <div class="choice" id="source-choice">
-            <button type="button" id="source-mic" class="${source === 'mic' ? 'on' : ''}">Microphone</button>
-            <button type="button" id="source-midi" class="${source === 'midi' ? 'on' : ''}">MIDI keyboard</button>
+            <button type="button" id="source-mic" class="key ${source === 'mic' ? 'on' : ''}">Mic</button>
+            <button type="button" id="source-midi" class="key ${source === 'midi' ? 'on' : ''}">Midi</button>
           </div>
         </div>
-        <div class="panel">
+        <div class="zone zone--ink">
           <h4>Genre</h4>
           <div class="choice" id="genre-choice">
             ${GENRES.map(
               g =>
-                `<button type="button" class="genre-btn ${g === genre ? 'on' : ''}" data-genre="${g}">${cap(g)}</button>`,
+                `<button type="button" class="key genre-btn ${g === genre ? 'on' : ''}" data-genre="${g}">${g}</button>`,
             ).join('')}
           </div>
         </div>
       </div>
-      <div class="panel">
+      <div class="zone zone--yellow">
         <h4>Engine</h4>
-        <div class="choice" id="engine-choice">
-          <button type="button" id="engine-lyria" class="${engine === 'lyria' ? 'on' : ''}">Lyria (API)</button>
-          <button type="button" id="engine-patterns" class="${engine === 'patterns' ? 'on' : ''}">Patterns (offline)</button>
-        </div>
-        <div id="auth-row" style="${engine === 'lyria' ? '' : 'display:none'}">
-          ${
-            user
-              ? `<span class="hint">Signed in as ${escapeHtml(user.login)}</span>`
-              : `<button type="button" class="btn" id="github-login">Sign in with GitHub</button>`
-          }
+        <div class="switch-row">
+          <span class="switch" id="engine-choice">
+            <button type="button" id="engine-lyria" class="${engine === 'lyria' ? 'on' : ''}">Lyria · api</button>
+            <button type="button" id="engine-patterns" class="${engine === 'patterns' ? 'on' : ''}">Patterns · offline</button>
+          </span>
+          <p class="hint">Patterns plays offline · Lyria streams from the API</p>
+          <span id="auth-row" style="${engine === 'lyria' ? '' : 'display:none'}">
+            ${
+              user
+                ? `<span class="hint">Signed in as ${escapeHtml(user.login)}</span>`
+                : `<button type="button" class="btn" id="github-login">Sign in · GitHub</button>`
+            }
+          </span>
         </div>
       </div>
-      ${error ? `<div class="hint" id="setup-error" style="color:#f66">${escapeHtml(error)}</div>` : ''}
-      <div class="foot">
-        <span class="hint">Play four bars and the band will lock onto you. Use headphones.</span>
-        <button type="button" class="btn" id="start-jam">Start jam</button>
+      ${error ? `<div class="err" id="setup-error">${escapeHtml(error)}</div>` : ''}
+      <div class="zone zone--green foot">
+        <p class="hint">Play four bars — the band locks onto you. Use headphones.</p>
+        <button type="button" class="btn big" id="start-jam">Start</button>
       </div>
     </div>
   `;
@@ -103,8 +114,4 @@ function readableStartError(err: unknown): string {
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function cap(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
 }
