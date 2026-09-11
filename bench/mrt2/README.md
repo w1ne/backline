@@ -176,3 +176,12 @@ or contradicted itself between sources. `bench.py`/`serve.py` are written to
 introspect the installed library at runtime and print/log what they actually
 find, rather than hard-coding my guesses — please read their console output,
 it will correct anything wrong in this doc.
+
+
+## Verified on Linux CPU (2026-09-11)
+
+`uv pip install magenta-rt` works on x86 Linux with the JAX CPU backend. Corrections to the notes above, found by running it:
+
+- The Python entry point is `magenta_rt.jax.system.MagentaRT2System` (there is no top-level `magenta_rt.system`); the CLI is `mrt jax generate --prompt funk --duration 4.0`.
+- `mrt models download` fetches the MLX-format checkpoint (443 MB), which the JAX path cannot use. For JAX (and for benchmarking on non-Mac hardware) run `mrt checkpoints download mrt2_small` to get the 1.1 GB safetensors checkpoint.
+- Result on a Ryzen 5 PRO 7540U (12 threads, no GPU): 394 ms per 40 ms step, real-time factor ≈ 9.9, peak RSS 4.2 GB. Not usable live on CPU; the Apple Silicon MLX path is the one to benchmark.
