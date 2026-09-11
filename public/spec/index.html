@@ -96,7 +96,7 @@ code{font-family:var(--mono);font-size:.9em;background:var(--paper-2);padding:1p
 </style></head><body>
 
 <div class="wrap">
-  <div class="eyebrow">Hackathon spec · draft 3 · 11 Sep 2026 · <a href="https://github.com/w1ne/backline" style="color:inherit">github.com/w1ne/backline</a></div>
+  <div class="eyebrow">Hackathon spec · draft 4 · 11 Sep 2026 · <a href="https://github.com/w1ne/backline" style="color:inherit">github.com/w1ne/backline</a></div>
   <h1>Backline</h1>
   <p class="lede">You play. A band in your browser hears your tempo and key and plays along. Drums, bass, keys and a lead line, each one you can switch on or off while you play.</p>
   <div class="meta"><span>50 hours</span><span>5+ people</span><span>web browser</span><span>mic or MIDI in</span><span>paid APIs allowed</span></div>
@@ -184,7 +184,7 @@ code{font-family:var(--mono);font-size:.9em;background:var(--paper-2);padding:1p
     <tr><td>Making sound</td><td>Tone.js or SpessaSynth with CC0 samples/soundfonts, one set per genre.</td><td>Model streams audio directly.</td></tr>
     <tr><td>Export</td><td>Record each instrument bus in the browser. Later "upload a track" mode: Demucs (MIT) + ACE-Step 1.5 <code>complete</code> (MIT code+weights) to add stems offline.</td><td>Same.</td></tr>
   </table></div>
-  <div class="note">Plan A is the demo: works offline, cannot play a wrong note. Nothing shipping today listens to live audio and plays along; MRT2 and Lyria are real-time but deaf, ACE-Step and Stable Audio hear you but are offline. That gap is the pitch. Avoid MusicGen, JASCO, YuE, madmom and Essentia models: non-commercial weights.</div>
+  <div class="note">Measured 11 Sep: Lyria RealTime delivers ~0.8× real time on our paid key (stalls every few seconds; the player loops the last bar to cover) and reacts to changes in ~0.5 s with a reset+crossfade. Access goes through our relay (GitHub sign-in, collaborators only; the API key never reaches the browser). Because of the rate, the live engine will be self-hosted on a cheap GPU: ACE-Step 1.5 (MIT; hears the player's audio, regenerates the next 4 bars one bar ahead) is being benchmarked first, Magenta RealTime 2 (streaming, ~200 ms) second. The pattern engine stays as the no-network baseline. Avoid MusicGen, JASCO, YuE, madmom and Essentia models: non-commercial weights.</div>
 
   <h2>6. Team split</h2>
   <div class="tbl"><table>
