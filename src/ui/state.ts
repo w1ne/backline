@@ -1,7 +1,7 @@
 import type { BandInput, Genre, Instrument } from '../types';
 import type { SourceStatus } from '../listener/listener';
 
-export type EngineChoice = 'lyria' | 'patterns';
+export type EngineChoice = 'lyria' | 'patterns' | 'acestep';
 
 export interface AppState {
   power: 'off' | 'on';

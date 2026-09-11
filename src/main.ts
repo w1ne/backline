@@ -12,6 +12,7 @@ import { INSTRUMENTS } from './types';
 import type { BandEngine } from './engines/engine';
 import { PatternEngine } from './engines/patternEngine';
 import { LyriaEngine } from './engines/lyriaEngine';
+import { AceStepEngine } from './engines/acestepEngine';
 import { forwardBpm } from './band/bpmForward';
 import { installDebug, recordToggle } from './debug';
 
@@ -41,6 +42,8 @@ async function power() {
   listener = new Listener([midi, mic], ['midi', 'mic']);
   if (engine === 'lyria') {
     band = new LyriaEngine(players.rawContext());
+  } else if (engine === 'acestep') {
+    band = new AceStepEngine(players.rawContext());
   } else {
     band = new PatternEngine(players, PATTERNS);
   }
