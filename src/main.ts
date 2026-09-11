@@ -151,3 +151,17 @@ getSession().then(user => {
   store.update({ user, ...(clearSignInError ? { error: null } : {}) });
 });
 store.update({});
+
+// ?demo=1 paints the live screen with sample state (design review / screenshots only).
+if (new URLSearchParams(location.search).has('demo')) {
+  store.update({
+    screen: 'live',
+    genre: 'funk',
+    creativity: 0.65,
+    locked: true,
+    bar: 9,
+    enabled: { drums: true, bass: true, keys: false, lead: true },
+    input: { bpm: 96, key: { root: 9, mode: 'minor' }, notesNow: [57, 60, 64], inputLevel: 0.72, onsets: 12 },
+  });
+  setLatency(root, 38);
+}
