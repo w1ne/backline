@@ -14,6 +14,7 @@ import type { BandEngine } from './engines/engine';
 import { PatternEngine } from './engines/patternEngine';
 import { LyriaEngine } from './engines/lyriaEngine';
 import { forwardBpm } from './band/bpmForward';
+import { installDebug, recordToggle } from './debug';
 
 const root = document.getElementById('app')!;
 const store = new Store();
@@ -98,6 +99,7 @@ store.subscribe(s => {
       const on = !store.state.enabled[i];
       band?.setEnabled(i, on);
       store.update({ enabled: { ...store.state.enabled, [i]: on } });
+      recordToggle(i, on, store.state.enabled);
     },
     setGenre: g => {
       players.setGenre(g);
@@ -135,6 +137,13 @@ store.subscribe(s => {
     },
     changeLatencyMs: band?.changeLatencyMs,
   });
+});
+
+installDebug({
+  store,
+  get band() {
+    return band;
+  },
 });
 
 getSession().then(user => {

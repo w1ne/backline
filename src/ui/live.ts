@@ -1,6 +1,7 @@
 import { GENRES, INSTRUMENTS } from '../types';
 import type { Genre, Instrument } from '../types';
 import { keyName } from '../music/scales';
+import { DEBUG } from '../debug';
 import type { AppState, Store } from './state';
 
 const KEY_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -101,6 +102,9 @@ function skeleton(): string {
 }
 
 function wireControls(screen: HTMLElement, store: Store): void {
+  // ?debug=1: how many times this element had listeners attached. Anything but
+  // "1" means a re-render re-wired it and every click fires N handlers.
+  if (DEBUG) screen.dataset.wired = String(Number(screen.dataset.wired ?? 0) + 1);
   const actions = (): LiveActions => actionsRef.get(screen)!;
   screen.querySelector<HTMLSelectElement>('#genre')!.addEventListener('change', e => {
     actions().setGenre((e.target as HTMLSelectElement).value as Genre);
