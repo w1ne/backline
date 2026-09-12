@@ -32,3 +32,15 @@ were nonempty in 8/12 trials; high creativity in 12/12. Rests remain possible.
 Median inference was 87–92ms; maximum 479ms including the first cold inference.
 These measurements establish control effects and timing, not subjective musical
 quality. Exact plans are retained in results.json.
+
+Deployment verification (b6e31d7): GitHub Actions 34715256487 passed build,
+GitHub Pages and Cloudflare Pages. Public HTML references index-BZcuCkCa.js;
+Pi runs index-CUQ16CIV.js. RunPod health reports Small/cuda/cached.
+On the Pi, 40 MIDI notes produced AMT keys/bass plus drums with 74ms observed
+inference and no recorded application rejections. Physical output capture peaked
+at .287. UI amount zero set all four routed gain values to zero, restoring .4
+set all four back to .4. Changing 100 to 150 BPM resent creativity .8 and amount
+.4 to the new socket. Original creativity .3, amount .4, nylon guitar and automatic
+tempo were restored afterward. The debug expression briefly attempted to parse
+an unset lastSetPayload before the new socket opened; retry after connection
+confirmed the payload, with no application error.
