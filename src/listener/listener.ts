@@ -38,6 +38,8 @@ export class Listener {
   private pitchNotes: { n: number; t: number }[] = [];
   private pitch: StablePitch | null = null;
   private lastStableMidi: number | null = null;
+  /** when a MIDI note last arrived; while none is recent the chord detector runs in melody mode */
+  private lastMidiNoteAt = -Infinity;
   private level = 0;
   private onsetCount = 0;
   /** onset times kept only for the live "~98 BPM" readout while listening */
@@ -56,9 +58,13 @@ export class Listener {
   private kinds: SourceKind[];
   private status: SourceStatus = { mic: 'off', midi: 'off' };
 
-  constructor(sources: Source[], kinds?: SourceKind[]) {
+  /** seconds on the clock every note, level and chord tick is stamped with; injectable for offline replay */
+  private now: () => number;
+
+  constructor(sources: Source[], kinds?: SourceKind[], now: () => number = () => performance.now() / 1000) {
     this.sources = sources;
     this.kinds = kinds ?? sources.map((_, i) => (i === 0 ? 'midi' : 'mic'));
+    this.now = now;
   }
 
   setTempoMode(m: 'locked' | 'follow') {
@@ -87,6 +93,7 @@ export class Listener {
       this.onsetTimes.push(t);
       if (this.onsetTimes.length > 24) this.onsetTimes.shift();
       if (n >= 0) {
+        this.lastMidiNoteAt = t;
         this.keyDet.addNote(n, v);
         this.chordDet.addNote(n, t, Math.max(0.3, v));
         this.recent.push({ n, t });
@@ -97,12 +104,12 @@ export class Listener {
     };
     const onLevel = (lvl: number) => {
       this.level = lvl;
-      this.activity.level(lvl, performance.now() / 1000);
+      this.activity.level(lvl, this.now());
       this.emit();
     };
     const onPitch = (p: StablePitch | null) => {
       this.pitch = p;
-      const now = performance.now() / 1000;
+      const now = this.now();
       if (p && p.stable) {
         // A voice glides through the cracks between scale tones; once the key is known,
         // land each sung pitch on the nearest scale tone so a slide does not drag the harmony.
@@ -193,7 +200,7 @@ export class Listener {
    * clock (`beatIndex` is absolute beats since the band started), not per note — the band
    * re-reads the player once a beat, the same rate it makes decisions at.
    */
-  tickBeat(beatIndex: number, t = performance.now() / 1000): Dynamics {
+  tickBeat(beatIndex: number, t = this.now()): Dynamics {
     const d = this.activity.tick(beatIndex, t);
     this.emit();
     return d;
@@ -207,7 +214,9 @@ export class Listener {
   tickChord(beatIndex: number): Chord | null {
     const bpm = this.input.bpm;
     if (bpm) this.chordDet.windowSec = (2 * 60) / bpm;
-    this.chord = this.chordDet.tick(performance.now() / 1000, this.input.key);
+    const now = this.now();
+    const mode = now - this.lastMidiNoteAt > this.chordDet.windowSec * 2 ? 'melody' : 'auto';
+    this.chord = this.chordDet.tick(now, this.input.key, mode);
     this.lastChordBeat = beatIndex;
     this.emit();
     return this.chord;
