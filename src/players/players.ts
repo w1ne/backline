@@ -49,6 +49,9 @@ export class Players implements PlayersLike {
   private morphNode?: AudioNode;
   private routes: Record<Instrument, MorphRoute> = { drums: 'main', bass: 'main', keys: 'main', lead: 'main' };
   private analyser?: AnalyserNode;
+  private bandAmount = 1;
+  private enabled: Record<Instrument, boolean> = { drums: true, bass: true, keys: true, lead: true };
+  private accompanimentEpoch = 0;
   private genre: Genre = 'lofi';
   private drumKit: DrumKit = DEFAULT_DRUM_KIT;
   /**
@@ -93,7 +96,7 @@ export class Players implements PlayersLike {
         keys: new Tone.Gain(),
         lead: new Tone.Gain(),
       };
-      INSTRUMENTS.forEach(i => this.applyRoute(i));
+      INSTRUMENTS.forEach(i => { this.applyRoute(i); this.applyGain(i); });
     }
     // Resolves only after a user gesture in every browser; never block boot on it.
     void Tone.start().catch(() => undefined);
@@ -110,6 +113,8 @@ export class Players implements PlayersLike {
 
   /** Remove old-tempo events and tails when an engine transport restarts. */
   cancelScheduled(): void {
+    this.accompanimentEpoch++;
+    this.accompVoices.forEach(voice => voice.stop());
     if (!this.set) return;
     this.set.dispose();
     this.set = makeSoundSet(this.genre, (this.busses ?? this.fallbackOuts()) as SoundOuts, this.drumKit);
@@ -129,8 +134,18 @@ export class Players implements PlayersLike {
 
   /** Apply after synthesis, including notes already scheduled, on every output route. */
   setBandAmount(amount: number): void {
-    const gain = Number.isFinite(amount) ? Math.min(1, Math.max(0, amount)) : 0;
-    if (this.busses) Object.values(this.busses).forEach(bus => bus.gain.rampTo(gain, .03));
+    this.bandAmount = Number.isFinite(amount) ? Math.min(1, Math.max(0, amount)) : 0;
+    INSTRUMENTS.forEach(i => this.applyGain(i));
+  }
+
+  /** Mute the role bus, including GM samplers and notes already scheduled. */
+  setEnabled(inst: Instrument, enabled: boolean): void {
+    this.enabled[inst] = enabled;
+    this.applyGain(inst);
+  }
+
+  private applyGain(inst: Instrument): void {
+    this.busses?.[inst].gain.rampTo(this.enabled[inst] ? this.bandAmount : 0, .03);
   }
 
   /** Sends one instrument to the main output, the MORPH output, or both. */
@@ -202,7 +217,7 @@ export class Players implements PlayersLike {
   }
 
   schedule(inst: Instrument, events: NoteEvent[], barStart: number, bpm: number) {
-    if (!(bpm > 0)) return;
+    if (!(bpm > 0) || !this.enabled[inst] || !this.bandAmount) return;
     if (!this.set) return;
     const spb = 60 / bpm;
     const minT = Tone.getContext().currentTime + 0.005;
@@ -261,10 +276,9 @@ export class Players implements PlayersLike {
     }
   }
 
-  /** AMT's real-instrument accompaniment: one smplr Soundfont voice per GM program, created on
-   *  first use. Connected straight to the AudioContext destination rather than the Keys bus —
-   *  it doesn't need genre routing or the MORPH bus, same tradeoff monitor.ts's MidiMonitor
-   *  already makes for the player's own keyboard sound.
+  /** AMT's real-instrument accompaniment: one smplr Soundfont voice per GM program,
+   *  connected through its musical role's bus. Amount, mute, MORPH routing and the
+   *  master chain therefore apply equally to model notes and local instruments.
    *
    *  smplr silently drops a note whose sample buffer hasn't finished loading yet (no error,
    *  just no sound) — monitor.ts always awaits `.ready` before playing for that reason, and
@@ -272,10 +286,13 @@ export class Players implements PlayersLike {
   scheduleAccompaniment(gmProgram: number, events: NoteEvent[], barStart: number, bpm: number): void {
     if (!(bpm > 0)) return;
     const gm = GM_INSTRUMENTS[gmProgram];
-    if (!gm) return;
+    if (!gm || !this.busses || !this.enabled[gm.role] || !this.bandAmount) return;
     let voice = this.accompVoices.get(gmProgram);
     if (!voice) {
-      voice = Soundfont(this.rawContext(), { instrument: gm.name, kit: 'MusyngKite' });
+      const ctx = this.rawContext();
+      const destination = ctx.createGain();
+      Tone.connect(destination, this.busses[gm.role]);
+      voice = Soundfont(ctx, { instrument: gm.name, kit: 'MusyngKite', destination });
       this.accompVoices.set(gmProgram, voice);
     }
     const spb = 60 / bpm;
@@ -292,9 +309,22 @@ export class Players implements PlayersLike {
       notes.push({ note: e.note, time: t, duration: Math.max(0.05, e.duration * spb), velocity: Math.max(1, Math.round(e.velocity * 127)) });
     }
     if (!kept.length) return;
-    voice.ready.then(() => { for (const n of notes) voice.start(n); });
-    this.onSchedule?.('keys', kept, barStart, bpm);
-    this.onAccompSchedule?.(gmProgram, kept, barStart, bpm);
+    const epoch = this.accompanimentEpoch;
+    voice.ready.then(() => {
+      if (epoch !== this.accompanimentEpoch || !this.enabled[gm.role] || !this.bandAmount) return;
+      // Loading may take longer than the scheduling lead. Never burst overdue
+      // notes on readiness or report them as sounding in the activity display.
+      const minReadyTime = Tone.getContext().currentTime + .005;
+      const sounding: NoteEvent[] = [];
+      notes.forEach((note, index) => {
+        if (note.time < minReadyTime) { this.dropped++; return; }
+        voice.start(note);
+        sounding.push(kept[index]);
+      });
+      if (!sounding.length) return;
+      this.onSchedule?.(gm.role, sounding, barStart, bpm);
+      this.onAccompSchedule?.(gmProgram, sounding, barStart, bpm);
+    }, () => { this.dropped += notes.length; });
   }
 
   private hit(note: number, t: number, v: number) {
