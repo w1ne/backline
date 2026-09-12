@@ -24,6 +24,8 @@ export interface LiveActions {
   setGenre(g: Genre): void;
   setEngine(e: 'lyria' | 'patterns' | 'acestep' | 'amt'): void;
   setCreativity(c: number): void;
+  /** download everything sung/played and scheduled since the last export as a .mid */
+  exportMidi?(): void;
   /** manual INTENSITY knob — how much the band adds */
   setIntensity?(i: number): void;
   setBpmOverride?(bpm: number | undefined): void;
@@ -209,6 +211,15 @@ function skeleton(): string {
         </div>
 <p id="engine-status" role="status"></p>
       </details>
+      <div class="zone zone--orange export">
+        <button type="button" class="engine-key" id="export-midi">
+          <span class="engine-key-text">
+            <span class="engine-key-name">Export MIDI</span>
+            <span class="engine-key-desc">You + band since the last export</span>
+          </span>
+          <span class="engine-led" id="export-led"></span>
+        </button>
+      </div>
     </div>
   `;
 }
@@ -271,6 +282,8 @@ function wireControls(screen: HTMLElement, store: Store): void {
   screen.querySelectorAll<HTMLButtonElement>('#engine-choice button').forEach(btn => {
     btn.addEventListener('click', () => actions().setEngine(btn.dataset.engine as 'lyria' | 'patterns' | 'acestep' | 'amt'));
   });
+
+  screen.querySelector<HTMLButtonElement>('#export-midi')!.addEventListener('click', () => actions().exportMidi?.());
 
   const bpmInput = screen.querySelector<HTMLInputElement>('#bpm')!;
   bpmInput.addEventListener('change', () => {
