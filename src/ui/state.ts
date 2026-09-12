@@ -28,6 +28,10 @@ export interface AppState {
   input: BandInput;
   locked: boolean;
   tempoMode: 'locked' | 'follow';
+  /** play a two-bar count-in click before the band's first bar; default on, persisted */
+  countIn: boolean;
+  /** AudioContext.outputLatency (or baseLatency), read once the context is running */
+  outputLatencyMs: number | null;
   /** AudioContext still waiting for the first user gesture */
   audioSuspended: boolean;
   bar: number;
@@ -75,6 +79,8 @@ const defaults: AppState = {
   input: { bpm: null, key: null, chord: null, notesNow: [], pitch: null, inputLevel: 0, onsets: 0, pendingBpm: null, dynamics: IDLE_DYNAMICS },
   locked: false,
   tempoMode: 'locked',
+  countIn: true,
+  outputLatencyMs: null,
   audioSuspended: false,
   bar: 0,
   error: null,

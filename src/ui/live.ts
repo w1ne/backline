@@ -30,6 +30,11 @@ export interface LiveActions {
   setIntensity?(i: number): void;
   setBpmOverride?(bpm: number | undefined): void;
   setKeyOverride?(key: { root: number; mode: 'major' | 'minor' } | undefined): void;
+  /** Registers one tap on the audio clock; once enough taps have landed to apply a tempo
+   * (the 4th and later), returns the tapped bpm/downbeat that was just adopted — null otherwise. */
+  tap?(): { bpm: number; downbeat: number } | null;
+  /** toggle the two-bar count-in click that plays before the band's first bar */
+  setCountIn?(on: boolean): void;
   /** which sound your MIDI keyboard plays through */
   setSound?(s: MonitorSound): void;
   setNoiseVolume?(volume: number): void;
@@ -160,6 +165,10 @@ function skeleton(): string {
           <div class="field">
             <label for="bpm">Bpm</label>
             <input type="number" id="bpm" min="40" max="240" placeholder="auto" />
+          </div>
+          <div class="field tap-field">
+            <button type="button" class="chip" id="tap-tempo" aria-label="Tap tempo">TAP</button>
+            <button type="button" class="morph-key" id="count-in-toggle" aria-label="Toggle the count-in click">IN<span class="morph-led"></span></button>
           </div>
           <div class="field">
             <label for="key">Key</label>
@@ -297,6 +306,25 @@ function wireControls(screen: HTMLElement, store: Store): void {
     actions().setBpmOverride?.(bpm);
   });
 
+  const tapBtn = screen.querySelector<HTMLButtonElement>('#tap-tempo')!;
+  const beatsEl = screen.querySelector<HTMLElement>('#beats')!;
+  tapBtn.addEventListener('click', () => {
+    pulse(beatsEl, 'tap-flash', 150);
+    const r = actions().tap?.();
+    if (r) bpmInput.value = String(Math.round(r.bpm));
+  });
+  window.addEventListener('keydown', e => {
+    if (e.code !== 'Space') return;
+    const active = document.activeElement as HTMLElement | null;
+    const tag = active?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || active?.isContentEditable) return;
+    e.preventDefault();
+    tapBtn.click();
+  });
+
+  const countInBtn = screen.querySelector<HTMLButtonElement>('#count-in-toggle')!;
+  countInBtn.addEventListener('click', () => actions().setCountIn?.(!store.state.countIn));
+
   const soundSelect = screen.querySelector<HTMLSelectElement>('#sound')!;
   soundSelect.value = store.state.sound;
   soundSelect.addEventListener('change', () => actions().setSound?.(soundSelect.value as MonitorSound));
@@ -384,6 +412,9 @@ function update(screen: HTMLElement, s: AppState, changeLatencyMs: number): void
   }
   const sound = screen.querySelector<HTMLSelectElement>('#sound')!;
   if (document.activeElement !== sound) sound.value = s.sound;
+
+  const countInBtn = screen.querySelector<HTMLButtonElement>('#count-in-toggle')!;
+  countInBtn.classList.toggle('on', s.countIn);
 }
 
 function mark(state: SourceState): string {

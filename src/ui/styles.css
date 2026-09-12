@@ -667,6 +667,23 @@ body {
   border-radius: 50%;
   background: #10241a;
   border: 2px solid #1d3d2b;
+  transition: background 0.08s ease, border-color 0.08s ease;
+}
+
+/* one-shot flash on every TAP (button or space bar), independent of the running beat LEDs */
+.beats.tap-flash i {
+  background: var(--yellow);
+  border-color: var(--yellow);
+}
+
+.tap-field {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 6px;
+}
+
+.tap-field .chip {
+  flex: 1;
 }
 
 /* ---------- live: note timeline ---------- */

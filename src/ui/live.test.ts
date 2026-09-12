@@ -277,6 +277,44 @@ it('does not show an unavailable selected model as connected', () => {
 });
 
 
+describe('tap tempo', () => {
+  it('flashes the beat dots and forwards the tap to actions().tap()', () => {
+    let taps = 0;
+    const store = new Store();
+    const root = document.createElement('div');
+    renderLive(root, store, {
+      wake: () => {}, toggle: () => {}, setGenre: () => {}, setEngine: () => {}, setCreativity: () => {},
+      tap: () => { taps++; return null; },
+    });
+    const beats = root.querySelector<HTMLElement>('#beats')!;
+    root.querySelector<HTMLButtonElement>('#tap-tempo')!.click();
+    expect(taps).toBe(1);
+    expect(beats.classList.contains('tap-flash')).toBe(true);
+  });
+
+  it('fills the bpm field once tap() reports an adopted tempo', () => {
+    const store = new Store();
+    const root = document.createElement('div');
+    renderLive(root, store, {
+      wake: () => {}, toggle: () => {}, setGenre: () => {}, setEngine: () => {}, setCreativity: () => {},
+      tap: () => ({ bpm: 128, downbeat: 3 }),
+    });
+    root.querySelector<HTMLButtonElement>('#tap-tempo')!.click();
+    expect(root.querySelector<HTMLInputElement>('#bpm')!.value).toBe('128');
+  });
+
+  it('reflects the countIn flag on the toggle button', () => {
+    const store = new Store();
+    store.update({ countIn: false });
+    const root = document.createElement('div');
+    renderLive(root, store, { wake: () => {}, toggle: () => {}, setGenre: () => {}, setEngine: () => {}, setCreativity: () => {} });
+    expect(root.querySelector('#count-in-toggle')!.classList.contains('on')).toBe(false);
+    store.update({ countIn: true });
+    renderLive(root, store, { wake: () => {}, toggle: () => {}, setGenre: () => {}, setEngine: () => {}, setCreativity: () => {} });
+    expect(root.querySelector('#count-in-toggle')!.classList.contains('on')).toBe(true);
+  });
+});
+
 it('only offers RunPod models and offline Patterns', () => {
   const root = document.createElement('div');
   renderLive(root, new Store(), { wake: () => {}, toggle: () => {}, setGenre: () => {}, setEngine: () => {}, setCreativity: () => {} });

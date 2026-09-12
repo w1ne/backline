@@ -8,6 +8,7 @@ import { startArturiaControls } from './device/arturia';
 import { startDeviceRuntime } from './device/runtime';
 import { Listener } from './listener/listener';
 import { MidiSource } from './listener/midiSource';
+import { TapTempo } from './listener/tapTempo';
 import { Drone } from './players/drone';
 import { WhiteNoise } from './players/whiteNoise';
 import { LOCAL_SOUNDS } from './device/arturia';
@@ -41,6 +42,7 @@ import {
   MIDI_INPUT_KEY,
   MORPH_SINK_KEY,
   MIC_MUTE_KEY,
+  COUNT_IN_DISABLED_KEY,
   loadBool,
   saveBool,
 } from './audio/devices';
@@ -73,6 +75,9 @@ let midi: MidiSource | undefined;
 let audioReady = false;
 let viz: Viz | undefined;
 let lastFollowedBpm: number | undefined;
+const tapTempo = new TapTempo();
+/** taps registered since the last restart; the store only adopts a tempo from the 4th tap on */
+let tapCount = 0;
 let disarmFallback: (() => void) | undefined;
 let halfBarTimer: ReturnType<typeof setTimeout> | undefined;
 let beatTimers: ReturnType<typeof setTimeout>[] = [];
@@ -477,6 +482,31 @@ store.subscribe(s => {
     setKeyOverride: key => {
       listener?.setOverride({ key });
     },
+    tap: () => {
+      const t = Tone.now();
+      tapCount++;
+      const r = tapTempo.push(t);
+      if (!r || tapCount < 4) return null;
+      // Same path a typed bpm takes: the listener's override wins over any detected tempo.
+      listener?.setOverride({ bpm: r.bpm });
+      lastFollowedBpm = r.bpm;
+      if (band) {
+        disarmFallback?.();
+        disarmFallback = armFallback(store.state.engine, band);
+        store.update({ locked: true });
+        // r.downbeat is the audio-clock time of the tap that just completed the estimate:
+        // restart the band's clock right there so the next bar starts on the beat the
+        // singer just tapped, not on whatever bar the band happened to be in.
+        startBand(band, r.bpm, r.downbeat).catch(err => {
+          store.update({ error: err instanceof Error ? err.message : String(err) });
+        });
+      }
+      return r;
+    },
+    setCountIn: on => {
+      saveBool(COUNT_IN_DISABLED_KEY, !on);
+      store.update({ countIn: on });
+    },
     setMicMuted: muted => {
       saveBool(MIC_MUTE_KEY, muted);
       store.update({ micMuted: muted });
@@ -515,6 +545,7 @@ store.update({
   micIn: loadDeviceId(MIC_DEVICE_KEY),
   midiIn: loadDeviceId(MIDI_INPUT_KEY),
   micMuted: loadBool(MIC_MUTE_KEY),
+  countIn: !loadBool(COUNT_IN_DISABLED_KEY),
 });
 if (store.state.morphOut) store.update({ routing: defaultRouting(true) });
 applyDeviceProfile(store, PI_EDITION ? 'lydia' : 'web');
