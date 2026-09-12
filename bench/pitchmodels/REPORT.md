@@ -70,3 +70,18 @@ learned is a clear no for this product: Basic Pitch is built around a 2 s window
 more work, it is the tracker's rounding of 40-60-cent-off notes (a key-aware or
 hysteresis-based semitone decision), which is where every method on this table loses its
 points.
+
+## Addendum, 2026-09-13: pitchy
+
+The shipping McLeod was replaced by the pitchy library (same McLeod pitch method, FFT-based
+NSDF, MIT). Same 9 gate-subset clips, same tracker (`bench/pitchmodels/pitchy.ts`):
+
+| method | pitch acc % | octave err % | no pitch % | note F1 | ms/frame |
+|---|---|---|---|---|---|
+| our McLeod, O(n·lag) NSDF | 92.9 | 0.1 | 0.8 | 0.72 | 3.94 |
+| pitchy, K = 0.8 | 93.1 | 0.2 | 0.9 | 0.73 | 0.21 |
+| pitchy, K = 0.9 (its default) | 92.0 | 0.5 | 1.8 | 0.73 | 0.21 |
+
+Equal accuracy at K = 0.8, the same first-peak fraction our code used, at a nineteenth of the
+per-frame cost. K = 0.9 loses a point and doubles the octave errors, as the original comment in
+pitch.ts predicted. The 60-1200 Hz range and the clarity gate stay in our wrapper.
