@@ -466,4 +466,55 @@ describe('AmtEngine', () => {
     engine.stop();
     expect(ws.closed).toBe(true);
   });
+
+  it('calls onChord with the parsed chord and fromBeat when a plan carries one', async () => {
+    const { engine } = mk();
+    const onChord = vi.fn(); engine.onChord = onChord;
+    await engine.start(120, 0);
+    const ws = startedSocket(); ws.open();
+    ws.receiveJson({ type: 'plan', notes: [], chord: 'F', chordFrom: 8 });
+    expect(onChord).toHaveBeenCalledTimes(1);
+    expect(onChord).toHaveBeenCalledWith({ root: 5, quality: 'maj' }, 8);
+    engine.stop();
+  });
+
+  it('ignores an unparseable chord name safely', async () => {
+    const { engine } = mk();
+    const onChord = vi.fn(); engine.onChord = onChord;
+    await engine.start(120, 0);
+    const ws = startedSocket(); ws.open();
+    ws.receiveJson({ type: 'plan', notes: [], chord: 'nonsense', chordFrom: 8 });
+    expect(onChord).not.toHaveBeenCalled();
+    engine.stop();
+  });
+
+  it('does not call onChord when the plan carries no chord', async () => {
+    const { engine } = mk();
+    const onChord = vi.fn(); engine.onChord = onChord;
+    await engine.start(120, 0);
+    const ws = startedSocket(); ws.open();
+    ws.receiveJson({ type: 'plan', notes: [] });
+    expect(onChord).not.toHaveBeenCalled();
+    engine.stop();
+  });
+
+  it('calls onSection when a plan carries a section', async () => {
+    const { engine } = mk();
+    const onSection = vi.fn(); engine.onSection = onSection;
+    await engine.start(120, 0);
+    const ws = startedSocket(); ws.open();
+    ws.receiveJson({ type: 'plan', notes: [], section: 'lift' });
+    expect(onSection).toHaveBeenCalledWith('lift');
+    engine.stop();
+  });
+
+  it('does not call onSection when the plan carries no section', async () => {
+    const { engine } = mk();
+    const onSection = vi.fn(); engine.onSection = onSection;
+    await engine.start(120, 0);
+    const ws = startedSocket(); ws.open();
+    ws.receiveJson({ type: 'plan', notes: [] });
+    expect(onSection).not.toHaveBeenCalled();
+    engine.stop();
+  });
 });

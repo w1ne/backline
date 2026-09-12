@@ -1,7 +1,8 @@
 import * as Tone from 'tone';
-import type { BandState, Instrument, Key, NoteEvent } from '../types';
+import type { BandState, Chord, Instrument, Key, NoteEvent } from '../types';
 import { IDLE_DYNAMICS } from '../types';
-import { chordName } from '../listener/chordDetector';
+import { chordName, parseChordName } from '../listener/chordDetector';
+import type { Section } from '../band/form';
 import type { BandEngine } from './engine';
 import { ToneClock } from '../band/clock';
 import type { ClockLike } from '../band/clockTypes';
@@ -62,6 +63,8 @@ export class AmtEngine implements BandEngine {
   onFirstBlock?: () => void;
   onConnected?: () => void;
   onStatus?: (message: string, latencyMs?: number) => void;
+  onChord?: (chord: Chord, fromBeat: number) => void;
+  onSection?: (section: Section) => void;
   private amount = 1;
   private responseTimer?: ReturnType<typeof setTimeout>;
   setAmount(value: number): void {
@@ -261,6 +264,7 @@ export class AmtEngine implements BandEngine {
       instruments: { ...this.state.enabled },
       // Dynamics hint; the manual amount also scales local playback directly.
       intensity: Math.round(this.state.dynamics.intensity * 5) / 5,
+      silenceBeats: this.state.dynamics.silenceBeats,
     });
     if (payload === this.lastSetPayload) {
       // Back to what the server already has — drop anything queued in between.
@@ -436,6 +440,11 @@ export class AmtEngine implements BandEngine {
       }
       this.pruneScheduled();
       this.scheduleDue();
+      if (typeof msg.chord === 'string' && Number.isFinite(msg.chordFrom as number)) {
+        const chord = parseChordName(msg.chord);
+        if (chord) this.onChord?.(chord, msg.chordFrom as number);
+      }
+      if (typeof msg.section === 'string') this.onSection?.(msg.section as Section);
     }
   }
 }
