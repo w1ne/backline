@@ -1,6 +1,7 @@
 import { GENRES, INSTRUMENTS } from '../types';
 import type { Genre, Instrument } from '../types';
 import { keyName } from '../music/scales';
+import { chordName } from '../listener/chordDetector';
 import { DEBUG } from '../debug';
 import type { AppState, Store } from './state';
 import type { SourceState } from '../listener/listener';
@@ -65,6 +66,7 @@ function skeleton(): string {
         <div class="ro-tempo"><small>Tempo</small><strong id="ro-tempo">&mdash;</strong></div>
         <div class="ro-side">
           <div><small>Key</small><strong id="ro-key">&mdash;</strong></div>
+          <div><small>Chord</small><strong id="chord">&mdash;</strong></div>
           <div><small>Bar</small><strong id="ro-bar">0</strong></div>
         </div>
         <div class="beats" id="beats">
@@ -320,7 +322,7 @@ const ENGINE_NAMES: Record<AppState['engine'], string> = {
 
 function lcdText(s: AppState): string {
   if (s.power === 'off') return 'OFF · PRESS POWER';
-  if (s.locked) return `LIVE · BAR ${s.bar}`;
+  if (s.locked) return `LIVE · BAR ${s.bar}${s.input.chord ? ` · ${chordName(s.input.chord)}` : ''}`;
   // once there is enough to guess with, show the running estimate — it is the
   // only feedback that the mic is hearing a tempo and not just noise
   const guess = s.input.pendingBpm ? ` · ~${Math.round(s.input.pendingBpm)} BPM` : '';
@@ -421,6 +423,7 @@ function updateReadouts(screen: HTMLElement, s: AppState): void {
   }
 
   screen.querySelector<HTMLElement>('#ro-key')!.textContent = s.input.key ? keyName(s.input.key) : '—';
+  screen.querySelector<HTMLElement>('#chord')!.textContent = s.input.chord ? chordName(s.input.chord) : '—';
   screen.querySelector<HTMLElement>('#ro-bar')!.textContent = String(s.bar);
   updateBeats(screen, s);
 

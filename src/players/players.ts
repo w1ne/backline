@@ -14,6 +14,8 @@ export class Players implements PlayersLike {
   /** Last actually-triggered time per mono voice, so dedup also catches a note at the start
    * of one bar colliding with the tail of the previous bar's schedule() call. */
   private lastVoiceTime = new Map<string, number>();
+  /** Diagnostic tap: every schedule() call, after dropping/merging, as it goes to the synths. */
+  onSchedule?: (inst: Instrument, events: NoteEvent[], barStart: number, bpm: number) => void;
 
   async init() {
     if (!this.out) {
@@ -89,6 +91,8 @@ export class Players implements PlayersLike {
       lastInBatch.set(voice, item);
       kept.push(item);
     }
+
+    this.onSchedule?.(inst, kept.map(k => k.e), barStart, bpm);
 
     for (const { e, t, d } of kept) {
       const voice = inst === 'drums' ? `drums:${e.note}` : inst;

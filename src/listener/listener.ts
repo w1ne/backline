@@ -1,7 +1,8 @@
-import type { BandInput, Key } from '../types';
+import type { BandInput, Chord, Key } from '../types';
 import { TempoLock, bpmFromOnsets } from './tempoLock';
 import { TempoFollower } from './tempoFollower';
 import { KeyDetector } from './keyDetector';
+import { ChordDetector } from './chordDetector';
 import type { StablePitch } from './pitchTracker';
 
 export interface Source {
@@ -26,6 +27,10 @@ const PENDING_MIN_ONSETS = 6;
 export class Listener {
   private tempo = new TempoLock();
   private keyDet = new KeyDetector();
+  private chordDet = new ChordDetector();
+  private chord: Chord | null = null;
+  /** absolute beat of the last `tickChord`; diagnostic only */
+  lastChordBeat = -1;
   private recent: { n: number; t: number }[] = [];
   /** distinct stable notes from the continuous mic pitch tracker */
   private pitchNotes: { n: number; t: number }[] = [];
@@ -80,6 +85,7 @@ export class Listener {
       if (this.onsetTimes.length > 24) this.onsetTimes.shift();
       if (n >= 0) {
         this.keyDet.addNote(n, v);
+        this.chordDet.addNote(n, t, Math.max(0.3, v));
         this.recent.push({ n, t });
         this.recent = this.recent.filter(r => t - r.t < 0.5);
         this.noteCbs.forEach(cb => cb({ midi: n, velocity: v, timeSec: t }));
@@ -94,6 +100,7 @@ export class Listener {
         if (p.midi !== this.lastStableMidi) {
           this.lastStableMidi = p.midi;
           this.keyDet.addNote(p.midi, 0.8);
+          this.chordDet.addNote(p.midi, now, 0.8);
           this.pitchNotes.push({ n: p.midi, t: now });
         }
       } else {
@@ -141,12 +148,27 @@ export class Listener {
         this.tempo.locked?.bpm ??
         null,
       key: this.override.key ?? this.keyDet.key,
+      chord: this.chord,
       notesNow: [...new Set([...this.recent.map(r => r.n), ...this.pitchNotes.map(r => r.n)])],
       pitch: this.pitch,
       inputLevel: this.level,
       onsets: this.onsetCount,
       pendingBpm: bpmFromOnsets(this.onsetTimes, PENDING_MIN_ONSETS)?.bpm ?? null,
     };
+  }
+
+  /**
+   * Re-decides the chord from the notes in the last two beats. Called by the app clock on
+   * every bar and half bar (`beatIndex` is absolute beats since the band started), not per
+   * note — the band wants one chord per half bar, not a new guess on every key press.
+   */
+  tickChord(beatIndex: number): Chord | null {
+    const bpm = this.input.bpm;
+    if (bpm) this.chordDet.windowSec = (2 * 60) / bpm;
+    this.chord = this.chordDet.tick(performance.now() / 1000, this.input.key);
+    this.lastChordBeat = beatIndex;
+    this.emit();
+    return this.chord;
   }
 
   get downbeat() { return this.tempo.locked?.downbeat ?? null; }

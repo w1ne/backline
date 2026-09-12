@@ -3,7 +3,9 @@ import type { BandState, Instrument } from '../types';
 export interface BandEngine {
   start(bpm: number, firstBarAt: number): Promise<void>;
   stop(): void;
-  set(p: Partial<Pick<BandState, 'genre' | 'key' | 'creativity'>>): void;
+  /** `chordBeat` is the absolute beat the chord took effect on; engines that don't place
+   *  notes on a beat grid ignore it. */
+  set(p: Partial<Pick<BandState, 'genre' | 'key' | 'chord' | 'creativity'>> & { chordBeat?: number }): void;
   setEnabled(i: Instrument, on: boolean): void;
   setBpm(bpm: number): void;
   /** smallest bpm change worth forwarding in follow mode */

@@ -14,12 +14,13 @@ import { LyriaEngine } from './engines/lyriaEngine';
 import { AceStepEngine } from './engines/acestepEngine';
 import { AmtEngine } from './engines/amtEngine';
 import { forwardBpm } from './band/bpmForward';
-import { installDebug, recordToggle } from './debug';
+import { DEBUG, installDebug, recordToggle } from './debug';
 import { chooseFallback } from './engines/fallback';
 import { RELAY_URL } from './config';
 import type { EngineChoice } from './ui/state';
 
 const FALLBACK_TIMEOUT_MS = 8000;
+const BEATS_PER_BAR = 4;
 
 const root = document.getElementById('app')!;
 const store = new Store();
@@ -28,6 +29,16 @@ let band: BandEngine | undefined;
 const players = new Players();
 let lastFollowedBpm: number | undefined;
 let disarmFallback: (() => void) | undefined;
+let halfBarTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** Re-decides the chord from what the player just played and hands it to the band.
+ *  Driven by the engine's bar callback plus a timer at the half bar, so the band gets a
+ *  fresh chord twice a bar — often enough to follow a change, rarely enough to stay stable. */
+function tickChord(beat: number): void {
+  if (!listener) return;
+  const chord = listener.tickChord(beat);
+  band?.set({ chord, chordBeat: beat });
+}
 
 function makeBand(engine: EngineChoice): BandEngine {
   if (engine === 'lyria') return new LyriaEngine(players.rawContext());
@@ -41,6 +52,11 @@ function wireBand(b: BandEngine): void {
   b.onBar = bar => {
     store.update({ bar });
     setLatency(root, players.latencyMs());
+    const beat = bar * BEATS_PER_BAR;
+    tickChord(beat);
+    if (halfBarTimer !== undefined) clearTimeout(halfBarTimer);
+    const bpm = lastFollowedBpm ?? store.state.input.bpm;
+    if (bpm) halfBarTimer = setTimeout(() => tickChord(beat + BEATS_PER_BAR / 2), 120000 / bpm);
   };
   b.onError = msg => store.update({ error: msg });
   b.onStats = s => {
@@ -156,6 +172,8 @@ async function power() {
 function powerOff() {
   disarmFallback?.();
   disarmFallback = undefined;
+  if (halfBarTimer !== undefined) clearTimeout(halfBarTimer);
+  halfBarTimer = undefined;
   band?.stop();
   listener?.stop();
   listener = undefined;
@@ -169,7 +187,7 @@ function powerOff() {
     error: null,
     loops: 0,
     loopsUpdatedAt: undefined,
-    input: { bpm: null, key: null, notesNow: [], pitch: null, inputLevel: 0, onsets: 0, pendingBpm: null },
+    input: { bpm: null, key: null, chord: null, notesNow: [], pitch: null, inputLevel: 0, onsets: 0, pendingBpm: null },
   });
 }
 
@@ -249,8 +267,19 @@ store.subscribe(s => {
   void s;
 });
 
+/** ?debug=1 only: the last few bars of scheduled notes, so chord following can be checked
+ *  against what the band actually played rather than against the readout. */
+const scheduled: { t: number; inst: string; bar: number; notes: number[] }[] = [];
+if (DEBUG) {
+  players.onSchedule = (inst, events, _barStart, _bpm) => {
+    scheduled.push({ t: Date.now(), inst, bar: store.state.bar, notes: events.map(e => e.note) });
+    if (scheduled.length > 200) scheduled.shift();
+  };
+}
+
 installDebug({
   store,
+  scheduled,
   get band() {
     return band;
   },
@@ -268,7 +297,7 @@ if (new URLSearchParams(location.search).has('demo')) {
     locked: true,
     bar: 9,
     enabled: { drums: true, bass: true, keys: false, lead: true },
-    input: { bpm: 96, key: { root: 9, mode: 'minor' }, notesNow: [57, 60, 64], pitch: { midi: 64, cents: 3, stable: true }, inputLevel: 0.72, onsets: 12, pendingBpm: null },
+    input: { bpm: 96, key: { root: 9, mode: 'minor' }, chord: { root: 9, quality: 'min' }, notesNow: [57, 60, 64], pitch: { midi: 64, cents: 3, stable: true }, inputLevel: 0.72, onsets: 12, pendingBpm: null },
   });
   setLatency(root, 38);
 }

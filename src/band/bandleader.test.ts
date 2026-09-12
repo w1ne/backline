@@ -23,14 +23,23 @@ class FakeClock implements ClockLike {
 }
 const mk = () => {
   const clock = new FakeClock();
-  const calls: { i: Instrument; n: number; t: number }[] = [];
+  const calls: { i: Instrument; n: number; t: number; ev: NoteEvent[] }[] = [];
   const players = {
-    schedule: (i: Instrument, ev: NoteEvent[], t: number) => calls.push({ i, n: ev.length, t }),
+    schedule: (i: Instrument, ev: NoteEvent[], t: number) => calls.push({ i, n: ev.length, t, ev }),
   };
   const b = new Bandleader(clock, players, PATTERNS, 7);
   b.start(120, 0);
   return { clock, calls, b };
 };
+/** Pitch classes of bar 0's bass line, at creativity 0 so the shape is deterministic. */
+function barNotes(setup: (b: Bandleader) => void): number[] {
+  const { clock, calls, b } = mk();
+  b.set({ key: { root: 0, mode: 'major' }, creativity: 0 });
+  b.setEnabled('bass', true);
+  setup(b);
+  clock.tick(0);
+  return calls[0].ev.map(e => e.note % 12);
+}
 describe('Bandleader', () => {
   it('schedules only enabled instruments', () => {
     const { clock, calls, b } = mk();
@@ -78,5 +87,35 @@ describe('Bandleader', () => {
     clock.tick(1);
     clock.tick(5);
     expect(bars).toEqual([0, 1, 5]);
+  });
+  it('bass follows the chord from the bar after it was set', () => {
+    const { clock, calls, b } = mk();
+    b.set({ key: { root: 0, mode: 'major' } });
+    b.setEnabled('bass', true);
+    b.set({ chord: { root: 0, quality: 'maj' }, chordBeat: 0 });
+    clock.tick(0);
+    b.set({ chord: { root: 5, quality: 'maj' }, chordBeat: 4 });
+    clock.tick(1);
+    const roots = calls.map(c => c.ev[0].note % 12);
+    expect(roots).toEqual([0, 5]); // C then F
+  });
+  it('a chord landing at the half bar only moves the hits after it', () => {
+    // Bar 0 runs beats 0-3; a G arriving on beat 2 is heard by the back half only.
+    const held = barNotes(b => {
+      b.set({ chord: { root: 0, quality: 'maj' }, chordBeat: 0 });
+    });
+    const changed = barNotes(b => {
+      b.set({ chord: { root: 0, quality: 'maj' }, chordBeat: 0 });
+      b.set({ chord: { root: 7, quality: 'maj' }, chordBeat: 2 });
+    });
+    expect(held).toEqual([0, 0, 7, 5]); // all four hits voiced against C
+    expect(changed).toEqual([0, 7, 2, 0]); // beats 0-1 still C; beats 2+ are G, its fifth, its fourth
+  });
+  it('falls back to the key tonic triad when no chord was ever set', () => {
+    const { clock, calls, b } = mk();
+    b.set({ key: { root: 9, mode: 'minor' } });
+    b.setEnabled('bass', true);
+    clock.tick(0);
+    expect(calls[0].ev[0].note % 12).toBe(9);
   });
 });

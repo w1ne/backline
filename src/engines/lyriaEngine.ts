@@ -28,6 +28,7 @@ export class LyriaEngine implements BandEngine {
   private state: BandState = {
     genre: 'lofi',
     key: { root: 0, mode: 'major' },
+    chord: null,
     creativity: 0.3,
     enabled: { drums: false, bass: false, keys: false, lead: false },
   };
@@ -132,8 +133,13 @@ export class LyriaEngine implements BandEngine {
     this.player = undefined;
   }
 
-  set(p: Partial<Pick<BandState, 'genre' | 'key' | 'creativity'>>): void {
+  /** Note the deliberate asymmetry with `key`: a *chord* change is recorded but never marks
+   *  the session dirty. Lyria applies a harmonic change by resetting the stream, which costs a
+   *  reconnect and an audible gap — far too expensive to pay every half bar. Key changes are
+   *  rare and keep the existing reset path; chord following on Lyria is left to the player. */
+  set(p: Partial<Pick<BandState, 'genre' | 'key' | 'chord' | 'creativity'>>): void {
     let dirty = false;
+    if (p.chord !== undefined) this.state.chord = p.chord;
     if (p.genre !== undefined && p.genre !== this.state.genre) {
       this.state.genre = p.genre;
       dirty = true;
