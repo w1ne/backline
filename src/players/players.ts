@@ -4,7 +4,7 @@ import type { Genre, Instrument, NoteEvent } from '../types';
 import { DRUM, INSTRUMENTS } from '../types';
 import { makeSoundSet, type SoundOuts, type SoundSet } from './soundsets';
 import { DEFAULT_DRUM_KIT, type DrumKit } from './sampledVoices';
-import type { PlayersLike } from '../band/bandleader';
+import type { PlayersLike, ScheduleConfirmation } from '../band/bandleader';
 import { routeTargets, type MorphRoute } from '../audio/routing';
 import { GM_INSTRUMENTS } from './gmInstruments';
 
@@ -216,7 +216,7 @@ export class Players implements PlayersLike {
     return { drums: this.out, bass: this.out, keys: this.out, lead: this.out };
   }
 
-  schedule(inst: Instrument, events: NoteEvent[], barStart: number, bpm: number) {
+  schedule(inst: Instrument, events: NoteEvent[], barStart: number, bpm: number, onScheduled?: ScheduleConfirmation) {
     if (!(bpm > 0) || !this.enabled[inst] || !this.bandAmount) return;
     if (!this.set) return;
     const spb = 60 / bpm;
@@ -234,7 +234,7 @@ export class Players implements PlayersLike {
     const kept: typeof items = [];
     const lastInBatch = new Map<string, (typeof items)[number]>();
     for (const item of items) {
-      if (item.t < minT) {
+      if (item.t < minT || !(item.e.velocity > 0)) {
         this.dropped++;
         continue;
       }
@@ -264,8 +264,6 @@ export class Players implements PlayersLike {
       kept.push(item);
     }
 
-    if (this.onSchedule && kept.length) this.onSchedule(inst, kept.map(k => k.e), barStart, bpm);
-
     for (const { e, t, d } of kept) {
       const voice = inst === 'drums' ? `drums:${e.note}` : inst;
       if (inst !== 'keys') this.lastVoiceTime.set(voice, t);
@@ -273,6 +271,11 @@ export class Players implements PlayersLike {
       else if (inst === 'keys')
         this.set.keys.triggerAttackRelease(Tone.Frequency(e.note, 'midi').toFrequency(), d, t, e.velocity);
       else this.set[inst].triggerAttackRelease(Tone.Frequency(e.note, 'midi').toFrequency(), d, t, e.velocity);
+    }
+    if (kept.length) {
+      const accepted = kept.map(k => k.e);
+      this.onSchedule?.(inst, accepted, barStart, bpm);
+      onScheduled?.(accepted);
     }
   }
 
@@ -283,7 +286,7 @@ export class Players implements PlayersLike {
    *  smplr silently drops a note whose sample buffer hasn't finished loading yet (no error,
    *  just no sound) — monitor.ts always awaits `.ready` before playing for that reason, and
    *  this must too, or a freshly-toggled preset's first bars are inaudible. */
-  scheduleAccompaniment(gmProgram: number, events: NoteEvent[], barStart: number, bpm: number): void {
+  scheduleAccompaniment(gmProgram: number, events: NoteEvent[], barStart: number, bpm: number, onScheduled?: ScheduleConfirmation): void {
     if (!(bpm > 0)) return;
     const gm = GM_INSTRUMENTS[gmProgram];
     if (!gm || !this.busses || !this.enabled[gm.role] || !this.bandAmount) return;
@@ -301,7 +304,7 @@ export class Players implements PlayersLike {
     const notes: { note: number; time: number; duration: number; velocity: number }[] = [];
     for (const e of events) {
       const t = barStart + e.time * spb;
-      if (t < minT) {
+      if (t < minT || !(e.velocity > 0)) {
         this.dropped++;
         continue;
       }
@@ -324,6 +327,7 @@ export class Players implements PlayersLike {
       if (!sounding.length) return;
       this.onSchedule?.(gm.role, sounding, barStart, bpm);
       this.onAccompSchedule?.(gmProgram, sounding, barStart, bpm);
+      onScheduled?.(sounding);
     }, () => { this.dropped += notes.length; });
   }
 

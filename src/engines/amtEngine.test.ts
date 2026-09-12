@@ -70,13 +70,22 @@ class FakeNoteSource {
 }
 
 class FakePlayers {
+  confirmImmediately = true;
+  confirmations: (() => void)[] = [];
+  private confirm(events: NoteEvent[], onScheduled?: (events: readonly NoteEvent[]) => void) {
+    const confirm = () => onScheduled?.(events);
+    this.confirmations.push(confirm);
+    if (this.confirmImmediately) confirm();
+  }
   calls: { i: Instrument; events: NoteEvent[]; barStart: number; bpm: number }[] = [];
   accompCalls: { gmProgram: number; events: NoteEvent[]; barStart: number; bpm: number }[] = [];
-  schedule(i: Instrument, events: NoteEvent[], barStart: number, bpm: number) {
+  schedule(i: Instrument, events: NoteEvent[], barStart: number, bpm: number, onScheduled?: (events: readonly NoteEvent[]) => void) {
     this.calls.push({ i, events, barStart, bpm });
+    this.confirm(events, onScheduled);
   }
-  scheduleAccompaniment(gmProgram: number, events: NoteEvent[], barStart: number, bpm: number) {
+  scheduleAccompaniment(gmProgram: number, events: NoteEvent[], barStart: number, bpm: number, onScheduled?: (events: readonly NoteEvent[]) => void) {
     this.accompCalls.push({ gmProgram, events, barStart, bpm });
+    this.confirm(events, onScheduled);
   }
 }
 
@@ -677,6 +686,7 @@ describe('AMT response timing', () => {
     ws.receiveJson({type:'plan', latestCaptureTimeSec:99.5, notes:[]});
     expect(timing).not.toHaveBeenCalled();
     ws.receiveJson({type:'plan', latestCaptureTimeSec:99.5, notes:[note]});
+    await Promise.resolve();
     expect(timing).toHaveBeenCalledWith(1520);
     ws.receiveJson({type:'plan', latestCaptureTimeSec:99.5, notes:[{...note,beat:3}]});
     expect(timing).toHaveBeenCalledTimes(1);
@@ -700,4 +710,65 @@ it('retains a short note release before ready and sends it only after capability
   ws.receiveJson({ type: 'ready', performanceEvents: true });
   expect(ws.sent).toContainEqual({ type: 'note_updates', notes: [{ id: 'short', dur: .2, captureTimeSec: .2 }] });
   engine.stop();
+});
+
+
+describe('confirmed response telemetry', () => {
+  async function setup() {
+    const players = new FakePlayers();
+    players.confirmImmediately = false;
+    const engine = new AmtEngine(players, new FakeNoteSource(), new FakeClock(), () => 10, () => 100, () => 20);
+    engine.setEnabled('keys', true); engine.setEnabled('bass', true);
+    await engine.start(120, 10);
+    const timing = vi.fn(); engine.onResponseTiming = timing;
+    return { players, engine, timing, ws: startedSocket() };
+  }
+
+  it('does not report a plan whose sample loading never confirms a playable note', async () => {
+    const { players, engine, timing, ws } = await setup();
+    ws.receiveJson({type:'plan', latestCaptureTimeSec:100, notes:[{voice:'keys',gmInstr:65,beat:2,pitch:60,dur:1,vel:.8}]});
+    expect(players.accompCalls).toHaveLength(1);
+    await Promise.resolve();
+    expect(timing).not.toHaveBeenCalled();
+    engine.stop();
+  });
+
+  it('coalesces instrument confirmations to the earliest response regardless of group order', async () => {
+    const { players, engine, timing, ws } = await setup();
+    ws.receiveJson({type:'plan', latestCaptureTimeSec:100, notes:[
+      {voice:'keys',beat:4,pitch:60,dur:1,vel:.8},
+      {voice:'bass',beat:2,pitch:48,dur:1,vel:.8},
+    ]});
+    players.confirmations[0](); players.confirmations[1]();
+    await Promise.resolve();
+    expect(timing.mock.calls).toEqual([[1020]]);
+    engine.stop();
+  });
+
+  it('refines an estimate if another sampler later confirms an earlier note for the same capture', async () => {
+    const { players, engine, timing, ws } = await setup();
+    ws.receiveJson({type:'plan', latestCaptureTimeSec:100, notes:[
+      {voice:'keys',beat:4,pitch:60,dur:1,vel:.8},
+      {voice:'bass',beat:2,pitch:48,dur:1,vel:.8},
+    ]});
+    players.confirmations[0](); await Promise.resolve();
+    players.confirmations[1](); await Promise.resolve();
+    expect(timing.mock.calls).toEqual([[2020], [1020]]);
+    players.confirmations[0](); await Promise.resolve();
+    expect(timing).toHaveBeenCalledTimes(2);
+    engine.stop();
+  });
+
+  it('ignores confirmations and pending telemetry from an earlier engine session', async () => {
+    const { players, engine, timing, ws } = await setup();
+    ws.receiveJson({type:'plan', latestCaptureTimeSec:100, notes:[{voice:'keys',beat:2,pitch:60,dur:1,vel:.8}]});
+    players.confirmations[0]();
+    engine.stop();
+    await engine.start(120, 10);
+    timing.mockClear();
+    players.confirmations[0]();
+    await Promise.resolve();
+    expect(timing).not.toHaveBeenCalled();
+    engine.stop();
+  });
 });

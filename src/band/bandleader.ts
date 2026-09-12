@@ -35,14 +35,18 @@ export function humanize(inst: Instrument, events: NoteEvent[], spb: number, rng
   });
 }
 
+/** Original event objects actually accepted for audible scheduling. Fired only after
+ * sample readiness and stale/mute checks; omitted when nothing can play. */
+export type ScheduleConfirmation = (events: readonly NoteEvent[]) => void;
+
 export interface PlayersLike {
   setEnabled?(instrument: Instrument, on: boolean): void;
   setBandAmount?(amount: number): void;
   cancelScheduled?(): void;
-  schedule(instrument: Instrument, events: NoteEvent[], barStartTime: number, bpm: number): void;
+  schedule(instrument: Instrument, events: NoteEvent[], barStartTime: number, bpm: number, onScheduled?: ScheduleConfirmation): void;
   /** AMT only: play through a real GM instrument sampler (see gmInstruments.ts) instead of
    *  the synthesized Keys voice. */
-  scheduleAccompaniment?(gmProgram: number, events: NoteEvent[], barStartTime: number, bpm: number): void;
+  scheduleAccompaniment?(gmProgram: number, events: NoteEvent[], barStartTime: number, bpm: number, onScheduled?: ScheduleConfirmation): void;
 }
 
 export class Bandleader {

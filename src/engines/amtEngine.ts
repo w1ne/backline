@@ -73,6 +73,9 @@ export class AmtEngine implements BandEngine {
   onStatus?: (message: string, latencyMs?: number) => void;
   onResponseTiming?: (estimatedMs: number | null) => void;
   private lastResponseCapture = -Infinity;
+  private lastResponseEstimate = Infinity;
+  private responseTimings = new Map<number, number>();
+  private timingFlushPending = false;
   onChord?: (chord: Chord, fromBeat: number) => void;
   onSection?: (section: Section) => void;
   private amount = 1;
@@ -152,6 +155,9 @@ export class AmtEngine implements BandEngine {
   async start(bpm: number, firstBarAt: number): Promise<void> {
     this.stopping = false;
     this.lastResponseCapture = -Infinity;
+    this.lastResponseEstimate = Infinity;
+    this.responseTimings.clear();
+    this.timingFlushPending = false;
     this.onResponseTiming?.(null);
     this.players.setBandAmount?.(this.amount);
     for (const i of ['drums', 'bass', 'keys', 'lead'] as const) this.players.setEnabled?.(i, this.state.enabled[i]);
@@ -257,6 +263,8 @@ export class AmtEngine implements BandEngine {
 
   stop(): void {
     this.stopping = true;
+    this.responseTimings.clear();
+    this.timingFlushPending = false;
     this.onResponseTiming?.(null);
     this.players.cancelScheduled?.();
     this.players.setBandAmount?.(1);
@@ -462,32 +470,55 @@ export class AmtEngine implements BandEngine {
         duration: n.dur,
         velocity: n.vel * this.velocityAmount,
       }));
+      const session = this.inputSession;
+      const original = new Map(events.map((event, i) => [event, list[i]]));
+      const onScheduled = (accepted: readonly NoteEvent[]) => {
+        if (this.stopping || session !== this.inputSession || !this.amount || !this.state.enabled[voice]) return;
+        if (!accepted.length) return;
+        if (!this.gotFirstNotes) {
+          this.gotFirstNotes = true;
+          this.onFirstBlock?.();
+        }
+        this.onStatus?.('Playing');
+        for (const event of accepted) {
+          const note = original.get(event);
+          if (!note || !(event.velocity > 0) || note.captureTimeSec === undefined) continue;
+          this.queueResponseTiming(note.captureTimeSec, barStart + event.time * spb, session);
+        }
+      };
       const gmInstr = gmInstrStr ? Number(gmInstrStr) : undefined;
       if (gmInstr !== undefined && this.players.scheduleAccompaniment) {
-        this.players.scheduleAccompaniment(gmInstr, events, barStart, this.bpm);
+        this.players.scheduleAccompaniment(gmInstr, events, barStart, this.bpm, onScheduled);
       } else {
-        this.players.schedule(voice, events, barStart, this.bpm);
-      }
-      if (!this.gotFirstNotes) {
-        this.gotFirstNotes = true;
-        this.onFirstBlock?.();
-      }
-      this.onStatus?.('Playing');
-      // Clock offset maps capture time into AudioContext time. Report once per
-      // input event, only when an enabled, future note actually reaches Players.
-      const candidates = list.filter(n => n.vel > 0 && n.captureTimeSec !== undefined && n.captureTimeSec > this.lastResponseCapture);
-      if (candidates.length) {
-        const latest = Math.max(...candidates.map(n => n.captureTimeSec!));
-        const firstBeat = Math.min(...candidates.filter(n => n.captureTimeSec === latest).map(n => n.beat));
-        const captureAudio = latest + this.now() - this.inputNow();
-        const estimate = (this.firstBarAt + firstBeat * spb - captureAudio) * 1000 + this.outputDelayMs();
-        if (Number.isFinite(estimate) && estimate >= 0) {
-          this.lastResponseCapture = latest;
-          this.onResponseTiming?.(estimate);
-        }
+        this.players.schedule(voice, events, barStart, this.bpm, onScheduled);
       }
       for (const n of list) this.scheduled.set(AmtEngine.noteKey(n), n.beat);
     }
+  }
+
+  /** Coalesce synchronous role callbacks; asynchronous sample loads may refine
+   * the same capture's estimate downward when an earlier note becomes playable. */
+  private queueResponseTiming(capture: number, audioTime: number, session: number): void {
+    if (capture < this.lastResponseCapture) return;
+    const captureAudio = capture + this.now() - this.inputNow();
+    const estimate = (audioTime - captureAudio) * 1000 + this.outputDelayMs();
+    if (!Number.isFinite(estimate) || estimate < 0) return;
+    this.responseTimings.set(capture, Math.min(estimate, this.responseTimings.get(capture) ?? Infinity));
+    if (this.timingFlushPending) return;
+    this.timingFlushPending = true;
+    void Promise.resolve().then(() => {
+      if (this.stopping || session !== this.inputSession) return;
+      this.timingFlushPending = false;
+      if (!this.responseTimings.size) return;
+      const latest = Math.max(...this.responseTimings.keys());
+      const best = this.responseTimings.get(latest)!;
+      this.responseTimings.clear();
+      if (latest > this.lastResponseCapture || (latest === this.lastResponseCapture && best < this.lastResponseEstimate - .01)) {
+        this.lastResponseCapture = latest;
+        this.lastResponseEstimate = best;
+        this.onResponseTiming?.(best);
+      }
+    });
   }
 
   /** Keeps the dedupe key set from growing for the length of the session. */

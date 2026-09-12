@@ -377,3 +377,74 @@ it('cancels GM notes already handed to the sampler without needing a local Sound
   players.cancelScheduled();
   expect(voice.stop).toHaveBeenCalledTimes(1);
 });
+
+
+it('confirms only accepted nonzero events after sample readiness', async () => {
+  sf.instruments.length = 0;
+  const players = new Players();
+  withFakeBusses(players);
+  const confirmed = vi.fn();
+  const audible = { time: 0, note: 60, duration: 1, velocity: .8 };
+  players.scheduleAccompaniment(24, [audible, {...audible,note:62,velocity:0}], 100, 120, confirmed);
+  expect(confirmed).not.toHaveBeenCalled();
+  const voice = sf.instruments[0];
+  voice.resolveReady(); await voice.ready;
+  expect(confirmed).toHaveBeenCalledWith([audible]);
+  expect(voice.start).toHaveBeenCalledTimes(1);
+});
+
+it('does not confirm notes dropped as stale during sample loading', async () => {
+  sf.instruments.length = 0;
+  const players = new Players();
+  withFakeBusses(players);
+  const context = vi.spyOn(Tone, 'getContext');
+  context.mockReturnValue({ currentTime: 99 } as ReturnType<typeof Tone.getContext>);
+  try {
+    const confirmed = vi.fn();
+    players.scheduleAccompaniment(24, [{time:0,note:60,duration:1,velocity:.8}], 100, 120, confirmed);
+    context.mockReturnValue({ currentTime: 101 } as ReturnType<typeof Tone.getContext>);
+    const voice = sf.instruments[0];
+    voice.resolveReady(); await voice.ready;
+    expect(confirmed).not.toHaveBeenCalled();
+  } finally { context.mockRestore(); }
+});
+
+it('does not publish AMT response timing when a real Players sampler finishes loading too late', async () => {
+  const { AmtEngine } = await import('../engines/amtEngine');
+  sf.instruments.length = 0;
+  class Socket {
+    static OPEN = 1;
+    readyState = 1;
+    listeners = new Map<string, (event: any) => void>();
+    addEventListener(type: string, callback: (event: any) => void) { this.listeners.set(type, callback); }
+    send() {}
+    close() {}
+    constructor() { socket = this; }
+  }
+  let socket!: Socket;
+  vi.stubGlobal('WebSocket', Socket);
+  const players = new Players();
+  withFakeBusses(players);
+  const context = vi.spyOn(Tone, 'getContext');
+  context.mockReturnValue({ currentTime: 10 } as ReturnType<typeof Tone.getContext>);
+  const clock = { bpm: 120, onBar: vi.fn(), start: vi.fn(), stop: vi.fn(), setBpm: vi.fn() };
+  const engine = new AmtEngine(players, { onNote: () => undefined }, clock, () => Tone.getContext().currentTime, () => 100);
+  try {
+    engine.setEnabled('lead', true);
+    await engine.start(120, 10);
+    const timing = vi.fn(); engine.onResponseTiming = timing;
+    socket.listeners.get('message')?.({data:JSON.stringify({type:'plan',latestCaptureTimeSec:100,notes:[
+      {voice:'lead',gmInstr:24,beat:2,pitch:60,dur:1,vel:.8},
+    ]})});
+    expect(sf.instruments).toHaveLength(1);
+    context.mockReturnValue({ currentTime: 13 } as ReturnType<typeof Tone.getContext>);
+    const voice = sf.instruments[0];
+    voice.resolveReady(); await voice.ready; await Promise.resolve();
+    expect(voice.start).not.toHaveBeenCalled();
+    expect(timing).not.toHaveBeenCalled();
+  } finally {
+    engine.stop();
+    context.mockRestore();
+    vi.unstubAllGlobals();
+  }
+});
