@@ -27,7 +27,7 @@ health, and roll back failed or interrupted installations. See
 
 Validation performed during integration:
 
-- Production web and Pi builds; 664 frontend tests; 138 backend tests (plus two
+- Production web and Pi builds; 664 frontend tests; 161 backend tests (plus two
   subtests); 30 Pi tests (one optional dependency skip); all 44 benchmark gates,
   including the MIR-1K real-voice subset.
 - Browser fake microphone: quiet 220/440 Hz tones, +20-cent bend, and silence release;
