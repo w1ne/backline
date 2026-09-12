@@ -58,6 +58,8 @@ ACE_REPO_DIR = os.environ.get("ACE_REPO_DIR", "/opt/ace-step")
 MODEL_OUTPUT_SR = 44100  # ACE-Step 1.5 renders at 44.1 kHz; we resample to 48 kHz for the client.
 TARGET_SR = 48000
 INFERENCE_STEPS = 8
+# Chords named in the prompt; more than a bar or two of history just dilutes it.
+CHORD_PROMPT_MAX = 4
 
 GENRE_PROMPTS = {
     "lofi": "lofi hip hop, chill beats, warm tape saturation",
@@ -74,12 +76,22 @@ INSTRUMENT_WORDS = {
 }
 
 
-def build_prompt(genre: str, instruments: list[str], exclude: Optional[str] = None) -> str:
+def build_prompt(
+    genre: str,
+    instruments: list[str],
+    exclude: Optional[str] = None,
+    chords: Optional[list[str]] = None,
+) -> str:
     genre_text = GENRE_PROMPTS.get(genre, GENRE_PROMPTS["lofi"])
     words = [INSTRUMENT_WORDS.get(i, i) for i in instruments if i != exclude]
     parts = [genre_text]
     if words:
         parts.append(", ".join(words))
+    if chords:
+        # ACE-Step 1.5 has no structured harmony input beyond `key_scale` (one key per
+        # generation), so the chords the player is outlining can only reach the model as
+        # prompt text. It is a nudge, not a constraint -- the model is free to ignore it.
+        parts.append("chord progression: " + " ".join(chords[-CHORD_PROMPT_MAX:]))
     parts.append("instrumental, no vocals, no guitar")
     return ", ".join(parts)
 
@@ -332,11 +344,12 @@ class Session:
         creativity = float(msg.get("creativity", 0.5))
         bars = int(msg.get("bars", 2))
         player_instrument = msg.get("player_instrument")
+        chords = [str(c) for c in (msg.get("chords") or [])]
 
         duration = bars * 240.0 / bpm
         needs_restart = bpm != self.last_bpm or key != self.last_key or self.prev_audio_path is None
         task_type = "text2music" if needs_restart else "complete"
-        prompt = build_prompt(genre, instruments, exclude=player_instrument)
+        prompt = build_prompt(genre, instruments, exclude=player_instrument, chords=chords)
 
         params = GenParams(
             task_type=task_type,

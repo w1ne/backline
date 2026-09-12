@@ -7,10 +7,10 @@ Live: https://shylenko.com/backline/ (soon https://soundofthe.world). Spec with 
 ## How it works
 
 ```
-mic / MIDI  →  Listener  →  { bpm, key, notes }  →  BandEngine  →  audio
+mic / MIDI  →  Listener  →  { bpm, key, chord, notes }  →  BandEngine  →  audio
 ```
 
-- **Listener** (`src/listener/`): onset detection with an adaptive noise floor, McLeod pitch detection, tempo lock from 12 onsets (two-stage IOI estimate), Krumhansl–Schmuckler key detection, Follow mode (±8 % per bar, ramped). Mic and MIDI feed the same lock.
+- **Listener** (`src/listener/`): onset detection with an adaptive noise floor, McLeod pitch detection, tempo lock from 12 onsets (two-stage IOI estimate), Krumhansl–Schmuckler key detection, chord detection, Follow mode (±8 % per bar, ramped). Mic and MIDI feed the same lock.
 - **BandEngine** (`src/engines/`): one interface, three implementations, switchable on the panel.
 
 | Engine | Where it runs | Latency of a control change | Notes |
@@ -21,6 +21,21 @@ mic / MIDI  →  Listener  →  { bpm, key, notes }  →  BandEngine  →  audio
 
 - **Relay** (`relay/`): Cloudflare Worker. Holds the API key and the pod URL, proxies the WebSockets, accepts connections only from the app's origins, 6 new connections per minute per IP. No accounts.
 - **UI** (`src/ui/`): vanilla DOM, hardware-panel look. Power key, LCD status, four pads, knob, genre chips, engine switch, manual BPM/key.
+
+### Chord following
+
+`src/listener/chordDetector.ts` keeps a decaying pitch-class histogram over the last two beats — bass notes count 1.5×, because the bass note names the chord — and matches it against 84 templates (major, minor, dom7, min7, maj7, sus4, dim on all twelve roots). The score is the cosine similarity with the template minus the share of energy on non-chord tones, which is what keeps C–E–G reading as C rather than as a Cmaj7 missing its seventh.
+
+The chord is only *re-decided* when the app clock calls `Listener.tickChord()`, on the bar and the half bar — not per note, so the band hears at most two chords a bar. A new chord has to clear 0.55 confidence *and* either beat the incumbent by 0.1 or catch it below 0.4; that hysteresis is what stops the flicker between a triad and its relative. Until something settles, the band plays the key's tonic triad.
+
+What each engine does with it:
+
+| Engine | On a chord change |
+|---|---|
+| Patterns | bass and keys resolve their degrees against the chord instead of the key, from the next bar (and from the next half bar for hits that land after the change). Passing tones still come from the key, so a secondary dominant brings only its own third out of key |
+| ACE | the last four chords ride along in the block request as `chords: ['Am','F','G','C']` and the server names them in the prompt. ACE-Step 1.5 has no structured harmony input past `key_scale`, so this is a nudge, not a constraint — and deliberately does *not* restart the stream the way a key change does |
+| Lyria | nothing. Lyria applies harmony by resetting the stream, which costs a reconnect and an audible gap; paying that every half bar is not worth it. Key changes keep the existing reset path |
+| AMT | nothing needed — it already follows the player's actual notes. The chord is sent in `set` for the server to use later |
 
 ## Run it
 

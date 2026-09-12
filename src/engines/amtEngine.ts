@@ -1,5 +1,6 @@
 import * as Tone from 'tone';
 import type { BandState, Instrument, Key, NoteEvent } from '../types';
+import { chordName } from '../listener/chordDetector';
 import type { BandEngine } from './engine';
 import { ToneClock } from '../band/clock';
 import type { ClockLike } from '../band/clockTypes';
@@ -60,6 +61,7 @@ export class AmtEngine implements BandEngine {
   private state: BandState = {
     genre: 'lofi',
     key: { root: 0, mode: 'major' },
+    chord: null,
     creativity: 0.3,
     enabled: { drums: false, bass: false, keys: false, lead: false },
   };
@@ -176,9 +178,12 @@ export class AmtEngine implements BandEngine {
     this.scheduled.clear();
   }
 
-  set(p: Partial<Pick<BandState, 'genre' | 'key' | 'creativity'>>): void {
+  set(p: Partial<Pick<BandState, 'genre' | 'key' | 'chord' | 'creativity'>>): void {
     if (p.genre !== undefined) this.state.genre = p.genre;
     if (p.key !== undefined) this.state.key = p.key;
+    // AMT already follows the player's actual notes, so it needs nothing from the chord
+    // detector to stay in harmony; the chord rides along in `set` for the server to use later.
+    if (p.chord !== undefined) this.state.chord = p.chord;
     if (p.creativity !== undefined) this.state.creativity = p.creativity;
     this.queueSet();
   }
@@ -197,6 +202,7 @@ export class AmtEngine implements BandEngine {
     const payload = JSON.stringify({
       type: 'set',
       genre: this.state.genre,
+      chord: this.state.chord ? chordName(this.state.chord) : null,
       creativity: this.state.creativity,
       instruments: { ...this.state.enabled },
     });

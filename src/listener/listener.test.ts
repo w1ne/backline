@@ -172,3 +172,26 @@ describe('Listener', () => {
     ]);
   });
 });
+
+describe('Listener chord following', () => {
+  it('reports the chord being played once the app ticks, not on every note', async () => {
+    const a = new Fake();
+    const l = new Listener([a], ['midi']);
+    await l.start();
+    const now = performance.now() / 1000;
+    // Two beats of a C major arpeggio, ending at "now" so it all sits inside the window.
+    [60, 64, 67, 60, 64, 67].forEach((n, i) => a.note(n, 0.9, now - 0.9 + i * 0.15));
+    expect(l.input.chord).toBeNull(); // notes alone never move the chord
+    expect(l.tickChord(0)).toEqual({ root: 0, quality: 'maj' });
+    expect(l.input.chord).toEqual({ root: 0, quality: 'maj' });
+  });
+
+  it('falls back to the key tonic triad while nothing conclusive is being played', async () => {
+    const a = new Fake();
+    const l = new Listener([a], ['midi']);
+    await l.start();
+    l.setOverride({ key: { root: 9, mode: 'minor' } });
+    expect(l.tickChord(0)).toEqual({ root: 9, quality: 'min' });
+  });
+});
+

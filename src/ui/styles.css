@@ -1354,13 +1354,15 @@ body {
 }
 
 @keyframes dropin {
+  /* transform-only: an opacity fade here leaves controls (e.g. #power-key)
+     briefly un-hit-testable by real input during the animation, dropping any
+     click that lands in that window (opacity: 0 is not just invisible, it is
+     excluded from hit-testing until the animation clears it). */
   from {
     transform: translateY(-10px);
-    opacity: 0;
   }
   to {
     transform: none;
-    opacity: 1;
   }
 }
 

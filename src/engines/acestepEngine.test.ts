@@ -216,6 +216,32 @@ describe('AceStepEngine', () => {
     expect(onFirstBlock).toHaveBeenCalledTimes(1);
   });
 
+  it('carries the last four distinct chords as a progression, without restarting playback', async () => {
+    const engine = new AceStepEngine(ctx as unknown as AudioContext);
+    engine.setEnabled('bass', true);
+    await engine.start(100, 0);
+    const ws = startedSocket();
+    ws.open();
+    ws.receiveBlock(1);
+    const before = ws.sent.length;
+
+    for (const chord of [
+      { root: 9, quality: 'min' as const },
+      { root: 9, quality: 'min' as const }, // repeat: same chord held, not a new entry
+      { root: 5, quality: 'maj' as const },
+      { root: 7, quality: 'maj' as const },
+      { root: 0, quality: 'maj' as const },
+    ])
+      engine.set({ chord });
+
+    // A chord change must never cut playback the way a key change does.
+    expect(ws.sent.length).toBe(before);
+
+    ws.receiveBlock(2);
+    const last = ws.sent[ws.sent.length - 1] as { chords: string[] };
+    expect(last.chords).toEqual(['Am', 'F', 'G', 'C']);
+  });
+
   it('stop closes the socket', async () => {
     const engine = new AceStepEngine(ctx as unknown as AudioContext);
     await engine.start(100, 0);

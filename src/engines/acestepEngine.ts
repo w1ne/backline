@@ -1,5 +1,6 @@
-import type { BandState, Instrument, Key } from '../types';
+import type { BandState, Chord, Instrument, Key } from '../types';
 import { INSTRUMENTS } from '../types';
+import { chordName } from '../listener/chordDetector';
 import type { BandEngine } from './engine';
 import { PcmPlayer } from './pcmPlayer';
 import { RELAY_URL } from '../config';
@@ -8,6 +9,8 @@ const KEY_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', '
 const CUT_FADE_SEC = 0.15;
 const KEEPALIVE_MS = 30000;
 const BARS_PER_BLOCK = 2;
+/** how many recent half-bar chords ride along in the block request as a progression */
+const CHORD_HISTORY = 4;
 
 function keyString(k: Key): string {
   return `${KEY_NAMES[k.root]} ${k.mode === 'major' ? 'major' : 'minor'}`;
@@ -26,6 +29,8 @@ interface BlockRequest {
   instruments: Instrument[];
   creativity: number;
   bars: number;
+  /** the last few half-bar chords the player outlined, e.g. ['Am','F','G','C'] */
+  chords: string[];
 }
 
 /** Streams bar-quantized blocks from the ACE-Step service and schedules them back-to-back
@@ -41,9 +46,11 @@ export class AceStepEngine implements BandEngine {
   private state: BandState = {
     genre: 'lofi',
     key: { root: 0, mode: 'major' },
+    chord: null,
     creativity: 0.3,
     enabled: { drums: false, bass: false, keys: false, lead: false },
   };
+  private chords: string[] = [];
   private ws?: WebSocket;
   private player?: PcmPlayer;
   private bpm = 0;
@@ -124,15 +131,27 @@ export class AceStepEngine implements BandEngine {
     this.player = undefined;
   }
 
-  set(p: Partial<Pick<BandState, 'genre' | 'key' | 'creativity'>>): void {
+  set(p: Partial<Pick<BandState, 'genre' | 'key' | 'chord' | 'creativity'>>): void {
     let keyChanged = false;
     if (p.genre !== undefined) this.state.genre = p.genre;
     if (p.key !== undefined && !sameKey(p.key, this.state.key)) {
       this.state.key = p.key;
       keyChanged = true;
     }
+    if (p.chord !== undefined) this.pushChord(p.chord);
     if (p.creativity !== undefined) this.state.creativity = p.creativity;
+    // A chord change deliberately does *not* restart: the progression is prompt text the
+    // next block picks up anyway, and cutting playback every half bar would be unlistenable.
     if (keyChanged) this.restart();
+  }
+
+  private pushChord(chord: Chord | null): void {
+    this.state.chord = chord;
+    if (!chord) return;
+    const name = chordName(chord);
+    if (this.chords[this.chords.length - 1] === name) return;
+    this.chords.push(name);
+    if (this.chords.length > CHORD_HISTORY) this.chords.shift();
   }
 
   setEnabled(i: Instrument, on: boolean): void {
@@ -183,6 +202,7 @@ export class AceStepEngine implements BandEngine {
       instruments: INSTRUMENTS.filter(i => this.state.enabled[i]),
       creativity: this.state.creativity,
       bars: BARS_PER_BLOCK,
+      chords: [...this.chords],
     };
     this.send(req);
   }
