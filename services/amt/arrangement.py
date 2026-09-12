@@ -21,6 +21,12 @@ def shape_notes(notes, start, end, beat_seconds, space, time_resolution=100, key
     # Amount controls room left for the performer; creativity unlocks subdivisions.
     grid_beats = .25 if creativity >= .65 else .5
     gap_beats = 2.0 if amount < .25 else 1.0 if amount < .7 else .5
+    # Above 0.8, creativity gets a "wild" end: the density cap rises as the
+    # minimum note spacing is pulled down from the amount-driven gap toward
+    # the 0.25-beat grid, reaching exactly the grid at creativity == 1.0.
+    wild = min(1.0, max(0.0, creativity - .8) / .2)
+    if wild:
+        gap_beats = gap_beats - (gap_beats - grid_beats) * wild
     gap = beat_seconds * max(grid_beats, gap_beats * (.5 if space else 1.0))
     # Answer for at most two beats, then hand the phrase back to the performer.
     if space:
@@ -45,7 +51,9 @@ def shape_notes(notes, start, end, beat_seconds, space, time_resolution=100, key
         # Simple phrases stay on chord tones; adventurous phrases can use scale
         # passing tones between strong beats without turning into random chromatic notes.
         strong_beat = abs(grid_index * grid_beats % 1) < 1e-8
-        allowed = scale_tones if space or (creativity >= .5 and not strong_beat) else chord_tones
+        # Wild creativity (>= 0.8) lets strong beats reach for scale tones too;
+        # they still never leave the scale.
+        allowed = scale_tones if space or creativity >= .8 or (creativity >= .5 and not strong_beat) else chord_tones
         if allowed:
             # Keep the model's contour/register while removing clashes against
             # the performer's harmony. Ties prefer the lower supporting note.
