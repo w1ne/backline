@@ -1,0 +1,2049 @@
+{
+  "gpu": "NVIDIA L4",
+  "torch": "2.6.0+cu124",
+  "sampler": "cached_generate",
+  "source_sha256": {
+    "services/amt/server.py": "0e2c1cf04b03a4a2e284c4eeefa5db98e8eb90db91917deaa685612fc22b2e00",
+    "services/amt/cached.py": "3499e22dca4a7f1515c16664108aa7458731cd8f35cf6d3b7014ddd65ef0d84e",
+    "services/amt/arrangement.py": "1960cd7eb03231d14fd79d1db47b347706f39d166506cfa8bd1c37ae46fc244c",
+    "bench/amt/amt.py": "e20485258fa295d740d614f6df93320437552546adf7ba87bd405f77d81944d4",
+    "bench/amt/live_duet.py": "a97b1e59353af70109c18c5aa53e080749ce913a6f12981db1750e9928b12cbb"
+  },
+  "rows": [
+    {
+      "model": "small",
+      "bpm": 100,
+      "seed": 0,
+      "bar": 2,
+      "mode": "support",
+      "latency_ms": 107.92801156640053,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 2,
+      "diatonic_count": 2,
+      "support_chord_ok": true,
+      "answer_within_two_beats": null,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 12.0,
+        "toBeat": 16.0,
+        "notes": [
+          {
+            "beat": 14.5,
+            "pitch": 67,
+            "dur": 0.8,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 15.500000000000002,
+            "pitch": 67,
+            "dur": 0.4999999999999982,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 12.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "small",
+      "bpm": 100,
+      "seed": 0,
+      "bar": 4,
+      "mode": "answer",
+      "latency_ms": 107.34090954065323,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 2,
+      "diatonic_count": 2,
+      "support_chord_ok": null,
+      "answer_within_two_beats": true,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 20.0,
+        "toBeat": 24.0,
+        "notes": [
+          {
+            "beat": 20.0,
+            "pitch": 64,
+            "dur": 0.8,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 21.0,
+            "pitch": 67,
+            "dur": 0.8,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 20.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "small",
+      "bpm": 100,
+      "seed": 0,
+      "bar": 6,
+      "mode": "support",
+      "latency_ms": 184.0321533381939,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 4,
+      "diatonic_count": 4,
+      "support_chord_ok": true,
+      "answer_within_two_beats": null,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 28.0,
+        "toBeat": 32.0,
+        "notes": [
+          {
+            "beat": 28.000000000000004,
+            "pitch": 67,
+            "dur": 0.8,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 29.0,
+            "pitch": 72,
+            "dur": 0.4,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 30.0,
+            "pitch": 72,
+            "dur": 0.4,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 31.000000000000004,
+            "pitch": 72,
+            "dur": 0.4,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 28.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "small",
+      "bpm": 100,
+      "seed": 0,
+      "bar": 8,
+      "mode": "answer",
+      "latency_ms": 114.87414687871933,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 1,
+      "diatonic_count": 1,
+      "support_chord_ok": null,
+      "answer_within_two_beats": true,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 36.0,
+        "toBeat": 40.0,
+        "notes": [
+          {
+            "beat": 36.00000000000001,
+            "pitch": 67,
+            "dur": 1.6,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 36.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "small",
+      "bpm": 100,
+      "seed": 1,
+      "bar": 2,
+      "mode": "support",
+      "latency_ms": 82.90863782167435,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": false,
+      "key_notes": 0,
+      "diatonic_count": 0,
+      "support_chord_ok": true,
+      "answer_within_two_beats": null,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 12.0,
+        "toBeat": 16.0,
+        "notes": []
+      }
+    },
+    {
+      "model": "small",
+      "bpm": 100,
+      "seed": 1,
+      "bar": 4,
+      "mode": "answer",
+      "latency_ms": 106.1883233487606,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 2,
+      "diatonic_count": 2,
+      "support_chord_ok": null,
+      "answer_within_two_beats": true,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 20.0,
+        "toBeat": 24.0,
+        "notes": [
+          {
+            "beat": 20.0,
+            "pitch": 69,
+            "dur": 0.8,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 21.0,
+            "pitch": 69,
+            "dur": 0.8,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 20.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "small",
+      "bpm": 100,
+      "seed": 1,
+      "bar": 6,
+      "mode": "support",
+      "latency_ms": 83.0620676279068,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 1,
+      "diatonic_count": 1,
+      "support_chord_ok": true,
+      "answer_within_two_beats": null,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 28.0,
+        "toBeat": 32.0,
+        "notes": [
+          {
+            "beat": 31.000000000000004,
+            "pitch": 67,
+            "dur": 0.8,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 28.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "small",
+      "bpm": 100,
+      "seed": 1,
+      "bar": 8,
+      "mode": "answer",
+      "latency_ms": 108.79293456673622,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 2,
+      "diatonic_count": 2,
+      "support_chord_ok": null,
+      "answer_within_two_beats": true,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 36.0,
+        "toBeat": 40.0,
+        "notes": [
+          {
+            "beat": 36.00000000000001,
+            "pitch": 60,
+            "dur": 0.8,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 37.0,
+            "pitch": 64,
+            "dur": 0.8,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 36.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "small",
+      "bpm": 100,
+      "seed": 2,
+      "bar": 2,
+      "mode": "support",
+      "latency_ms": 107.51760751008987,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 2,
+      "diatonic_count": 2,
+      "support_chord_ok": true,
+      "answer_within_two_beats": null,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 12.0,
+        "toBeat": 16.0,
+        "notes": [
+          {
+            "beat": 14.000000000000002,
+            "pitch": 67,
+            "dur": 0.8,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 15.0,
+            "pitch": 72,
+            "dur": 0.8,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 12.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "small",
+      "bpm": 100,
+      "seed": 2,
+      "bar": 4,
+      "mode": "answer",
+      "latency_ms": 133.23789089918137,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 3,
+      "diatonic_count": 3,
+      "support_chord_ok": null,
+      "answer_within_two_beats": true,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 20.0,
+        "toBeat": 24.0,
+        "notes": [
+          {
+            "beat": 20.0,
+            "pitch": 72,
+            "dur": 0.4,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 20.500000000000004,
+            "pitch": 71,
+            "dur": 0.4,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 21.0,
+            "pitch": 72,
+            "dur": 0.8,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 20.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "small",
+      "bpm": 100,
+      "seed": 2,
+      "bar": 6,
+      "mode": "support",
+      "latency_ms": 109.23882573843002,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 4,
+      "diatonic_count": 4,
+      "support_chord_ok": true,
+      "answer_within_two_beats": null,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 28.0,
+        "toBeat": 32.0,
+        "notes": [
+          {
+            "beat": 28.000000000000004,
+            "pitch": 67,
+            "dur": 0.8,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 29.0,
+            "pitch": 64,
+            "dur": 0.8,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 30.0,
+            "pitch": 60,
+            "dur": 0.8,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 31.000000000000004,
+            "pitch": 55,
+            "dur": 0.8,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 28.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "small",
+      "bpm": 100,
+      "seed": 2,
+      "bar": 8,
+      "mode": "answer",
+      "latency_ms": 107.8367717564106,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 2,
+      "diatonic_count": 2,
+      "support_chord_ok": null,
+      "answer_within_two_beats": true,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 36.0,
+        "toBeat": 40.0,
+        "notes": [
+          {
+            "beat": 36.00000000000001,
+            "pitch": 60,
+            "dur": 0.8,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 37.0,
+            "pitch": 60,
+            "dur": 0.8,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 36.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "small",
+      "bpm": 150,
+      "seed": 0,
+      "bar": 2,
+      "mode": "support",
+      "latency_ms": 83.84433388710022,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 1,
+      "diatonic_count": 1,
+      "support_chord_ok": true,
+      "answer_within_two_beats": null,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 12.0,
+        "toBeat": 16.0,
+        "notes": [
+          {
+            "beat": 13.0,
+            "pitch": 67,
+            "dur": 3.0000000000000004,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 12.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "small",
+      "bpm": 150,
+      "seed": 0,
+      "bar": 4,
+      "mode": "answer",
+      "latency_ms": 107.9007051885128,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 2,
+      "diatonic_count": 2,
+      "support_chord_ok": null,
+      "answer_within_two_beats": true,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 20.0,
+        "toBeat": 24.0,
+        "notes": [
+          {
+            "beat": 20.0,
+            "pitch": 64,
+            "dur": 1.0000000000000009,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 21.0,
+            "pitch": 64,
+            "dur": 0.7999999999999999,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 20.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "small",
+      "bpm": 150,
+      "seed": 0,
+      "bar": 6,
+      "mode": "support",
+      "latency_ms": 59.387318789958954,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 2,
+      "diatonic_count": 2,
+      "support_chord_ok": true,
+      "answer_within_two_beats": null,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 28.0,
+        "toBeat": 32.0,
+        "notes": [
+          {
+            "beat": 27.999999999999996,
+            "pitch": 67,
+            "dur": 1.5999999999999999,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 30.0,
+            "pitch": 72,
+            "dur": 1.5999999999999999,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 28.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "small",
+      "bpm": 150,
+      "seed": 0,
+      "bar": 8,
+      "mode": "answer",
+      "latency_ms": 107.43308067321777,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 2,
+      "diatonic_count": 2,
+      "support_chord_ok": null,
+      "answer_within_two_beats": true,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 36.0,
+        "toBeat": 40.0,
+        "notes": [
+          {
+            "beat": 36.0,
+            "pitch": 67,
+            "dur": 0.7999999999999999,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 37.0,
+            "pitch": 67,
+            "dur": 0.7999999999999999,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 36.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "small",
+      "bpm": 150,
+      "seed": 1,
+      "bar": 2,
+      "mode": "support",
+      "latency_ms": 133.68869945406914,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 3,
+      "diatonic_count": 3,
+      "support_chord_ok": true,
+      "answer_within_two_beats": null,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 12.0,
+        "toBeat": 16.0,
+        "notes": [
+          {
+            "beat": 13.0,
+            "pitch": 72,
+            "dur": 0.39999999999999997,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 13.999999999999998,
+            "pitch": 72,
+            "dur": 0.7999999999999999,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 15.0,
+            "pitch": 72,
+            "dur": 0.7999999999999999,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 12.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "small",
+      "bpm": 150,
+      "seed": 1,
+      "bar": 4,
+      "mode": "answer",
+      "latency_ms": 116.24859645962715,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 2,
+      "diatonic_count": 2,
+      "support_chord_ok": null,
+      "answer_within_two_beats": true,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 20.0,
+        "toBeat": 24.0,
+        "notes": [
+          {
+            "beat": 20.0,
+            "pitch": 69,
+            "dur": 0.7999999999999999,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 21.0,
+            "pitch": 69,
+            "dur": 0.7999999999999999,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 20.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "small",
+      "bpm": 150,
+      "seed": 1,
+      "bar": 6,
+      "mode": "support",
+      "latency_ms": 61.666350811719894,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": false,
+      "key_notes": 0,
+      "diatonic_count": 0,
+      "support_chord_ok": true,
+      "answer_within_two_beats": null,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 28.0,
+        "toBeat": 32.0,
+        "notes": []
+      }
+    },
+    {
+      "model": "small",
+      "bpm": 150,
+      "seed": 1,
+      "bar": 8,
+      "mode": "answer",
+      "latency_ms": 108.14590007066727,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 2,
+      "diatonic_count": 2,
+      "support_chord_ok": null,
+      "answer_within_two_beats": true,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 36.0,
+        "toBeat": 40.0,
+        "notes": [
+          {
+            "beat": 36.0,
+            "pitch": 60,
+            "dur": 0.7999999999999999,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 37.0,
+            "pitch": 64,
+            "dur": 0.7999999999999999,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 36.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "small",
+      "bpm": 150,
+      "seed": 2,
+      "bar": 2,
+      "mode": "support",
+      "latency_ms": 108.66227000951767,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 3,
+      "diatonic_count": 3,
+      "support_chord_ok": true,
+      "answer_within_two_beats": null,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 12.0,
+        "toBeat": 16.0,
+        "notes": [
+          {
+            "beat": 13.0,
+            "pitch": 72,
+            "dur": 0.7999999999999999,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 13.999999999999998,
+            "pitch": 76,
+            "dur": 0.7999999999999999,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 15.0,
+            "pitch": 79,
+            "dur": 0.7999999999999999,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 12.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "small",
+      "bpm": 150,
+      "seed": 2,
+      "bar": 4,
+      "mode": "answer",
+      "latency_ms": 92.34418347477913,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 2,
+      "diatonic_count": 2,
+      "support_chord_ok": null,
+      "answer_within_two_beats": true,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 20.0,
+        "toBeat": 24.0,
+        "notes": [
+          {
+            "beat": 20.0,
+            "pitch": 72,
+            "dur": 0.7999999999999999,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 21.0,
+            "pitch": 71,
+            "dur": 0.7999999999999999,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 20.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "small",
+      "bpm": 150,
+      "seed": 2,
+      "bar": 6,
+      "mode": "support",
+      "latency_ms": 92.92042255401611,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 3,
+      "diatonic_count": 3,
+      "support_chord_ok": true,
+      "answer_within_two_beats": null,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 28.0,
+        "toBeat": 32.0,
+        "notes": [
+          {
+            "beat": 27.999999999999996,
+            "pitch": 67,
+            "dur": 0.7999999999999999,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 28.999999999999996,
+            "pitch": 64,
+            "dur": 0.7999999999999999,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 30.0,
+            "pitch": 64,
+            "dur": 1.5999999999999999,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 28.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "small",
+      "bpm": 150,
+      "seed": 2,
+      "bar": 8,
+      "mode": "answer",
+      "latency_ms": 111.78665608167648,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 2,
+      "diatonic_count": 2,
+      "support_chord_ok": null,
+      "answer_within_two_beats": true,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 36.0,
+        "toBeat": 40.0,
+        "notes": [
+          {
+            "beat": 36.0,
+            "pitch": 53,
+            "dur": 0.7999999999999999,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 37.0,
+            "pitch": 57,
+            "dur": 0.7999999999999999,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 36.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "medium",
+      "bpm": 100,
+      "seed": 0,
+      "bar": 2,
+      "mode": "support",
+      "latency_ms": 155.10867163538933,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": false,
+      "key_notes": 0,
+      "diatonic_count": 0,
+      "support_chord_ok": true,
+      "answer_within_two_beats": null,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 12.0,
+        "toBeat": 16.0,
+        "notes": []
+      }
+    },
+    {
+      "model": "medium",
+      "bpm": 100,
+      "seed": 0,
+      "bar": 4,
+      "mode": "answer",
+      "latency_ms": 202.6916667819023,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 2,
+      "diatonic_count": 2,
+      "support_chord_ok": null,
+      "answer_within_two_beats": true,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 20.0,
+        "toBeat": 24.0,
+        "notes": [
+          {
+            "beat": 20.0,
+            "pitch": 64,
+            "dur": 0.8,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 21.0,
+            "pitch": 67,
+            "dur": 0.8,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 20.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "medium",
+      "bpm": 100,
+      "seed": 0,
+      "bar": 6,
+      "mode": "support",
+      "latency_ms": 296.2920442223549,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 4,
+      "diatonic_count": 4,
+      "support_chord_ok": true,
+      "answer_within_two_beats": null,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 28.0,
+        "toBeat": 32.0,
+        "notes": [
+          {
+            "beat": 28.000000000000004,
+            "pitch": 67,
+            "dur": 0.8,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 29.0,
+            "pitch": 72,
+            "dur": 0.4,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 30.0,
+            "pitch": 72,
+            "dur": 0.4,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 31.000000000000004,
+            "pitch": 72,
+            "dur": 0.8,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 28.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "medium",
+      "bpm": 100,
+      "seed": 0,
+      "bar": 8,
+      "mode": "answer",
+      "latency_ms": 192.85058602690697,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 1,
+      "diatonic_count": 1,
+      "support_chord_ok": null,
+      "answer_within_two_beats": true,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 36.0,
+        "toBeat": 40.0,
+        "notes": [
+          {
+            "beat": 36.00000000000001,
+            "pitch": 67,
+            "dur": 1.6,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 36.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "medium",
+      "bpm": 100,
+      "seed": 1,
+      "bar": 2,
+      "mode": "support",
+      "latency_ms": 154.93177250027657,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": false,
+      "key_notes": 0,
+      "diatonic_count": 0,
+      "support_chord_ok": true,
+      "answer_within_two_beats": null,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 12.0,
+        "toBeat": 16.0,
+        "notes": []
+      }
+    },
+    {
+      "model": "medium",
+      "bpm": 100,
+      "seed": 1,
+      "bar": 4,
+      "mode": "answer",
+      "latency_ms": 201.75768435001373,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 2,
+      "diatonic_count": 2,
+      "support_chord_ok": null,
+      "answer_within_two_beats": true,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 20.0,
+        "toBeat": 24.0,
+        "notes": [
+          {
+            "beat": 20.0,
+            "pitch": 69,
+            "dur": 0.8,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 21.0,
+            "pitch": 74,
+            "dur": 0.8,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 20.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "medium",
+      "bpm": 100,
+      "seed": 1,
+      "bar": 6,
+      "mode": "support",
+      "latency_ms": 155.656598508358,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 1,
+      "diatonic_count": 1,
+      "support_chord_ok": true,
+      "answer_within_two_beats": null,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 28.0,
+        "toBeat": 32.0,
+        "notes": [
+          {
+            "beat": 31.000000000000004,
+            "pitch": 72,
+            "dur": 0.8,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 28.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "medium",
+      "bpm": 100,
+      "seed": 1,
+      "bar": 8,
+      "mode": "answer",
+      "latency_ms": 201.59775391221046,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 1,
+      "diatonic_count": 1,
+      "support_chord_ok": null,
+      "answer_within_two_beats": true,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 36.0,
+        "toBeat": 40.0,
+        "notes": [
+          {
+            "beat": 37.0,
+            "pitch": 72,
+            "dur": 0.9999999999999964,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 36.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "medium",
+      "bpm": 100,
+      "seed": 2,
+      "bar": 2,
+      "mode": "support",
+      "latency_ms": 203.2109946012497,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 2,
+      "diatonic_count": 2,
+      "support_chord_ok": true,
+      "answer_within_two_beats": null,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 12.0,
+        "toBeat": 16.0,
+        "notes": [
+          {
+            "beat": 14.000000000000002,
+            "pitch": 67,
+            "dur": 0.8,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 15.0,
+            "pitch": 67,
+            "dur": 0.9999999999999994,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 12.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "medium",
+      "bpm": 100,
+      "seed": 2,
+      "bar": 4,
+      "mode": "answer",
+      "latency_ms": 155.33224493265152,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": false,
+      "key_notes": 0,
+      "diatonic_count": 0,
+      "support_chord_ok": null,
+      "answer_within_two_beats": true,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 20.0,
+        "toBeat": 24.0,
+        "notes": []
+      }
+    },
+    {
+      "model": "medium",
+      "bpm": 100,
+      "seed": 2,
+      "bar": 6,
+      "mode": "support",
+      "latency_ms": 201.60437747836113,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 4,
+      "diatonic_count": 4,
+      "support_chord_ok": true,
+      "answer_within_two_beats": null,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 28.0,
+        "toBeat": 32.0,
+        "notes": [
+          {
+            "beat": 28.000000000000004,
+            "pitch": 67,
+            "dur": 0.8,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 29.0,
+            "pitch": 72,
+            "dur": 0.8,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 30.0,
+            "pitch": 76,
+            "dur": 0.8,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 31.000000000000004,
+            "pitch": 79,
+            "dur": 0.8,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 28.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "medium",
+      "bpm": 100,
+      "seed": 2,
+      "bar": 8,
+      "mode": "answer",
+      "latency_ms": 205.51562309265137,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 2,
+      "diatonic_count": 2,
+      "support_chord_ok": null,
+      "answer_within_two_beats": true,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 36.0,
+        "toBeat": 40.0,
+        "notes": [
+          {
+            "beat": 36.00000000000001,
+            "pitch": 60,
+            "dur": 0.8,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 37.0,
+            "pitch": 64,
+            "dur": 0.8,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 36.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "medium",
+      "bpm": 150,
+      "seed": 0,
+      "bar": 2,
+      "mode": "support",
+      "latency_ms": 192.3426017165184,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 3,
+      "diatonic_count": 3,
+      "support_chord_ok": true,
+      "answer_within_two_beats": null,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 12.0,
+        "toBeat": 16.0,
+        "notes": [
+          {
+            "beat": 13.0,
+            "pitch": 67,
+            "dur": 0.7999999999999999,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 13.999999999999998,
+            "pitch": 72,
+            "dur": 0.7999999999999999,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 15.0,
+            "pitch": 72,
+            "dur": 0.7999999999999999,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 12.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "medium",
+      "bpm": 150,
+      "seed": 0,
+      "bar": 4,
+      "mode": "answer",
+      "latency_ms": 103.36125269532204,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 1,
+      "diatonic_count": 1,
+      "support_chord_ok": null,
+      "answer_within_two_beats": true,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 20.0,
+        "toBeat": 24.0,
+        "notes": [
+          {
+            "beat": 20.0,
+            "pitch": 74,
+            "dur": 1.5999999999999999,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 20.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "medium",
+      "bpm": 150,
+      "seed": 0,
+      "bar": 6,
+      "mode": "support",
+      "latency_ms": 103.08018326759338,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 2,
+      "diatonic_count": 2,
+      "support_chord_ok": true,
+      "answer_within_two_beats": null,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 28.0,
+        "toBeat": 32.0,
+        "notes": [
+          {
+            "beat": 27.999999999999996,
+            "pitch": 67,
+            "dur": 1.5999999999999999,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 30.0,
+            "pitch": 72,
+            "dur": 1.5999999999999999,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 28.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "medium",
+      "bpm": 150,
+      "seed": 0,
+      "bar": 8,
+      "mode": "answer",
+      "latency_ms": 195.20024955272675,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 2,
+      "diatonic_count": 2,
+      "support_chord_ok": null,
+      "answer_within_two_beats": true,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 36.0,
+        "toBeat": 40.0,
+        "notes": [
+          {
+            "beat": 36.0,
+            "pitch": 64,
+            "dur": 0.7999999999999999,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 37.0,
+            "pitch": 67,
+            "dur": 0.7999999999999999,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 36.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "medium",
+      "bpm": 150,
+      "seed": 1,
+      "bar": 2,
+      "mode": "support",
+      "latency_ms": 200.3694400191307,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 2,
+      "diatonic_count": 2,
+      "support_chord_ok": true,
+      "answer_within_two_beats": null,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 12.0,
+        "toBeat": 16.0,
+        "notes": [
+          {
+            "beat": 13.999999999999998,
+            "pitch": 67,
+            "dur": 0.39999999999999997,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 15.0,
+            "pitch": 64,
+            "dur": 0.7999999999999999,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 12.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "medium",
+      "bpm": 150,
+      "seed": 1,
+      "bar": 4,
+      "mode": "answer",
+      "latency_ms": 200.84622502326965,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 2,
+      "diatonic_count": 2,
+      "support_chord_ok": null,
+      "answer_within_two_beats": true,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 20.0,
+        "toBeat": 24.0,
+        "notes": [
+          {
+            "beat": 20.0,
+            "pitch": 69,
+            "dur": 0.7999999999999999,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 21.0,
+            "pitch": 71,
+            "dur": 0.7999999999999999,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 20.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "medium",
+      "bpm": 150,
+      "seed": 1,
+      "bar": 6,
+      "mode": "support",
+      "latency_ms": 108.16812887787819,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": false,
+      "key_notes": 0,
+      "diatonic_count": 0,
+      "support_chord_ok": true,
+      "answer_within_two_beats": null,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 28.0,
+        "toBeat": 32.0,
+        "notes": []
+      }
+    },
+    {
+      "model": "medium",
+      "bpm": 150,
+      "seed": 1,
+      "bar": 8,
+      "mode": "answer",
+      "latency_ms": 199.78009536862373,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 2,
+      "diatonic_count": 2,
+      "support_chord_ok": null,
+      "answer_within_two_beats": true,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 36.0,
+        "toBeat": 40.0,
+        "notes": [
+          {
+            "beat": 36.0,
+            "pitch": 60,
+            "dur": 0.7999999999999999,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 37.0,
+            "pitch": 64,
+            "dur": 0.7999999999999999,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 36.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "medium",
+      "bpm": 150,
+      "seed": 2,
+      "bar": 2,
+      "mode": "support",
+      "latency_ms": 199.32574406266212,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 3,
+      "diatonic_count": 3,
+      "support_chord_ok": true,
+      "answer_within_two_beats": null,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 12.0,
+        "toBeat": 16.0,
+        "notes": [
+          {
+            "beat": 13.0,
+            "pitch": 72,
+            "dur": 0.7999999999999999,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 13.999999999999998,
+            "pitch": 76,
+            "dur": 0.7999999999999999,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 15.0,
+            "pitch": 79,
+            "dur": 0.7999999999999999,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 12.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "medium",
+      "bpm": 150,
+      "seed": 2,
+      "bar": 4,
+      "mode": "answer",
+      "latency_ms": 108.46151411533356,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 1,
+      "diatonic_count": 1,
+      "support_chord_ok": null,
+      "answer_within_two_beats": true,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 20.0,
+        "toBeat": 24.0,
+        "notes": [
+          {
+            "beat": 20.0,
+            "pitch": 72,
+            "dur": 2.0000000000000018,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 20.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "medium",
+      "bpm": 150,
+      "seed": 2,
+      "bar": 6,
+      "mode": "support",
+      "latency_ms": 206.5930999815464,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 3,
+      "diatonic_count": 3,
+      "support_chord_ok": true,
+      "answer_within_two_beats": null,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 28.0,
+        "toBeat": 32.0,
+        "notes": [
+          {
+            "beat": 27.999999999999996,
+            "pitch": 67,
+            "dur": 0.7999999999999999,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 28.999999999999996,
+            "pitch": 67,
+            "dur": 1.2,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 30.499999999999996,
+            "pitch": 67,
+            "dur": 0.39999999999999997,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 28.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "model": "medium",
+      "bpm": 150,
+      "seed": 2,
+      "bar": 8,
+      "mode": "answer",
+      "latency_ms": 201.09981298446655,
+      "deadline_met": true,
+      "budget_met": true,
+      "nonempty": true,
+      "key_notes": 2,
+      "diatonic_count": 2,
+      "support_chord_ok": null,
+      "answer_within_two_beats": true,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 36.0,
+        "toBeat": 40.0,
+        "notes": [
+          {
+            "beat": 36.0,
+            "pitch": 60,
+            "dur": 0.7999999999999999,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 37.0,
+            "pitch": 62,
+            "dur": 0.7999999999999999,
+            "vel": 0.65,
+            "voice": "keys"
+          },
+          {
+            "beat": 36.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    }
+  ],
+  "summaries": [
+    {
+      "model": "small",
+      "bpm": 100,
+      "trials": 12,
+      "nonempty": 11,
+      "deadline_met": 12,
+      "budget_met": 12,
+      "median_ms": 107.88239166140556,
+      "max_ms": 184.0321533381939,
+      "mean_keys": 2.0833333333333335,
+      "support_chord_ok": true,
+      "answer_within_two_beats": true
+    },
+    {
+      "model": "small",
+      "bpm": 150,
+      "trials": 12,
+      "nonempty": 11,
+      "deadline_met": 12,
+      "budget_met": 12,
+      "median_ms": 107.66689293086529,
+      "max_ms": 133.68869945406914,
+      "mean_keys": 2,
+      "support_chord_ok": true,
+      "answer_within_two_beats": true
+    },
+    {
+      "model": "medium",
+      "bpm": 100,
+      "trials": 12,
+      "nonempty": 9,
+      "deadline_met": 12,
+      "budget_met": 12,
+      "median_ms": 201.6010656952858,
+      "max_ms": 296.2920442223549,
+      "mean_keys": 1.5833333333333333,
+      "support_chord_ok": true,
+      "answer_within_two_beats": true
+    },
+    {
+      "model": "medium",
+      "bpm": 150,
+      "trials": 12,
+      "nonempty": 11,
+      "deadline_met": 12,
+      "budget_met": 12,
+      "median_ms": 197.26299680769444,
+      "max_ms": 206.5930999815464,
+      "mean_keys": 1.9166666666666667,
+      "support_chord_ok": true,
+      "answer_within_two_beats": true
+    }
+  ]
+}

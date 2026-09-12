@@ -12,7 +12,7 @@ Decision: do not deploy MRT2 on this NVIDIA pod as a claimed supported live back
 
 ## AMT benchmark method
 
-`benchmark.py` is reproducible in the existing `/opt/amt-venv` environment. It imports the existing `/opt/backline/bench/amt/amt.py`; use `AMT_BENCH_DIR` to override. It does not import/start the web service or modify production files. Run:
+`benchmark.py` records the pre-ensemble comparison at commit `b3d395f`; reproduce with that checkout (or point `AMT_BENCH_DIR` at its `bench/amt` directory). It is reproducible in the existing `/opt/amt-venv` environment. The original experiment imports the pre-ensemble `/opt/backline/bench/amt/amt.py`; use `AMT_BENCH_DIR` pointing to `bench/amt` from commit `b3d395f` to reproduce after the ensemble merge. Its old single-instrument sampler API is intentionally preserved; use `benchmark-merged.py` for the newer ensemble API. It does not import/start the web service or modify production files. Run:
 
 ```sh
 /opt/amt-venv/bin/python benchmark.py --output results.json
@@ -56,3 +56,27 @@ A further 24 small-model trials run the original sampler with only `ops.pad(...)
 All 24 raw event lists exactly match the GPU-cached sampler's same-seed event lists. Corrected padding produces the same 11/12 nonempty windows at each tempo and the same occupied/harmonic fractions. Thus the measured coverage gain comes from corrected context padding, not KV caching. The original sampler with corrected context takes median 148/146 ms at 100/150 BPM versus cached 101/100 ms, approximately 32% less latency with caching/selective projection. This clean separation strengthens the recommendation to carry over both corrections, while avoiding any claim that caching improves music quality. All 24 ablation trials met budgets too.
 
 Final resource check after both benchmark processes exited: GPU allocation returned to its initial 7,990 MiB, with 14,584 MiB free. Disk free was 7.0 GiB after retaining the medium checkpoint download. Total measured trials: 120.
+
+## Merged ensemble Session verification
+
+After merging upstream ensemble instruments 40/41/42, `benchmark-merged.py` runs the actual merged `Session.generate_next_bar_plan` with the shared CUDA cached sampler. `merged-results.json` is the relevant final implementation evidence; the earlier raw single-instrument comparison and context ablation remain historical evidence and are not relabeled as ensemble measurements.
+
+Run against an isolated copy of the merged tree:
+
+```sh
+MERGED_ROOT=/tmp/duet-cloud-merged /opt/amt-venv/bin/python benchmark-merged.py
+# Output: /tmp/duet-merged-results.json
+```
+
+There are 48 trials: small/medium, 100/150 BPM, the same three seeds and four fixed melody prompts as before. Bar 2/6 trials exercise support with C-major key/C chord; bar 4/8 exercise the short-answer mode. Every trial starts a fresh Session with observed melody notes. Key-note nonemptiness excludes deterministic bass. End-to-end wall time includes arrangement/commit/serialization preparation. The source hashes captured at startup identify the actual benchmark snapshot. A subsequent no-performer early-return guard was added by the parent agent; it cannot affect these trials, all of which contain performer notes.
+
+Harmony/answer-bound checks here validate arranger constraints, not the raw model's harmony: support keys must lie in C/E/G, answer keys must stay in C major and end within two beats. This is a synthetic functional check, not a listening evaluation, a network latency test or a demonstration of actual performer-gap detection.
+
+| Model | BPM | Nonempty key plans | Median / max ms | Mean key notes |
+|---|---:|---:|---:|---:|
+| small | 100 | 11/12 | 108 / 184 | 2.08 |
+| small | 150 | 11/12 | 108 / 134 | 2.00 |
+| medium | 100 | 9/12 | 202 / 296 | 1.58 |
+| medium | 150 | 11/12 | 197 / 207 | 1.92 |
+
+All 48 merged trials met generation budgets and scheduling deadlines. All support chord constraints, answer two-beat bounds and output diatonic checks passed. Final recommendation remains **small AMT with corrected context and shared GPU caching**: 22/24 nonempty plans and approximately 108 ms median, versus medium at 20/24 and approximately 197–202 ms median. This is enough to favor small for deployment latency and coverage; it does not establish a subjective musical-quality ranking. The final ensemble path can still return a model-selected empty window.

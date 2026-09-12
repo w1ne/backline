@@ -173,3 +173,15 @@ After samples were ready, 100 notes at 25 notes/second produced continuous
 recorded audio during the burst, peak 0.567 full scale, without clipping.
 This is a short smoke test, not a guarantee against every overload. Local
 AMT remains selected; fast tempos use two-bar future plans.
+
+## Cloud duet UI and accompaniment (2026-09-12)
+
+Deployed app commit `d2291ad` includes teammate ensemble/MIDI changes from `91dc59c`. Both public hosting jobs succeeded (GitHub Actions run `34713857040`). Pi renderer uses `wss://backline-relay.shylenkoa.workers.dev/amt`; the local CPU `duet-amt` unit is disabled. RunPod health reports small AMT, CUDA, cached sampler. Relay typecheck and 31 tests pass; the installed localhost renderer origin is allowed.
+
+394 frontend tests, both builds, 16 Pi tests (one optional dependency skip locally), seven sampler/protocol tests in RunPod's AMT environment, and six arrangement tests pass. The final merged Session comparison is in `docs/cloud-model-review/merged-results.json`. Small remains selected.
+
+Published HTTPS app tested in real Chromium with a synthetic Web MIDI port, microphone deliberately denied: 40 notes at manual 100 BPM produced cloud keys/bass and local drums, no browser rejection/error, no late model-note drops, AudioContext running. Pi simultaneously tested with a real ALSA virtual MIDI input: 40 notes, 22-second physical sink recording, peak 0.329 full scale, minimum half-second RMS during the 12-second playing interval 0.0362. Initial two seconds of silence are the intentional pre-input wait. Browser diagnostics confirmed cloud plans reached keys/bass, zero late notes and no errors. JSON evidence is saved alongside the model report.
+
+Main UI inspected at 1440px and 390px; controls stay within their panels. After successful hardware verification, this computer's Ethernet interface went DOWN and the Pi became unreachable, preventing a final remote-controller browser check. This does not establish its current powered/network state.
+
+These are functional and short audio/latency tests, not a subjective musical-quality judgment or a public concurrency/load guarantee. Model-selected empty phrases remain possible and are shown honestly.
