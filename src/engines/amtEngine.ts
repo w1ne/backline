@@ -127,8 +127,9 @@ export class AmtEngine implements BandEngine {
     this.lastSetAt = 0;
 
     const wsUrl = RELAY_URL.replace(/^http/, 'ws') + '/amt';
-    this.ws = new WebSocket(wsUrl);
-    this.ws.addEventListener('open', () => {
+    const ws = this.ws = new WebSocket(wsUrl);
+    ws.addEventListener('open', () => {
+      if (this.ws !== ws || this.stopping) return;
       this.send({
         type: 'start',
         bpm: this.bpm,
@@ -140,12 +141,13 @@ export class AmtEngine implements BandEngine {
       });
       this.flushSet();
     });
-    this.ws.addEventListener('message', ev => this.onMessage(ev));
-    this.ws.addEventListener('error', () => {
+    ws.addEventListener('message', ev => { if (this.ws === ws && !this.stopping) this.onMessage(ev); });
+    ws.addEventListener('error', () => {
+      if (this.ws !== ws || this.stopping) return;
       this.onError?.('AMT: connection error');
     });
-    this.ws.addEventListener('close', ev => {
-      if (this.stopping) return;
+    ws.addEventListener('close', ev => {
+      if (this.ws !== ws || this.stopping) return;
       this.onError?.(`AMT: closed${ev.reason ? ` (${ev.reason})` : ''}`);
     });
 

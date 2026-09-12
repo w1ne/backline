@@ -1,0 +1,14 @@
+[Unit]
+Description=duet.ai Arturia MiniLab display
+After=duet-web.service
+Requires=duet-web.service
+
+[Service]
+User=test
+WorkingDirectory=/home/test/duet-ai
+ExecStart=/home/test/Desktop/LYDIA/.venv/bin/python /home/test/duet-ai/services/pi/arturia_display.py
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

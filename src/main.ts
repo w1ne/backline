@@ -3,9 +3,11 @@ import * as Tone from 'tone';
 import { Store } from './ui/state';
 import { renderLive, type LiveActions } from './ui/live';
 import { PI_EDITION, applyDeviceProfile } from './device/profile';
+import { startArturiaControls } from './device/arturia';
 import { startDeviceRuntime } from './device/runtime';
 import { Listener } from './listener/listener';
 import { MidiSource } from './listener/midiSource';
+import { WhiteNoise } from './players/whiteNoise';
 import { MidiMonitor } from './players/monitor';
 import { MicSource } from './listener/micSource';
 import { Players } from './players/players';
@@ -52,6 +54,7 @@ let listener: Listener | undefined;
 let band: BandEngine | undefined;
 let monitor: MidiMonitor | undefined;
 const players = new Players();
+const whiteNoise = new WhiteNoise();
 let morph: MorphBus | undefined;
 let mic: MicSource | undefined;
 let midi: MidiSource | undefined;
@@ -235,6 +238,7 @@ async function power() {
   store.update({ error: null });
   await players.init();
   audioReady = true;
+  whiteNoise.setEnabled(true);
   const ctx = players.rawContext();
   store.update({ audioSuspended: ctx.state !== 'running' });
   ctx.addEventListener('statechange', () => store.update({ audioSuspended: ctx.state !== 'running' }));
@@ -300,6 +304,7 @@ async function power() {
 }
 
 function powerOff() {
+  whiteNoise.setEnabled(false);
   disarmFallback?.();
   disarmFallback = undefined;
   if (halfBarTimer !== undefined) clearTimeout(halfBarTimer);
@@ -412,6 +417,17 @@ store.subscribe(s => {
       store.update({ micMuted: muted });
       listener?.setMicMuted(muted);
     },
+    setNoiseVolume: value => {
+      const noiseVolume = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
+      whiteNoise.setEnabled(store.state.power === 'on');
+      whiteNoise.setLevel(noiseVolume);
+      store.update({ noiseVolume });
+    },
+    setSound: sound => {
+      if (sound === store.state.sound) return;
+      monitor?.setSound(sound);
+      store.update({ sound });
+    },
     changeLatencyMs: band?.changeLatencyMs,
   };
   renderLive(root, store, liveActions);
@@ -452,6 +468,7 @@ if (!demo) {
   });
 }
 if (PI_EDITION && !demo) {
+  void startArturiaControls(store, () => liveActions).catch(error => console.warn('Arturia controls:', error));
   startDeviceRuntime(store, () => liveActions, async playing => {
     if (playing === (store.state.power === 'on')) return;
     Tone.getDestination().mute = !playing;

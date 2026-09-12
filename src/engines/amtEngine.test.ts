@@ -338,6 +338,18 @@ describe('AmtEngine', () => {
     expect(frames[1]).toMatchObject({ type: 'set', instruments: { keys: true } });
   });
 
+  it('ignores delayed events from the socket replaced by a tempo change', async () => {
+    const { engine } = mk();
+    engine.onError = vi.fn();
+    await engine.start(100, 0);
+    const old = startedSocket();
+    engine.setBpm(110);
+    old.emit('close', { reason: '' });
+    old.emit('error', {});
+    expect(engine.onError).not.toHaveBeenCalled();
+    engine.stop();
+  });
+
   it('stop closes the socket', async () => {
     const { engine } = mk();
     await engine.start(120, 0);

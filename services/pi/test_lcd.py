@@ -14,6 +14,10 @@ class LCDTests(unittest.TestCase):
         self.assertEqual(display.frames, 1)
         self.assertIn('PLAY', display.lines[0])
 
+    def test_selected_keyboard_instrument_is_visible(self):
+        lines = status_lines({'power': 'on', 'soundLabel': 'Bell keys'})
+        self.assertIn('Bell keys N0.00', lines)
+
     def test_encoder_clamping_and_release(self):
         mapper = ControlMapper()
         self.assertEqual(mapper.command(22, 64, {'intensity': .99})['value'], 1)

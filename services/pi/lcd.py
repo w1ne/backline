@@ -39,7 +39,7 @@ def status_lines(status, error='', selected='drums'):
         f"{status.get('genre', '--')} / {status.get('engine', '--')}",
         f"{tempo} BPM {status.get('key') or '--'} {status.get('chord') or '--'}",
         f"I{round(number(status.get('intensity'))*100):3} C{round(number(status.get('creativity'))*100):3} {band}",
-        f"IN {'|'*level}{'.'*(7-level)} {'LOCK' if status.get('locked') else 'AUTO'}",
+        f"{str(status['soundLabel'])[:13]} N{number(status.get('noiseVolume')):.2f}" if status.get('soundLabel') else f"IN {'|'*level}{'.'*(7-level)} {'LOCK' if status.get('locked') else 'AUTO'}",
         str(warning) if warning else f'> {selected} SELECT toggle',
     ]
     return [line.encode('ascii', 'replace').decode()[:21] for line in lines]

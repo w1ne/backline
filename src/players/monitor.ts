@@ -57,6 +57,7 @@ export const SOUNDS: readonly SoundDef[] = [
   sf('synth_brass_1', 'Synth brass', 'Synths'),
   sf('synth_strings_1', 'Synth strings', 'Synths'),
   sf('choir_aahs', 'Choir aahs', 'Synths'),
+  ...[['synth_soft', 'Soft keys'], ['synth_bell', 'Bell keys'], ['synth_pluck', 'Pluck'], ['synth_pad', 'Warm pad'], ['synth_square', 'Square lead']].map(([id, label]): SoundDef => ({ id, label, group: 'Offline synths', kind: 'synth' })),
   { id: 'synth', label: 'Fat saw (built-in)', group: 'Synths', kind: 'synth' },
 ];
 export const SOUND_GROUPS = [...new Set(SOUNDS.map(s => s.group))];
@@ -98,10 +99,14 @@ function sampled(ctx: AudioContext, def: SoundDef): Voice {
   };
 }
 
-function synth(): Voice {
+function synth(id = 'synth'): Voice {
+  const soft = id === 'synth_soft';
+  const bell = id === 'synth_bell';
+  const pluck = id === 'synth_pluck';
+  const pad = id === 'synth_pad';
   const s = new Tone.PolySynth(Tone.Synth, {
-    oscillator: { type: 'fatsawtooth', count: 3, spread: 20 },
-    envelope: { attack: 0.01, decay: 0.2, sustain: 0.5, release: 0.4 },
+    oscillator: { type: soft || bell ? 'sine' : pluck || pad ? 'triangle' : id === 'synth_square' ? 'square' : 'fatsawtooth', count: 3, spread: 20 },
+    envelope: { attack: pad ? 0.2 : 0.01, decay: bell ? 1.2 : pluck ? 0.18 : 0.2, sustain: bell || pluck ? 0 : 0.5, release: pad ? 1.2 : 0.4 },
     volume: -10,
   }).toDestination();
   const f = (n: number) => Tone.Frequency(n, 'midi').toFrequency();
@@ -160,7 +165,7 @@ export class MidiMonitor {
     this.voice?.dispose();
     this.held.clear();
     const def = soundDef(sound);
-    this.voice = def.kind === 'synth' ? synth() : sampled(this.ctx, def);
+    this.voice = def.kind === 'synth' ? synth(def.id) : sampled(this.ctx, def);
   }
 
   stop() {
