@@ -1705,5 +1705,5 @@ button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-v
 .instrument-zone { margin-top: 12px; }
 .instrument-zone .instrument-controls { margin-top: 10px; }
 .bar-input { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.bar-input .connection-line { margin: 0; color: var(--lcd-green, #7CFF9B); }
+.bar-input .connection-line { margin: 0; color: var(--led); }
 .instrument-zone .connection-line { margin: 8px 0 0; }
