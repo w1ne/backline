@@ -134,6 +134,12 @@ export class Listener {
 
   stop() { this.sources.forEach(s => s.stop()); }
 
+  /** Records a source that came up (or failed) after start(), e.g. a mic retried on the first tap. */
+  setSourceState(kind: SourceKind, state: SourceState) {
+    this.status = { ...this.status, [kind]: state };
+    this.emitStatus();
+  }
+
   /** Gates the mic source(s) only; MIDI sources are untouched. */
   setMicMuted(muted: boolean): void {
     this.sources.forEach((s, i) => {

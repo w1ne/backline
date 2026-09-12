@@ -49,6 +49,17 @@ export class MicSource implements Source {
     await this.start(cbs.onNote, cbs.onLevel, cbs.onPitch);
   }
 
+  /**
+   * Second attempt at getUserMedia, for the first user tap: a prompt raised on page
+   * load has no user activation behind it and Chrome may quiet or refuse it.
+   * Returns false when there is nothing to retry (never started, or already live).
+   */
+  async retry(): Promise<boolean> {
+    if (!this.cbs || this.stream) return false;
+    await this.start(this.cbs.onNote, this.cbs.onLevel, this.cbs.onPitch);
+    return true;
+  }
+
   get device(): string | null {
     return this.deviceId;
   }

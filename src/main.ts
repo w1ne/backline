@@ -325,10 +325,21 @@ function powerOff() {
 store.subscribe(s => {
   renderLive(root, store, {
     wake: () => {
-      if (!store.state.audioSuspended) return;
-      Tone.start()
-        .then(() => store.update({ audioSuspended: false }))
-        .catch(() => undefined);
+      if (store.state.audioSuspended) {
+        Tone.start()
+          .then(() => store.update({ audioSuspended: false }))
+          .catch(() => undefined);
+      }
+      // The boot-time getUserMedia had no user activation; this tap does.
+      if (store.state.sources.mic !== 'on' && mic && listener) {
+        const l = listener;
+        mic
+          .retry()
+          .then(started => {
+            if (started) l.setSourceState('mic', 'on');
+          })
+          .catch(() => l.setSourceState('mic', 'denied'));
+      }
     },
     toggle: i => {
       // Read live state, not the `s` snapshot from this subscribe callback,
