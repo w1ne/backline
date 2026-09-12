@@ -10,6 +10,7 @@ export interface Env {
   ALLOWED_ORIGINS: string;
   REPO: string;
   ACESTEP_UPSTREAM?: string;
+  AMT_UPSTREAM?: string;
 }
 
 const SESSION_TTL_SECONDS = 12 * 60 * 60;
@@ -416,6 +417,31 @@ export async function handleAceStep(req: Request, env: Env): Promise<Response> {
   return proxyWebSocket(upstreamUrl, ACESTEP_KEEPALIVE_MS);
 }
 
+// True for a bare "/amt" path.
+export function isAmtPath(pathname: string): boolean {
+  return pathname === "/amt";
+}
+
+// Same idle-drop concern as ACE-Step: keep the upstream leg alive with a
+// small JSON ping frame while a session sits between bars.
+const AMT_KEEPALIVE_MS = 30_000;
+
+export async function handleAmt(req: Request, env: Env): Promise<Response> {
+  const denied = guardUpgrade(req, env);
+  if (denied) return denied;
+
+  if (!env.AMT_UPSTREAM) {
+    return new Response("amt upstream not configured", { status: 503 });
+  }
+
+  // AMT_UPSTREAM is the full wss://.../ws URL of the RunPod-hosted pod, kept
+  // as a Worker secret so pod ids never land in git. fetch() needs an
+  // https:// scheme for the outbound WebSocket handshake.
+  const upstreamUrl = env.AMT_UPSTREAM.replace(/^wss:\/\//, "https://").replace(/^ws:\/\//, "http://");
+
+  return proxyWebSocket(upstreamUrl, AMT_KEEPALIVE_MS);
+}
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
@@ -437,6 +463,9 @@ export default {
     }
     if (isAceStepPath(url.pathname)) {
       return handleAceStep(req, env);
+    }
+    if (isAmtPath(url.pathname)) {
+      return handleAmt(req, env);
     }
     return new Response("not found", { status: 404 });
   },
