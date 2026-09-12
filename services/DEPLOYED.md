@@ -97,7 +97,16 @@ this bring-up) must be purged after installs
 with `No space left on device`. `pod-bootstrap.sh` does this
 automatically after both services' deps are installed.
 
-## Verified (this session, 2026-09-12)
+## Verified (dynamics redeploy, 2026-09-12)
+
+- `services/acestep/server.py` now reads `intensity` and `space` off the
+  block request (prompt words "sparse, laid back" / "medium" / "energetic,
+  busy", and the lead instrument is dropped from the prompt and from
+  `track_classes` unless the player has left space). Pulled on the pod,
+  tmux `ace` restarted, `/health` OK on
+  `https://51midnuq8qqmuz-8080.proxy.runpod.net/health`.
+
+## Verified (bring-up session, 2026-09-12)
 
 - `/health` OK on both `https://51midnuq8qqmuz-8080.proxy.runpod.net/health`
   and `-8081.proxy.runpod.net/health`.
