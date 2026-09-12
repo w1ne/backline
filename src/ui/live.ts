@@ -26,6 +26,8 @@ export interface LiveActions {
   setCreativity(c: number): void;
   /** start recording you + the band; a second call stops and downloads the .mid */
   toggleRecord?(): void;
+  /** hold the band in place; a second call lets it play again from the next bar */
+  togglePause?(): void;
   /** manual INTENSITY knob — how much the band adds */
   setIntensity?(i: number): void;
   setBpmOverride?(bpm: number | undefined): void;
@@ -102,6 +104,11 @@ function skeleton(): string {
           <div><small>Key</small><strong id="ro-key">&mdash;</strong></div>
           <div><small>Chord</small><strong id="chord">&mdash;</strong></div>
           <div><small>Bar</small><strong id="ro-bar">0</strong></div>
+          <div class="ro-rec"><small id="pause-label">Pause</small>
+            <button type="button" class="rec-btn pause-btn" id="pause-band" aria-pressed="false" title="Hold the band">
+              <span class="pause-bars"><i></i><i></i></span><span class="play-tri"></span>
+            </button>
+          </div>
           <div class="ro-rec"><small id="record-label">Rec</small>
             <button type="button" class="rec-btn" id="record-midi" aria-pressed="false"
                     title="Tap to record you + the band, tap again to save the MIDI">
@@ -284,6 +291,7 @@ function wireControls(screen: HTMLElement, store: Store): void {
   });
 
   screen.querySelector<HTMLButtonElement>('#record-midi')!.addEventListener('click', () => actions().toggleRecord?.());
+  screen.querySelector<HTMLButtonElement>('#pause-band')!.addEventListener('click', () => actions().togglePause?.());
 
   const bpmInput = screen.querySelector<HTMLInputElement>('#bpm')!;
   bpmInput.addEventListener('change', () => {
@@ -370,6 +378,11 @@ function update(screen: HTMLElement, s: AppState, changeLatencyMs: number): void
   screen.querySelector<HTMLElement>('#input-status')!.textContent = `${midiLabel(s)}${hearingLabel(s)}${s.audioSuspended ? ' · TAP TO ENABLE SOUND' : ''}`;
   screen.querySelector<HTMLElement>('#midi-status')!.textContent = midiLabel(s);
   screen.querySelector<HTMLElement>('#band-status')!.textContent = s.accompanimentStatus;
+  const pause = screen.querySelector<HTMLButtonElement>('#pause-band')!;
+  pause.classList.toggle('paused', s.paused);
+  pause.setAttribute('aria-pressed', String(s.paused));
+  pause.title = s.paused ? 'Let the band play' : 'Hold the band';
+  screen.querySelector<HTMLElement>('#pause-label')!.textContent = s.paused ? 'Play' : 'Pause';
   const rec = screen.querySelector<HTMLButtonElement>('#record-midi')!;
   rec.classList.toggle('recording', s.recording);
   rec.setAttribute('aria-pressed', String(s.recording));

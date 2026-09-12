@@ -301,7 +301,10 @@ async function power() {
     store.update({ input });
     if (input.key) drone.setRoot(input.key.root);
     if (input.key) band!.set({ key: input.key });
-    if (input.bpm && !store.state.locked) {
+    if (input.bpm && !store.state.locked && store.state.paused) {
+      store.update({ locked: true });
+      lastFollowedBpm = input.bpm;
+    } else if (input.bpm && !store.state.locked) {
       const db = listener!.downbeat! + perfOffset();
       const barLen = 240 / input.bpm;
       let first = db;
@@ -350,6 +353,7 @@ function powerOff() {
   lastFollowedBpm = undefined;
   store.update({
     power: 'off',
+    paused: false,
     activeParts: {},
     accompanimentStatus: 'Paused',
     sources: { mic: 'off', midi: 'off' },
@@ -393,6 +397,25 @@ store.subscribe(s => {
       }
       const bpm = lastFollowedBpm ?? store.state.input.bpm ?? undefined;
       downloadMidi(midiRecorder.toMidi(bpm), `${name}.mid`);
+    },
+    togglePause: () => {
+      if (!band) return;
+      if (!store.state.paused) {
+        if (halfBarTimer !== undefined) clearTimeout(halfBarTimer);
+        halfBarTimer = undefined;
+        clearBeatTimers();
+        band.stop();
+        playbackActivity.clear();
+        store.update({ paused: true, activeParts: {}, accompanimentStatus: 'Paused' });
+        return;
+      }
+      store.update({ paused: false, accompanimentStatus: 'Listening' });
+      const bpm = lastFollowedBpm ?? store.state.input.bpm;
+      if (bpm && store.state.locked) {
+        startBand(band, bpm, Tone.now() + 0.1).catch(err => {
+          store.update({ error: `${store.state.engine}: ${err instanceof Error ? err.message : String(err)}` });
+        });
+      } else store.update({ accompanimentStatus: 'Listening' });
     },
     wake: () => {
       if (store.state.audioSuspended) {
