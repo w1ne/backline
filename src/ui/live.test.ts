@@ -109,6 +109,36 @@ describe('the YOU strip note label', () => {
   });
 });
 
+describe('#power-key right after the first render', () => {
+  // Regression test for a bug where a click on #power-key landed during the
+  // panel's drop-in animation and did nothing. The animation faded opacity
+  // 0 -> 1 on the button's ancestor while a click could land in that window;
+  // jsdom doesn't run CSS animations or hit-test opacity, so this test can
+  // only prove the handler itself fires immediately after render (no
+  // detach/re-wire race) — the opacity regression is covered by removing the
+  // opacity keyframe in styles.css instead.
+  it('calls the power action on the very first click, synchronously after render', () => {
+    let powerCalls = 0;
+    const actions: LiveActions = {
+      power: () => {
+        powerCalls++;
+      },
+      powerOff: () => {},
+      toggle: () => {},
+      setGenre: () => {},
+      setEngine: () => {},
+      setCreativity: () => {},
+    };
+    const store = new Store();
+    const root = document.createElement('div');
+    renderLive(root, store, actions);
+
+    root.querySelector<HTMLButtonElement>('#power-key')!.click();
+
+    expect(powerCalls).toBe(1);
+  });
+});
+
 describe('engine and genre controls while power is off', () => {
   const noop = (): void => {};
   const actions: LiveActions = {
