@@ -442,13 +442,34 @@ export async function handleAmt(req: Request, env: Env): Promise<Response> {
   return proxyWebSocket(upstreamUrl, AMT_KEEPALIVE_MS);
 }
 
+/** GET <origin>/health on an upstream given as its ws(s):// URL; false on any error or after 3 s. */
+async function upstreamHealthy(upstream: string | undefined): Promise<boolean> {
+  if (!upstream) return false;
+  try {
+    const origin = new URL(upstream.replace(/^wss:\/\//, "https://").replace(/^ws:\/\//, "http://")).origin;
+    const res = await fetch(origin + "/health", { signal: AbortSignal.timeout(3000) });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
 
     if (url.pathname === "/health") {
-      // The app probes this cross-origin to light the engine LEDs.
-      return new Response("ok", { status: 200, headers: corsHeaders(req, env) });
+      // The app probes this cross-origin to light the engine LEDs. The relay being up says
+      // nothing about the GPU pod behind it, so each upstream is probed too (3 s budget);
+      // a stopped pod must show as an offline engine, not as a band that silently went generic.
+      const [amt, acestep] = await Promise.all([
+        upstreamHealthy(env.AMT_UPSTREAM),
+        upstreamHealthy(env.ACESTEP_UPSTREAM),
+      ]);
+      return new Response(JSON.stringify({ relay: "ok", amt, acestep, lyria: !!env.GEMINI_API_KEY }), {
+        status: 200,
+        headers: { ...corsHeaders(req, env), "content-type": "application/json" },
+      });
     }
     if (url.pathname === "/auth/login") {
       return handleLogin(req, env);

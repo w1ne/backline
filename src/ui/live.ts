@@ -26,10 +26,17 @@ export interface LiveActions {
   setCreativity(c: number): void;
   /** start recording you + the band; a second call stops and downloads the .mid */
   toggleRecord?(): void;
+  /** hold the band in place; a second call lets it play again from the next bar */
+  togglePause?(): void;
   /** manual INTENSITY knob — how much the band adds */
   setIntensity?(i: number): void;
   setBpmOverride?(bpm: number | undefined): void;
   setKeyOverride?(key: { root: number; mode: 'major' | 'minor' } | undefined): void;
+  /** Registers one tap on the audio clock; once enough taps have landed to apply a tempo
+   * (the 4th and later), returns the tapped bpm/downbeat that was just adopted — null otherwise. */
+  tap?(): { bpm: number; downbeat: number } | null;
+  /** toggle the two-bar count-in click that plays before the band's first bar */
+  setCountIn?(on: boolean): void;
   /** which sound your MIDI keyboard plays through */
   setSound?(s: MonitorSound): void;
   setNoiseVolume?(volume: number): void;
@@ -102,6 +109,11 @@ function skeleton(): string {
           <div><small>Key</small><strong id="ro-key">&mdash;</strong></div>
           <div><small>Chord</small><strong id="chord">&mdash;</strong></div>
           <div><small>Bar</small><strong id="ro-bar">0</strong></div>
+          <div class="ro-rec"><small id="pause-label">Pause</small>
+            <button type="button" class="rec-btn pause-btn" id="pause-band" aria-pressed="false" title="Hold the band">
+              <span class="pause-bars"><i></i><i></i></span><span class="play-tri"></span>
+            </button>
+          </div>
           <div class="ro-rec"><small id="record-label">Rec</small>
             <button type="button" class="rec-btn" id="record-midi" aria-pressed="false"
                     title="Tap to record you + the band, tap again to save the MIDI">
@@ -161,6 +173,10 @@ function skeleton(): string {
             <label for="bpm">Bpm</label>
             <input type="number" id="bpm" min="40" max="240" placeholder="auto" />
           </div>
+          <div class="field tap-field">
+            <button type="button" class="chip" id="tap-tempo" aria-label="Tap tempo">TAP</button>
+            <button type="button" class="chip count-in-chip" id="count-in-toggle" aria-label="Toggle the count-in click">COUNT</button>
+          </div>
           <div class="field">
             <label for="key">Key</label>
             <select id="key">
@@ -219,6 +235,7 @@ function skeleton(): string {
           </div>
         </div>
 <p id="engine-status" role="status"></p>
+<p id="output-latency" role="status"></p>
       </details>
     </div>
   `;
@@ -284,6 +301,7 @@ function wireControls(screen: HTMLElement, store: Store): void {
   });
 
   screen.querySelector<HTMLButtonElement>('#record-midi')!.addEventListener('click', () => actions().toggleRecord?.());
+  screen.querySelector<HTMLButtonElement>('#pause-band')!.addEventListener('click', () => actions().togglePause?.());
 
   const bpmInput = screen.querySelector<HTMLInputElement>('#bpm')!;
   bpmInput.addEventListener('change', () => {
@@ -296,6 +314,25 @@ function wireControls(screen: HTMLElement, store: Store): void {
     bpmInput.value = String(bpm);
     actions().setBpmOverride?.(bpm);
   });
+
+  const tapBtn = screen.querySelector<HTMLButtonElement>('#tap-tempo')!;
+  const beatsEl = screen.querySelector<HTMLElement>('#beats')!;
+  tapBtn.addEventListener('click', () => {
+    pulse(beatsEl, 'tap-flash', 150);
+    const r = actions().tap?.();
+    if (r) bpmInput.value = String(Math.round(r.bpm));
+  });
+  window.addEventListener('keydown', e => {
+    if (e.code !== 'Space') return;
+    const active = document.activeElement as HTMLElement | null;
+    const tag = active?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || active?.isContentEditable) return;
+    e.preventDefault();
+    tapBtn.click();
+  });
+
+  const countInBtn = screen.querySelector<HTMLButtonElement>('#count-in-toggle')!;
+  countInBtn.addEventListener('click', () => actions().setCountIn?.(!store.state.countIn));
 
   const soundSelect = screen.querySelector<HTMLSelectElement>('#sound')!;
   soundSelect.value = store.state.sound;
@@ -370,12 +407,18 @@ function update(screen: HTMLElement, s: AppState, changeLatencyMs: number): void
   screen.querySelector<HTMLElement>('#input-status')!.textContent = `${midiLabel(s)}${hearingLabel(s)}${s.audioSuspended ? ' · TAP TO ENABLE SOUND' : ''}`;
   screen.querySelector<HTMLElement>('#midi-status')!.textContent = midiLabel(s);
   screen.querySelector<HTMLElement>('#band-status')!.textContent = s.accompanimentStatus;
+  const pause = screen.querySelector<HTMLButtonElement>('#pause-band')!;
+  pause.classList.toggle('paused', s.paused);
+  pause.setAttribute('aria-pressed', String(s.paused));
+  pause.title = s.paused ? 'Let the band play' : 'Hold the band';
+  screen.querySelector<HTMLElement>('#pause-label')!.textContent = s.paused ? 'Play' : 'Pause';
   const rec = screen.querySelector<HTMLButtonElement>('#record-midi')!;
   rec.classList.toggle('recording', s.recording);
   rec.setAttribute('aria-pressed', String(s.recording));
   screen.querySelector<HTMLElement>('#record-label')!.textContent = s.recording ? 'Save' : 'Rec';
   rec.title = s.recording ? 'Recording… tap to save the MIDI' : 'Tap to record you + the band, tap again to save the MIDI';
   screen.querySelector<HTMLElement>('#model-latency')!.textContent = s.modelLatencyMs == null ? '' : `${Math.round(s.modelLatencyMs)} ms`;
+  screen.querySelector<HTMLElement>('#output-latency')!.textContent = s.outputLatencyMs == null ? '' : `Output latency: ${Math.round(s.outputLatencyMs)} ms`;
   screen.querySelector<HTMLElement>('#engine-status')!.textContent = s.engineConnecting ? `${ENGINE_NAMES[s.engine]} · connecting…` : s.offlineEngines.includes(s.engine) ? `${ENGINE_NAMES[s.engine]} · offline` : '';
   for (const [id, value] of [['noise', s.noiseVolume], ['drone', s.droneVolume]] as const) {
     const input = screen.querySelector<HTMLInputElement>(`#${id}-volume`)!;
@@ -384,6 +427,9 @@ function update(screen: HTMLElement, s: AppState, changeLatencyMs: number): void
   }
   const sound = screen.querySelector<HTMLSelectElement>('#sound')!;
   if (document.activeElement !== sound) sound.value = s.sound;
+
+  const countInBtn = screen.querySelector<HTMLButtonElement>('#count-in-toggle')!;
+  countInBtn.classList.toggle('on', s.countIn);
 }
 
 function mark(state: SourceState): string {
@@ -407,6 +453,7 @@ export function midiLabel(s: AppState): string {
 function lcdText(s: AppState): string {
   if (s.power === 'off') return 'STARTING…';
   if (s.audioSuspended) return 'TAP ANYWHERE TO ENABLE SOUND';
+  if (s.countInBeat != null) return `COUNT-IN · ${[1, 2, 3, 4].map(n => (n === s.countInBeat ? n : '·')).join(' ')}`;
   if (s.locked) {
     const d = s.input.dynamics;
     // What the band is doing with the gap the player left, in the two words that matter.

@@ -1,6 +1,7 @@
 import type { BandState, Chord, Genre, Instrument, NoteEvent, Pattern } from '../types';
 import { INSTRUMENTS, IDLE_DYNAMICS, DRUM } from '../types';
 import { tonicTriad } from '../listener/chordDetector';
+import { colorChord } from '../music/chordColor';
 import { mulberry32 } from '../rng';
 import type { ClockLike } from './clockTypes';
 
@@ -68,7 +69,15 @@ export class Bandleader {
   set(p: Partial<Pick<BandState, 'genre' | 'key' | 'chord' | 'creativity' | 'dynamics'>> & { chordBeat?: number }) {
     const { chordBeat, ...rest } = p;
     Object.assign(this.state, rest);
-    if (p.chord) this.pushChord(p.chord, chordBeat);
+    if (p.chord) {
+      // Genre-color the detected triad right where the chord is stored, so both the
+      // patterns (via chordAtBeat) and anything downstream (e.g. the AMT engine's
+      // chordName upstream) see the same colored chord. Uses genre/key as of this call,
+      // which Object.assign above has already applied if this same `set` also changed them.
+      const colored = colorChord(p.chord, this.state.genre, this.state.key);
+      this.state.chord = colored;
+      this.pushChord(colored, chordBeat);
+    }
   }
 
   private pushChord(chord: Chord, beat = 0) {

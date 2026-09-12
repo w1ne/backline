@@ -31,4 +31,27 @@ describe('TempoLock', () => {
     beats(140, 12, 0, 20).forEach(t => l.push(t));
     expect(l.locked!.bpm).toBeCloseTo(110, 0);
   });
+
+  it('adoptProvisional reports a lock before the real one arrives', () => {
+    const l = new TempoLock();
+    expect(l.locked).toBeNull();
+    l.adoptProvisional(100, 2);
+    expect(l.locked).toEqual({ bpm: 100, downbeat: 2 });
+    expect(l.isProvisional).toBe(true);
+  });
+
+  it('a real lock replaces a provisional one', () => {
+    const l = new TempoLock();
+    l.adoptProvisional(100, 2);
+    beats(110, 12).forEach(t => l.push(t));
+    expect(l.locked!.bpm).toBeCloseTo(110, 0);
+    expect(l.isProvisional).toBe(false);
+  });
+
+  it('adoptProvisional is a no-op once a real lock exists', () => {
+    const l = new TempoLock();
+    beats(110, 12).forEach(t => l.push(t));
+    l.adoptProvisional(200, 99);
+    expect(l.locked!.bpm).toBeCloseTo(110, 0);
+  });
 });

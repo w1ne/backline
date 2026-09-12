@@ -8,6 +8,9 @@ import { startArturiaControls } from './device/arturia';
 import { startDeviceRuntime } from './device/runtime';
 import { Listener } from './listener/listener';
 import { MidiSource } from './listener/midiSource';
+import { TapTempo } from './listener/tapTempo';
+import { countInClicks } from './band/countIn';
+import { outputLatencyMs } from './audio/outputLatency';
 import { Drone } from './players/drone';
 import { WhiteNoise } from './players/whiteNoise';
 import { LOCAL_SOUNDS } from './device/arturia';
@@ -30,6 +33,7 @@ import { DEBUG, installDebug, recordToggle } from './debug';
 import { chooseFallback } from './engines/fallback';
 import { RELAY_URL } from './config';
 import type { EngineChoice } from './ui/state';
+import { parseHealth } from './engines/health';
 import { MorphBus, setSinkSupported } from './audio/morphBus';
 import {
   listInputs,
@@ -41,6 +45,7 @@ import {
   MIDI_INPUT_KEY,
   MORPH_SINK_KEY,
   MIC_MUTE_KEY,
+  COUNT_IN_DISABLED_KEY,
   loadBool,
   saveBool,
 } from './audio/devices';
@@ -73,9 +78,14 @@ let midi: MidiSource | undefined;
 let audioReady = false;
 let viz: Viz | undefined;
 let lastFollowedBpm: number | undefined;
+const tapTempo = new TapTempo();
+/** taps registered since the last restart; the store only adopts a tempo from the 4th tap on */
+let tapCount = 0;
 let disarmFallback: (() => void) | undefined;
 let halfBarTimer: ReturnType<typeof setTimeout> | undefined;
 let beatTimers: ReturnType<typeof setTimeout>[] = [];
+let countInSynth: Tone.Synth | undefined;
+let countInTimers: ReturnType<typeof setTimeout>[] = [];
 
 /** Re-reads the player's activity for one beat and hands the result to the band. Engines only
  *  call back on the bar, so beats 1..3 come off timers re-armed from every downbeat — they
@@ -93,6 +103,42 @@ function tickBeat(beat: number): void {
 function clearBeatTimers(): void {
   beatTimers.forEach(t => clearTimeout(t));
   beatTimers = [];
+}
+
+function clearCountIn(): void {
+  countInTimers.forEach(t => clearTimeout(t));
+  countInTimers = [];
+  store.update({ countInBeat: null });
+}
+
+/** True while the only thing feeding the listener is the mic — no MIDI keyboard is plugged
+ *  in — which is exactly when a singer most needs the two bars of click before the band comes in. */
+function micIsOnlySource(): boolean {
+  const s = listener?.sourceStatus;
+  return !!s && s.mic === 'on' && s.midi !== 'on';
+}
+
+/**
+ * Plays two bars of click on the audio clock (never Tone.now(), so it lines up with
+ * `bandStartAt`, the same time the band's clock is armed to) and drives the LCD's "1 2 3 4".
+ * Returns the time the count-in itself starts, i.e. `bandStartAt` minus two bars.
+ */
+function scheduleCountIn(bpm: number, bandStartAt: number): number {
+  clearCountIn();
+  const ctx = Tone.getContext();
+  countInSynth ??= new Tone.Synth({
+    oscillator: { type: 'square' },
+    envelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.05 },
+  }).toDestination();
+  const clicks = countInClicks(bpm, bandStartAt);
+  for (const { atSec, beat } of clicks) {
+    countInSynth.triggerAttackRelease(beat === 1 ? 'C5' : 'C4', 0.05, atSec);
+    const delayMs = Math.max(0, (atSec - ctx.currentTime) * 1000);
+    countInTimers.push(setTimeout(() => store.update({ countInBeat: beat }), delayMs));
+  }
+  const doneMs = Math.max(0, (bandStartAt - ctx.currentTime) * 1000);
+  countInTimers.push(setTimeout(() => store.update({ countInBeat: null }), doneMs));
+  return clicks[0]?.atSec ?? bandStartAt;
 }
 
 /** Re-decides the chord from what the player just played and hands it to the band.
@@ -250,11 +296,17 @@ function armFallback(engine: EngineChoice, b: BandEngine): () => void {
   return settle;
 }
 
-// Cheap readiness probe: flag ACE/Lyria as offline in the ENGINE switch if the relay is
-// unreachable at load time. Both stay selectable — this is advisory, not a lock.
-fetch(RELAY_URL + '/health').catch(() => {
-  store.update({ offlineEngines: ['acestep', 'lyria', 'amt'] });
-});
+// Readiness probe: the relay reports each upstream's health, so a stopped GPU pod lights the
+// engine LED red at load instead of the band silently going generic. Engines stay selectable.
+fetch(RELAY_URL + '/health')
+  .then(async res => {
+    const body = await res.text();
+    const health = parseHealth(body);
+    if (health) store.update({ offlineEngines: health });
+  })
+  .catch(() => {
+    store.update({ offlineEngines: ['acestep', 'lyria', 'amt'] });
+  });
 
 async function power() {
   store.update({ error: null });
@@ -264,7 +316,16 @@ async function power() {
   drone.setEnabled(true);
   const ctx = players.rawContext();
   store.update({ audioSuspended: ctx.state !== 'running' });
-  ctx.addEventListener('statechange', () => store.update({ audioSuspended: ctx.state !== 'running' }));
+  // outputLatency is only meaningful (and on some browsers only populated) once the
+  // context is actually running, so read it now and again on every state change.
+  const readOutputLatency = () => {
+    if (ctx.state === 'running') store.update({ outputLatencyMs: outputLatencyMs(ctx) });
+  };
+  readOutputLatency();
+  ctx.addEventListener('statechange', () => {
+    store.update({ audioSuspended: ctx.state !== 'running' });
+    readOutputLatency();
+  });
   players.setGenre(store.state.genre);
   await applyMorph();
 
@@ -275,7 +336,14 @@ async function power() {
   midi.onInputs(inputs => store.update({ midiInputs: inputs }));
   // MIDI times are performance.now-based. Read at use, not at boot: the AudioContext clock
   // stands still until the first gesture resumes it.
-  const perfOffset = (): number => Tone.now() - performance.now() / 1000;
+  //
+  // A note scheduled at audio-clock time T is not actually audible until T + outputLatency
+  // (on phones this can be tens of ms) — so a band scheduled straight off this offset would
+  // always drag behind the singer by that much. Subtracting outputLatency here shifts every
+  // downstream schedule time (firstBarAt, count-in clicks) earlier by the same amount, so
+  // what comes out of the speaker lines up with the listener's wall-clock timestamps instead
+  // of lagging behind them.
+  const perfOffset = (): number => Tone.now() - performance.now() / 1000 - (store.state.outputLatencyMs ?? 0) / 1000;
 
   listener = new Listener([midi, mic], ['midi', 'mic']);
   listener.setMicMuted(store.state.micMuted);
@@ -301,11 +369,21 @@ async function power() {
     store.update({ input });
     if (input.key) drone.setRoot(input.key.root);
     if (input.key) band!.set({ key: input.key });
-    if (input.bpm && !store.state.locked) {
+    if (input.bpm && !store.state.locked && store.state.paused) {
+      store.update({ locked: true });
+      lastFollowedBpm = input.bpm;
+    } else if (input.bpm && !store.state.locked) {
       const db = listener!.downbeat! + perfOffset();
       const barLen = 240 / input.bpm;
       let first = db;
       while (first < Tone.now() + 0.1) first += barLen;
+      // A singer with no MIDI keyboard plugged in gets no click track from anywhere else,
+      // so give them two bars of count-in before the band enters, pushing the band's own
+      // first bar back by that much.
+      if (store.state.countIn && micIsOnlySource()) {
+        first += 2 * barLen;
+        scheduleCountIn(input.bpm, first);
+      }
       store.update({ locked: true });
       lastFollowedBpm = input.bpm;
       disarmFallback?.();
@@ -341,6 +419,7 @@ function powerOff() {
   if (halfBarTimer !== undefined) clearTimeout(halfBarTimer);
   halfBarTimer = undefined;
   clearBeatTimers();
+  clearCountIn();
   band?.stop();
   playbackActivity.clear();
   listener?.stop();
@@ -350,6 +429,7 @@ function powerOff() {
   lastFollowedBpm = undefined;
   store.update({
     power: 'off',
+    paused: false,
     activeParts: {},
     accompanimentStatus: 'Paused',
     sources: { mic: 'off', midi: 'off' },
@@ -393,6 +473,25 @@ store.subscribe(s => {
       }
       const bpm = lastFollowedBpm ?? store.state.input.bpm ?? undefined;
       downloadMidi(midiRecorder.toMidi(bpm), `${name}.mid`);
+    },
+    togglePause: () => {
+      if (!band) return;
+      if (!store.state.paused) {
+        if (halfBarTimer !== undefined) clearTimeout(halfBarTimer);
+        halfBarTimer = undefined;
+        clearBeatTimers();
+        band.stop();
+        playbackActivity.clear();
+        store.update({ paused: true, activeParts: {}, accompanimentStatus: 'Paused' });
+        return;
+      }
+      store.update({ paused: false, accompanimentStatus: 'Listening' });
+      const bpm = lastFollowedBpm ?? store.state.input.bpm;
+      if (bpm && store.state.locked) {
+        startBand(band, bpm, Tone.now() + 0.1).catch(err => {
+          store.update({ error: `${store.state.engine}: ${err instanceof Error ? err.message : String(err)}` });
+        });
+      } else store.update({ accompanimentStatus: 'Listening' });
     },
     wake: () => {
       if (store.state.audioSuspended) {
@@ -477,6 +576,31 @@ store.subscribe(s => {
     setKeyOverride: key => {
       listener?.setOverride({ key });
     },
+    tap: () => {
+      const t = Tone.now();
+      tapCount++;
+      const r = tapTempo.push(t);
+      if (!r || tapCount < 4) return null;
+      // Same path a typed bpm takes: the listener's override wins over any detected tempo.
+      listener?.setOverride({ bpm: r.bpm });
+      lastFollowedBpm = r.bpm;
+      if (band) {
+        disarmFallback?.();
+        disarmFallback = armFallback(store.state.engine, band);
+        store.update({ locked: true });
+        // r.downbeat is the audio-clock time of the tap that just completed the estimate:
+        // restart the band's clock right there so the next bar starts on the beat the
+        // singer just tapped, not on whatever bar the band happened to be in.
+        startBand(band, r.bpm, r.downbeat).catch(err => {
+          store.update({ error: err instanceof Error ? err.message : String(err) });
+        });
+      }
+      return r;
+    },
+    setCountIn: on => {
+      saveBool(COUNT_IN_DISABLED_KEY, !on);
+      store.update({ countIn: on });
+    },
     setMicMuted: muted => {
       saveBool(MIC_MUTE_KEY, muted);
       store.update({ micMuted: muted });
@@ -515,6 +639,7 @@ store.update({
   micIn: loadDeviceId(MIC_DEVICE_KEY),
   midiIn: loadDeviceId(MIDI_INPUT_KEY),
   micMuted: loadBool(MIC_MUTE_KEY),
+  countIn: !loadBool(COUNT_IN_DISABLED_KEY),
 });
 if (store.state.morphOut) store.update({ routing: defaultRouting(true) });
 applyDeviceProfile(store, PI_EDITION ? 'lydia' : 'web');

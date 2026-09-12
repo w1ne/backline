@@ -14,7 +14,8 @@
     "test": "vitest run",
     "bench:voice": "vite-node bench/voice/run.ts",
     "bench:voice:output": "vite-node bench/voice/output.ts",
-    "bench:patterns": "vite-node bench/patterns/run.ts"
+    "bench:patterns": "vite-node bench/patterns/run.ts",
+    "bench:harmony": "vite-node bench/harmony/run.ts"
   },
   "keywords": [],
   "author": "",

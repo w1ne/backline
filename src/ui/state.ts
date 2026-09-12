@@ -28,12 +28,20 @@ export interface AppState {
   input: BandInput;
   locked: boolean;
   tempoMode: 'locked' | 'follow';
+  /** play a two-bar count-in click before the band's first bar; default on, persisted */
+  countIn: boolean;
+  /** current count-in beat (1..4), or null when no count-in is playing */
+  countInBeat: number | null;
+  /** AudioContext.outputLatency (or baseLatency), read once the context is running */
+  outputLatencyMs: number | null;
   /** AudioContext still waiting for the first user gesture */
   audioSuspended: boolean;
   bar: number;
   error: string | null;
   /** the Record button is armed: notes are being collected for the MIDI download */
   recording: boolean;
+  /** the band is held: no scheduling, listener keeps running */
+  paused: boolean;
   loops: number;
   loopsUpdatedAt: number | undefined;
   /** engines the /health probe found unreachable at page load; still selectable, just flagged in the UI */
@@ -75,10 +83,14 @@ const defaults: AppState = {
   input: { bpm: null, key: null, chord: null, notesNow: [], pitch: null, inputLevel: 0, onsets: 0, pendingBpm: null, dynamics: IDLE_DYNAMICS },
   locked: false,
   tempoMode: 'locked',
+  countIn: true,
+  countInBeat: null,
+  outputLatencyMs: null,
   audioSuspended: false,
   bar: 0,
   error: null,
   recording: false,
+  paused: false,
   loops: 0,
   loopsUpdatedAt: undefined,
   offlineEngines: [],

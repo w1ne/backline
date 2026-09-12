@@ -39,6 +39,31 @@ describe('Listener live tempo estimate', () => {
   });
 });
 
+describe('Listener provisional tempo lock', () => {
+  it('adopts pendingBpm after 8s of onsets when the real 12-onset lock is still pending', async () => {
+    const a = new Fake();
+    const l = new Listener([a]);
+    await l.start();
+    // 6 onsets at 100 bpm (0.6s apart) spanning 3s: enough for pendingBpm, not enough for the
+    // real lock (needs 12), and well under the 8s provisional wait.
+    let t = 1;
+    for (let i = 0; i < 6; i++) { a.note(-1, 0.8, t); t += 0.6; }
+    expect(l.input.bpm).toBeNull();
+    // Keep onsets coming at the same tempo until 8s have passed since the first one.
+    while (t - 1 < 8) { a.note(-1, 0.8, t); t += 0.6; }
+    expect(l.input.bpm).toBeCloseTo(100, 0);
+  });
+
+  it('a real lock (12 onsets) still wins once it lands', async () => {
+    const a = new Fake();
+    const l = new Listener([a]);
+    await l.start();
+    let t = 1;
+    for (let i = 0; i < 12; i++) { a.note(-1, 0.8, t); t += 0.5; } // 120 bpm, locks for real at 12
+    expect(l.input.bpm).toBeCloseTo(120, 0);
+  });
+});
+
 describe('Listener.setMicMuted', () => {
   it('gates only the mic source, leaving midi sources untouched', async () => {
     const midi = new MutableFake();
