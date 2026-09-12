@@ -795,9 +795,12 @@ body {
 
 /* ---------- live: knob ---------- */
 
+/* One row, however many zones the panel grows: a fifth zone used to wrap onto a
+   second row and push the MANUAL panel out of the frame. */
 .row2 {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: 12px;
   min-height: 0;
 }
@@ -1207,6 +1210,7 @@ body {
 
 @media (max-width: 640px) {
   .row2 {
+    grid-auto-flow: row;
     grid-template-columns: 1fr;
   }
 }
