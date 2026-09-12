@@ -88,7 +88,7 @@ interface Voice {
 }
 
 function sampled(ctx: AudioContext, def: SoundDef): Voice {
-  const opts = { destination: ctx.destination, volume: 110 };
+  const opts = { destination: ctx.destination, volume: 75 };
   const inst =
     def.kind === 'grand'
       ? SplendidGrandPiano(ctx, PI_EDITION ? { ...opts, baseUrl: `${import.meta.env.BASE_URL}samples/grand`, formats: ['ogg'] } : opts)
