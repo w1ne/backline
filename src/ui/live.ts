@@ -163,7 +163,8 @@ function skeleton(): string {
 
         </div>
       </div>
-      <details class="model-details"><summary>Models &amp; connection</summary>        <div class="zone zone--orange engine">
+      <details class="model-details"><summary>Models &amp; connection</summary>
+        <div class="zone zone--orange engine">
           <span class="zone-label">Accompaniment model</span>
           <div class="engine-keys" id="engine-choice">
             <button type="button" class="engine-key" id="engine-patterns" data-engine="patterns">
@@ -187,6 +188,8 @@ function skeleton(): string {
           </div>
         </div>
 <p id="engine-status" role="status"></p>
+      </details>
+      <details class="model-details instrument-details"><summary>Your instrument</summary>
         <div class="zone zone--orange instrument-zone">
           <span class="zone-label">Your instrument</span>
         <p class="connection-line" id="midi-status"></p>

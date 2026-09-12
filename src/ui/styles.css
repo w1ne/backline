@@ -1702,7 +1702,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-v
   }
 }
 
-.instrument-zone { margin-top: 12px; }
+.instrument-zone { margin-top: 12px; padding: 16px; text-align: left; }
 .instrument-zone .instrument-controls { margin-top: 10px; }
 .bar-input { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .bar-input .connection-line { margin: 0; color: var(--led); }
