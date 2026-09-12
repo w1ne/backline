@@ -10,12 +10,7 @@ export interface StablePitch {
   stable: boolean;
 }
 
-/** consecutive silent/unclear frames (50 ms each) a held note survives */
-const MAX_DROPOUT = 2;
-/** frame-to-frame movement (cents) that counts as still sliding, when it keeps one direction */
-const GLIDE_CENTS = 35;
-/** frame-to-frame movement (cents) small enough to count as settled */
-const SETTLED_CENTS = 20;
+import { DEFAULT_TUNING, type TrackerTuning } from './tuning';
 
 const centsBetween = (a: number, b: number) => 1200 * Math.log2(a / b);
 
@@ -46,7 +41,7 @@ export const INSTRUMENT_PROFILE: PitchTrackerOptions = { holdFrames: 5, minClari
  * Voice profile: humming and singing are breathier (lower clarity) and phrases move
  * faster than a plucked note holds, so 150 ms and two agreeing frames is enough.
  */
-export const VOICE_PROFILE: PitchTrackerOptions = { holdFrames: 3, minClarity: 0.7, minAgree: 2 };
+export const VOICE_PROFILE: PitchTrackerOptions = DEFAULT_TUNING.voiceProfile;
 
 export class PitchTracker {
   private window: PitchFrame[] = [];
@@ -59,17 +54,19 @@ export class PitchTracker {
   /** true while the voice is sliding monotonically; the stable pitch does not move until it settles */
   private gliding = false;
   private opts: PitchTrackerOptions;
+  private tuning: TrackerTuning;
 
-  constructor(opts: PitchTrackerOptions = INSTRUMENT_PROFILE) {
+  constructor(opts: PitchTrackerOptions = INSTRUMENT_PROFILE, tuning: TrackerTuning = DEFAULT_TUNING.tracker) {
     this.opts = opts;
+    this.tuning = tuning;
   }
 
   /** Feed one frame (or null for silence/below-floor). Returns the current reading. */
   push(frame: PitchFrame | null): StablePitch | null {
     if (!frame) {
       // A breath, a consonant or one unclear frame must not end the note: hold the
-      // reading through short dropouts, let go only after MAX_DROPOUT frames in a row.
-      if (this.stableHz !== null && ++this.dropouts <= MAX_DROPOUT) return this.reading();
+      // reading through short dropouts, let go only after maxDropout frames in a row.
+      if (this.stableHz !== null && ++this.dropouts <= this.tuning.maxDropout) return this.reading();
       this.window = [];
       this.stableHz = null;
       this.dropouts = 0;
@@ -111,8 +108,8 @@ export class PitchTracker {
   /**
    * A real singer slides between notes and passes through every semitone on the way;
    * each would otherwise become a "stable" note. Two consecutive frames moving the same
-   * way by more than GLIDE_CENTS mark a glide, and the stable pitch is frozen until the
-   * pitch stops moving: a frame under SETTLED_CENTS, or a reversal of direction (a slide
+   * way by more than glideCents mark a glide, and the stable pitch is frozen until the
+   * pitch stops moving: a frame under settledCents, or a reversal of direction (a slide
    * keeps its direction; vibrato turns round every two or three frames, so it is never
    * held as a glide for long). A clean step between two held notes is one big move
    * followed by small ones, so it never counts.
@@ -125,9 +122,10 @@ export class PitchTracker {
     const delta = centsBetween(hz, this.prevHz);
     this.prevHz = hz;
     const sameWay = Math.sign(delta) === Math.sign(this.prevDelta);
-    if (Math.abs(delta) > GLIDE_CENTS && Math.abs(this.prevDelta) > GLIDE_CENTS && sameWay) {
+    const { glideCents, settledCents } = this.tuning;
+    if (Math.abs(delta) > glideCents && Math.abs(this.prevDelta) > glideCents && sameWay) {
       this.gliding = true;
-    } else if (Math.abs(delta) < SETTLED_CENTS || !sameWay) {
+    } else if (Math.abs(delta) < settledCents || !sameWay) {
       this.gliding = false;
     }
     this.prevDelta = delta;
