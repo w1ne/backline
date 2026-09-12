@@ -14,7 +14,11 @@
     "test": "vitest run",
     "bench:voice": "vite-node bench/voice/run.ts",
     "bench:voice:output": "vite-node bench/voice/output.ts",
-    "bench:harmony": "vite-node bench/harmony/run.ts"
+    "bench:patterns": "vite-node bench/patterns/run.ts",
+    "bench:harmony": "vite-node bench/harmony/run.ts",
+    "bench:realvoice": "vite-node bench/realvoice/run.ts",
+    "bench:gate": "vite-node bench/gate.ts",
+    "smoke:live": "node services/smoke.mjs"
   },
   "keywords": [],
   "author": "",

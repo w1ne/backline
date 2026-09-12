@@ -113,3 +113,61 @@ describe('performance tracking regressions', () => {
    expect(tr.push(hz(220))).toBeNull();
    expect(tr.push(hz(220))).toEqual({midi:57,cents:0,stable:true});
  });
+describe('PitchTracker glide detection', () => {
+  const voice = { holdFrames: 3, minClarity: 0.7, minAgree: 2 };
+  const semis = (base: number, n: number) => base * Math.pow(2, n / 12);
+  const midis = (tr: PitchTracker, seq: number[]) => seq.map(v => tr.push(hz(v))?.midi ?? null);
+
+  it('does not report the semitones passed through on a slow slide up a fourth', () => {
+    const tr = new PitchTracker(voice);
+    for (let i = 0; i < 4; i++) tr.push(hz(A3));
+    // 5 semitones in 10 frames = 50 cents per frame, then hold D4
+    const slide = Array.from({ length: 10 }, (_, i) => semis(A3, (i + 1) * 0.5));
+    const seen = new Set(midis(tr, [...slide, ...Array(4).fill(semis(A3, 5))]));
+    expect(seen.has(57)).toBe(true);
+    expect(seen.has(62)).toBe(true);
+    for (const m of [58, 59, 60, 61]) expect(seen.has(m)).toBe(false);
+  });
+
+  it('reports the target note within two frames of the slide settling', () => {
+    const tr = new PitchTracker(voice);
+    for (let i = 0; i < 4; i++) tr.push(hz(A3));
+    const slide = Array.from({ length: 6 }, (_, i) => semis(A3, (i + 1) * 0.5));
+    midis(tr, slide);
+    const after = midis(tr, Array(3).fill(semis(A3, 3)));
+    expect(after[1]).toBe(60);
+  });
+
+  it('does not delay a clean step between two held notes', () => {
+    const tr = new PitchTracker(voice);
+    for (let i = 0; i < 4; i++) tr.push(hz(A3));
+    const after = midis(tr, Array(3).fill(semis(A3, 2)));
+    expect(after[1]).toBe(59); // same frame the plain rule would have reported it
+  });
+
+  it('holds the old note (still stable) during the slide rather than dropping it', () => {
+    const tr = new PitchTracker(voice);
+    for (let i = 0; i < 4; i++) tr.push(hz(A3));
+    const r = tr.push(hz(semis(A3, 0.5)));
+    expect(r?.midi).toBe(57);
+    expect(tr.push(hz(semis(A3, 1)))?.stable).toBe(true);
+  });
+});
+
+describe('PitchTracker keeps vouching for a held note through short holds', () => {
+  const voice = { holdFrames: 3, minClarity: 0.7, minAgree: 2 };
+  it('a breath of one or two frames leaves the note stable, so the listener does not re-trigger it', () => {
+    const tr = new PitchTracker(voice);
+    for (let i = 0; i < 4; i++) tr.push(hz(A3));
+    expect(tr.push(null)).toEqual({ midi: 57, cents: 0, stable: true });
+    expect(tr.push(null)?.stable).toBe(true);
+    // the next note starts: the window still holds two A3 frames, and the reading stays A3 (not a new note)
+    expect(tr.push(hz(A3 * 1.26))).toEqual({ midi: 57, cents: 0, stable: true });
+    expect(tr.push(hz(A3 * 1.26))?.midi).toBe(61);
+  });
+  it('one breathy frame inside a note leaves it stable', () => {
+    const tr = new PitchTracker(voice);
+    for (let i = 0; i < 4; i++) tr.push(hz(A3));
+    expect(tr.push({ hz: A3, clarity: 0.4, t: 0 })).toEqual({ midi: 57, cents: 0, stable: true });
+  });
+});

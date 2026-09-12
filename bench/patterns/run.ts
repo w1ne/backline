@@ -1,0 +1,114 @@
+/**
+ * Offline bench for the pattern-variation work: runs each genre's pattern bank over 32 bars
+ * at creativity 0 / 0.5 / 1 and reports, per instrument, how many distinct bar "signatures"
+ * appear, the mean events per bar, and how many fills fired. A reviewer can use this to
+ * confirm creativity actually buys variety instead of chaos or silence.
+ *
+ * Run with: npm run bench:patterns
+ */
+import { writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import { mulberry32 } from '../../src/rng';
+import { GENRES, INSTRUMENTS, IDLE_DYNAMICS } from '../../src/types';
+import type { BarContext, Dynamics, Genre, Instrument } from '../../src/types';
+import { PATTERNS } from '../../src/patterns/index';
+import { DRUM } from '../../src/types';
+import { SongForm } from '../../src/band/form';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const KEY = { root: 7, mode: 'major' as const };
+const BARS = 32;
+const CREATIVITIES = [0, 0.5, 1];
+const DYN: Dynamics = { intensity: 0.6, space: true, fillDue: false, silenceBeats: 1 };
+
+interface Row { genre: Genre; instrument: Instrument; creativity: number; signatures: number; meanEvents: string; fills: number }
+
+function fmt(n: number): string { return n.toFixed(2); }
+
+/**
+ * A 32-bar scripted intensity curve exercising every SongForm transition: two bars of
+ * intro, a groove, a sustained-high stretch that should lift, back to groove, a
+ * sustained-low stretch that should break down, back to groove, then two silent bars that
+ * should trigger the ending (after which the form goes idle for the rest of the run).
+ */
+function scriptedRun(): { bar: number; intensity: number; silenceBeats: number }[] {
+  const bars: { bar: number; intensity: number; silenceBeats: number }[] = [];
+  for (let bar = 0; bar < 32; bar++) {
+    let intensity = 0.5;
+    if (bar >= 6 && bar <= 11) intensity = 0.9; // -> lift
+    else if (bar >= 16 && bar <= 21) intensity = 0.1; // -> breakdown
+    const silenceBeats = bar >= 26 ? (bar - 25) * 4 : 0; // silent from bar 26 on, ending by bar 27
+    bars.push({ bar, intensity, silenceBeats });
+  }
+  return bars;
+}
+
+/** Runs the SongForm over `scriptedRun()`, printing/reporting the section (and, for rock's
+ *  drums, the resulting arrangement-shaped event count) for every bar. */
+function formBench(): string {
+  const form = new SongForm();
+  const drums = PATTERNS.rock.drums;
+  const rows: { bar: number; intensity: number; silenceBeats: number; section: string; drumEvents: number }[] = [];
+  for (const { bar, intensity, silenceBeats } of scriptedRun()) {
+    const dynamics: Dynamics = { ...IDLE_DYNAMICS, intensity, silenceBeats };
+    const result = form.tick({ bar, dynamics, silenceBeats, playerStopped: false });
+    const ctx: BarContext = { bar, key: { root: 0, mode: 'major' as const }, creativity: 0.3, dynamics, rng: mulberry32(bar + 1), arrangement: result.arrangement };
+    const drumEvents = drums.nextBar(ctx).length;
+    rows.push({ bar, intensity, silenceBeats, section: result.section, drumEvents });
+  }
+
+  const header = `| bar | intensity | silenceBeats | section | rock drum events |`;
+  const sep = '|---|---|---|---|---|';
+  const lines = rows.map(r => `| ${r.bar} | ${r.intensity} | ${r.silenceBeats} | ${r.section} | ${r.drumEvents} |`);
+  const table = [header, sep, ...lines].join('\n');
+  console.log('\n' + table);
+  return table;
+}
+
+export interface PatternsBenchResult {
+  rows: Row[];
+  md: string;
+}
+
+export function run(): PatternsBenchResult {
+  const formTable = formBench();
+  const rows: Row[] = [];
+  for (const genre of GENRES) {
+    const bank = PATTERNS[genre];
+    for (const creativity of CREATIVITIES) {
+      for (const inst of INSTRUMENTS) {
+        const sigs = new Set<string>();
+        let totalEvents = 0, fills = 0;
+        for (let bar = 0; bar < BARS; bar++) {
+          const ctx: BarContext = {
+            bar, key: KEY, creativity, dynamics: DYN,
+            rng: mulberry32(bar * 7919 + Math.round(creativity * 1000) + 17),
+          };
+          const events = bank[inst].nextBar(ctx);
+          sigs.add(JSON.stringify(events.map(e => [Math.round(e.time * 100), e.note, Math.round(e.velocity * 100)])));
+          totalEvents += events.length;
+          if (inst === 'drums') fills += events.filter(e => e.note === DRUM.crash || (e.note === DRUM.snare && e.velocity < 0.65 && e.time > 3)).length;
+        }
+        rows.push({ genre, instrument: inst, creativity, signatures: sigs.size, meanEvents: fmt(totalEvents / BARS), fills });
+      }
+    }
+  }
+
+  const header = `| genre | instrument | creativity | distinct bar signatures / ${BARS} | mean events/bar | fill-ish hits |`;
+  const sep = '|---|---|---|---|---|---|';
+  const lines = rows.map(r => `| ${r.genre} | ${r.instrument} | ${r.creativity} | ${r.signatures} | ${r.meanEvents} | ${r.fills} |`);
+  const table = [header, sep, ...lines].join('\n');
+
+  const formSection = `## Song form: 32-bar scripted run\n\nGenerated by \`npm run bench:patterns\`. A scripted intensity curve (groove, a 6-bar high stretch, a 6-bar low stretch, then silence) driven through SongForm; "rock drum events" is what \`rock.drums\` actually produced for that bar's arrangement.\n\n${formTable}\n`;
+  const md = `# Pattern variation bench\n\n${formSection}\n## Per-genre variation\n\nGenerated by \`npm run bench:patterns\`. ${BARS} bars per cell, dynamics fixed at intensity ${DYN.intensity}, space ${DYN.space}.\n\n${table}\n`;
+  return { rows, md };
+}
+
+function main() {
+  const { md } = run();
+  console.log(md);
+  writeFileSync(join(__dirname, 'RESULTS.md'), md);
+}
+
+if (!process.env.BENCH_GATE) main();

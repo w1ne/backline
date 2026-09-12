@@ -41,7 +41,13 @@ interface Row {
   bpmErr: number | null;
 }
 
-function main() {
+export interface VoiceBenchResult {
+  rows: Row[];
+  spokenRows: { profile: string; falseNotes: number }[];
+  md: string;
+}
+
+export function run(): VoiceBenchResult {
   const specs: ClipSpec[] = buildClips();
   const rows: Row[] = [];
 
@@ -161,12 +167,17 @@ function main() {
   lines.push('');
 
   const md = lines.join('\n');
-  console.log(md);
-  writeFileSync(join(__dirname, 'RESULTS.md'), md);
+  return { rows, spokenRows, md };
 }
 
 function synthAudio(spec: ClipSpec) {
   return buildClipAudio(spec).audio;
 }
 
-main();
+function main() {
+  const { md } = run();
+  console.log(md);
+  writeFileSync(join(__dirname, 'RESULTS.md'), md);
+}
+
+if (!process.env.BENCH_GATE) main();

@@ -65,6 +65,13 @@ export class MicSource implements Source {
     return this.deviceId;
   }
 
+  /** The mic's MediaStreamAudioSourceNode, for a monitor tap (e.g. the vocal chain) to
+   *  connect from — this does not touch or gate the analysis path above. Undefined until
+   *  start() has built it. */
+  get sourceNode(): MediaStreamAudioSourceNode | undefined {
+    return this.srcNode;
+  }
+
   /**
    * Gates the mic's contribution to the listener without touching the MediaStream track,
    * so unmuting is instant (no getUserMedia round trip). MIDI input is a separate Source

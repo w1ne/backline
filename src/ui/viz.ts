@@ -32,6 +32,13 @@ const SOURCE_COLOR: Record<VizSource, string> = {
   lead: '#ff3fa4',
 };
 const YOU_OUTLINE = '#8cffc4';
+/** the sung/played pitch trace: a thin line in the player's green, brighter when the tracker is sure */
+const PITCH_LINE = '#fff3b0';
+const PITCH_LINE_WIDTH = 2;
+/** per-sample low-pass on the trace, 0..1; higher follows the raw reading more closely */
+const PITCH_SMOOTH = 0.45;
+/** samples of the continuous pitch trace kept; the mic polls at 20 Hz, so this covers ~25 s */
+export const PITCH_RING_CAPACITY = 512;
 
 const ENGINE_COLOR: Record<EngineChoice, string> = {
   patterns: '#ffd400',
@@ -165,6 +172,65 @@ export class NoteRing {
   }
 }
 
+export interface VizPitchSample {
+  /** absolute AudioContext time of the reading */
+  t: number;
+  /** fractional MIDI pitch (midi + cents/100), or null for a gap in the trace */
+  midi: number | null;
+  /** whether the tracker had settled on this pitch; unstable readings draw dimmer */
+  stable: boolean;
+}
+
+/**
+ * Fixed-size ring of continuous pitch readings for the voice trace. Like NoteRing it is
+ * preallocated and mutated in place. Silence is stored as a single null sample so the
+ * line breaks between phrases without a run of silent frames evicting real readings.
+ */
+export class PitchRing {
+  private slots: VizPitchSample[] = [];
+  private tail = 0;
+  private count = 0;
+
+  constructor(readonly capacity = PITCH_RING_CAPACITY) {
+    for (let i = 0; i < capacity; i++) this.slots.push({ t: 0, midi: null, stable: false });
+  }
+
+  get length(): number {
+    return this.count;
+  }
+
+  add(t: number, midi: number | null, stable: boolean): void {
+    if (midi === null) {
+      if (this.count === 0) return;
+      if (this.slots[(this.tail + this.count - 1) % this.capacity].midi === null) return;
+    }
+    const slot = this.slots[(this.tail + this.count) % this.capacity];
+    slot.t = t;
+    slot.midi = midi;
+    slot.stable = stable;
+    if (this.count === this.capacity) this.tail = (this.tail + 1) % this.capacity;
+    else this.count++;
+  }
+
+  /** Oldest-first access; `i` must be < length. */
+  at(i: number): VizPitchSample {
+    return this.slots[(this.tail + i) % this.capacity];
+  }
+
+  /** Drops leading samples taken before `cutoff`. */
+  prune(cutoff: number): void {
+    while (this.count > 0 && this.slots[this.tail].t < cutoff) {
+      this.tail = (this.tail + 1) % this.capacity;
+      this.count--;
+    }
+  }
+
+  clear(): void {
+    this.tail = 0;
+    this.count = 0;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // canvas strip
 // ---------------------------------------------------------------------------
@@ -172,6 +238,11 @@ export class NoteRing {
 export class Viz {
   private ctx: CanvasRenderingContext2D | null;
   private notes = new NoteRing();
+  private pitches = new PitchRing();
+  /** scratch buffers for one phrase of the trace, so drawing allocates nothing */
+  private traceX = new Float32Array(PITCH_RING_CAPACITY);
+  private traceY = new Float32Array(PITCH_RING_CAPACITY);
+  private traceStable = new Uint8Array(PITCH_RING_CAPACITY);
   private analyser?: AnalyserNode;
   private freqData?: Uint8Array;
   private binEdges?: Int32Array;
@@ -248,6 +319,14 @@ export class Viz {
     this.notes.add(source, midi, start, duration, velocity);
   }
 
+  /** One reading of the continuous pitch trace: what the mic hears right now, fractional
+   *  midi so a bend or a slide shows as a slope. `null` marks silence and breaks the line. */
+  addPitch(t: number, midi: number | null, stable = true): void {
+    if (!Number.isFinite(t)) return;
+    if (midi !== null && !Number.isFinite(midi)) return;
+    this.pitches.add(t, midi, stable);
+  }
+
   /** Spectrum tap for the audio engines; pass undefined to drop it. */
   setAnalyser(node?: AnalyserNode | null): void {
     this.analyser = node ?? undefined;
@@ -268,6 +347,7 @@ export class Viz {
 
   clear(): void {
     this.notes.clear();
+    this.pitches.clear();
     this.clockSet = false;
   }
 
@@ -367,6 +447,7 @@ export class Viz {
     ctx.fillRect(0, 0, W, H);
 
     this.notes.prune(now - BARS_VISIBLE * barSec);
+    this.pitches.prune(now - BARS_VISIBLE * barSec);
 
     if (this.analyser && AUDIO_ENGINES.includes(this.engine)) this.drawSpectrum(ctx, GUTTER, plotW, H);
     this.drawGrid(ctx, now, pps, nowX, plotW, H, beatSec);
@@ -378,6 +459,7 @@ export class Viz {
     }
 
     this.drawNotes(ctx, now, pps, nowX, plotW, top, bottom, drumH, laneStep, H);
+    this.drawPitchTrace(ctx, now, pps, plotW, top, bottom);
     this.drawRuler(ctx, top, bottom, W);
 
     // playhead
@@ -459,6 +541,91 @@ export class Viz {
       ctx.fillRect(x, 0, w, H);
       ctx.globalAlpha = 1;
     }
+  }
+
+  /** The voice line: one flowing curve through the pitch readings, broken only at gaps.
+   *  Readings are smoothed a little on the way in, then drawn as quadratic segments through
+   *  the midpoints so sample-to-sample jitter disappears and a scoop or vibrato reads as a
+   *  gesture, not a staircase. Stable stretches are drawn full strength with a soft glow;
+   *  unstable ones (a breathy attack, a slide) fade back. */
+  private drawPitchTrace(ctx: CanvasRenderingContext2D, now: number, pps: number, plotW: number, top: number, bottom: number): void {
+    const n = this.pitches.length;
+    if (n < 2) return;
+    const right = GUTTER + plotW;
+
+    // gather the on-screen phrases as smoothed point runs
+    const xs = this.traceX;
+    const ys = this.traceY;
+    const st = this.traceStable;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(GUTTER, 0, plotW, bottom + 2);
+    ctx.clip();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = PITCH_LINE;
+
+    let len = 0;
+    const flush = (): void => {
+      if (len >= 2) this.strokeSmooth(ctx, xs, ys, st, len);
+      len = 0;
+    };
+    let ema = NaN;
+    for (let i = 0; i < n; i++) {
+      const p = this.pitches.at(i);
+      if (p.midi === null) {
+        flush();
+        ema = NaN;
+        continue;
+      }
+      const x = timeToX(p.t, now, pps, GUTTER, plotW);
+      if (x > right) break;
+      ema = Number.isNaN(ema) ? p.midi : ema + (p.midi - ema) * PITCH_SMOOTH;
+      if (len === xs.length) flush();
+      xs[len] = x;
+      ys[len] = pitchToY(ema, top, bottom);
+      st[len] = p.stable ? 1 : 0;
+      len++;
+    }
+    flush();
+    ctx.restore();
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+  }
+
+  /** Strokes one phrase as a quadratic spline through segment midpoints, restarting the path
+   *  where stability changes so each stretch gets its own alpha. */
+  private strokeSmooth(ctx: CanvasRenderingContext2D, xs: Float32Array, ys: Float32Array, st: Uint8Array, len: number): void {
+    const begin = (i: number, stable: boolean): void => {
+      ctx.beginPath();
+      ctx.globalAlpha = stable ? 1 : 0.4;
+      ctx.lineWidth = stable ? PITCH_LINE_WIDTH : PITCH_LINE_WIDTH * 0.75;
+      ctx.shadowColor = PITCH_LINE;
+      ctx.shadowBlur = stable && !this.reduced ? 3 : 0;
+      ctx.moveTo(xs[i], ys[i]);
+    };
+    let stable = st[0] === 1;
+    begin(0, stable);
+    for (let i = 1; i < len; i++) {
+      const s = st[i] === 1;
+      const mx = (xs[i - 1] + xs[i]) / 2;
+      const my = (ys[i - 1] + ys[i]) / 2;
+      if (s !== stable) {
+        // finish this stretch at the midpoint and start the next one from there
+        ctx.quadraticCurveTo(xs[i - 1], ys[i - 1], mx, my);
+        ctx.stroke();
+        stable = s;
+        ctx.beginPath();
+        ctx.globalAlpha = stable ? 1 : 0.4;
+        ctx.lineWidth = stable ? PITCH_LINE_WIDTH : PITCH_LINE_WIDTH * 0.75;
+        ctx.shadowBlur = stable && !this.reduced ? 3 : 0;
+        ctx.moveTo(mx, my);
+        continue;
+      }
+      if (i === len - 1) ctx.quadraticCurveTo(xs[i - 1], ys[i - 1], xs[i], ys[i]);
+      else ctx.quadraticCurveTo(xs[i - 1], ys[i - 1], mx, my);
+    }
+    ctx.stroke();
   }
 
   private drawNotes(

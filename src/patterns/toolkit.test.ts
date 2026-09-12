@@ -80,6 +80,46 @@ describe('chordPattern voices from voiceLead with explicit carried state', () =>
   });
 });
 
+describe('chordPattern respects a mic singer', () => {
+  const key = { root: 0, mode: 'major' as const };
+  const hits = [{ t: 0, p: 1 as const }];
+
+  it('caps the voicing range at ctx.keysHigh instead of the octave-derived ceiling', () => {
+    // octave 4 alone would allow notes up to 12*(4+1)-2+23 = 81; keysHigh=60 must win.
+    const p = chordPattern([[0, 2, 4]], hits, 4);
+    const notes = p.nextBar({ ...ctx(0), key, chord: { root: 0, quality: 'maj' }, keysHigh: 60 }).map(e => e.note);
+    expect(notes.every(n => n <= 60)).toBe(true);
+  });
+
+  it('leaves the range alone when keysHigh is absent', () => {
+    const p = chordPattern([[0, 2, 4]], hits, 4);
+    const withoutCeiling = p.nextBar({ ...ctx(0), key, chord: { root: 0, quality: 'maj' } }).map(e => e.note);
+    expect(withoutCeiling.some(n => n > 60)).toBe(true);
+  });
+
+  it('drops notes a semitone from the sung pitch class, keeping the rest of the voicing', () => {
+    // C major triad candidates near middle: e.g. C(0)/E(4)/G(7). Sung pitch class 11 (B) is a
+    // semitone from C (0); those Cs should be dropped, E and G kept.
+    const p = chordPattern([[0, 2, 4]], hits, 4);
+    const notes = p.nextBar({ ...ctx(0), key, chord: { root: 0, quality: 'maj' }, sungPitchClass: 11 }).map(e => e.note);
+    expect(notes.some(n => n % 12 === 0)).toBe(false);
+  });
+
+  it('drops notes a tritone from the sung pitch class', () => {
+    // C major triad: root pitch class 0 (C). Tritone from 0 is 6 (F#/Gb) — not a chord tone
+    // here, so use a chord where a tone sits a tritone from the sung note: F# sung against C.
+    const p = chordPattern([[0, 2, 4]], hits, 4);
+    const notes = p.nextBar({ ...ctx(0), key, chord: { root: 0, quality: 'maj' }, sungPitchClass: 6 }).map(e => e.note);
+    expect(notes.some(n => n % 12 === 0)).toBe(false);
+  });
+
+  it('keeps every note when there is no sung pitch class to avoid', () => {
+    const p = chordPattern([[0, 2, 4]], hits, 4);
+    const withMic = p.nextBar({ ...ctx(0), key, chord: { root: 0, quality: 'maj' } }).map(e => e.note);
+    expect(withMic.length).toBeGreaterThan(0);
+  });
+});
+
 describe('chordPattern thins out under a busy player', () => {
   const p = chordPattern([[0]], [{ t: 0, p: 1 }, { t: 2, p: 0.5 }, { t: 3, p: 1 }], 4);
   it('keeps every hit at moderate intensity', () => {

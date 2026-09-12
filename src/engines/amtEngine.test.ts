@@ -71,8 +71,12 @@ class FakeNoteSource {
 
 class FakePlayers {
   calls: { i: Instrument; events: NoteEvent[]; barStart: number; bpm: number }[] = [];
+  accompCalls: { gmProgram: number; events: NoteEvent[]; barStart: number; bpm: number }[] = [];
   schedule(i: Instrument, events: NoteEvent[], barStart: number, bpm: number) {
     this.calls.push({ i, events, barStart, bpm });
+  }
+  scheduleAccompaniment(gmProgram: number, events: NoteEvent[], barStart: number, bpm: number) {
+    this.accompCalls.push({ gmProgram, events, barStart, bpm });
   }
 }
 
@@ -192,7 +196,7 @@ describe('AmtEngine', () => {
       bpm: 100,
       key: 'A minor',
       genre: 'jazz',
-      lookaheadBeats: 4,
+      lookaheadBeats: 2,
       commitBeats: 2,
       listenBeats: 8,
     });
@@ -231,6 +235,91 @@ describe('AmtEngine', () => {
       notes: [{ beat: 1, pitch: 60 }],
     });
     engine.stop();
+  });
+
+  function cues(ws: FakeWebSocket) {
+    return ws.sent.filter((m: any) => m.type === 'tick' || m.type === 'bar');
+  }
+
+  it('cues the server every half bar with tick once it has said ready', async () => {
+    vi.useFakeTimers();
+    try {
+      const { engine, clock } = mk();
+      await engine.start(120, 0); // 0.5 s/beat, a half bar is 1 s
+      const ws = startedSocket();
+      ws.open();
+      ws.receiveJson({ type: 'ready', tick: true });
+      now = 2;
+      clock.tick(1, 2);
+      expect(cues(ws)).toEqual([{ type: 'tick', beat: 4 }]);
+      vi.advanceTimersByTime(999);
+      expect(cues(ws)).toHaveLength(1);
+      vi.advanceTimersByTime(2);
+      expect(cues(ws)).toEqual([{ type: 'tick', beat: 4 }, { type: 'tick', beat: 6 }]);
+      now = 4;
+      clock.tick(2, 4);
+      expect(cues(ws).at(-1)).toEqual({ type: 'tick', beat: 8 });
+      engine.stop();
+      vi.advanceTimersByTime(5000);
+      expect(cues(ws)).toHaveLength(3); // no half-bar cue after stop
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps cueing with bar against a server that never says ready', async () => {
+    vi.useFakeTimers();
+    try {
+      const { engine, clock } = mk();
+      await engine.start(120, 0);
+      const ws = startedSocket();
+      ws.open();
+      now = 2;
+      clock.tick(1, 2);
+      vi.advanceTimersByTime(1500);
+      expect(cues(ws)).toEqual([{ type: 'bar', bar: 1 }]);
+      engine.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('flushes pending input before a half-bar tick', async () => {
+    vi.useFakeTimers();
+    try {
+      const { engine, clock, notes } = mk();
+      await engine.start(120, 0);
+      const ws = startedSocket();
+      ws.open();
+      ws.receiveJson({ type: 'ready', tick: true });
+      now = 2;
+      clock.tick(1, 2);
+      notes.fire({ midi: 62, velocity: 0.8, timeSec: 2.5 });
+      vi.advanceTimersByTime(1001);
+      expect(ws.sent.slice(-2).map((m: any) => m.type)).toEqual(['notes', 'tick']);
+      engine.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('schedules a half-bar plan that arrives mid-bar', async () => {
+    const { engine, players } = mk();
+    now = 0;
+    await engine.start(120, 0);
+    startedSocket().open();
+    engine.setEnabled('keys', true);
+    engine.setEnabled('bass', true);
+    startedSocket().receiveJson({
+      type: 'plan', fromBeat: 6, toBeat: 8,
+      notes: [
+        { beat: 6, pitch: 45, dur: 2, vel: 0.5, voice: 'bass' },
+        { beat: 7, pitch: 64, dur: 1, vel: 0.5, voice: 'keys' },
+      ],
+    });
+    expect(players.calls.map(c => [c.i, c.barStart, c.events[0].time])).toEqual(
+      expect.arrayContaining([['bass', 2, 2], ['keys', 2, 3]]),
+    );
   });
 
   it('sends the last input batch before asking the model for a bar', async () => {
@@ -280,6 +369,26 @@ describe('AmtEngine', () => {
     expect(players.calls[0].events).toEqual([{ time: 1, note: 64, duration: 1, velocity: 0.7 }]);
   });
 
+  it('routes a keys note with gmInstr to scheduleAccompaniment, grouped separately per instrument', async () => {
+    const { engine, players } = mk();
+    now = 0;
+    await engine.start(120, 0);
+    startedSocket().open();
+    engine.setEnabled('keys', true);
+
+    startedSocket().receiveJson({
+      type: 'plan',
+      notes: [
+        { beat: 1, pitch: 64, dur: 1, vel: 0.7, voice: 'keys', gmInstr: 65 },
+        { beat: 1.5, pitch: 60, dur: 0.5, vel: 0.5, voice: 'keys', gmInstr: 56 },
+      ],
+    });
+
+    expect(players.calls).toHaveLength(0);
+    expect(players.accompCalls).toHaveLength(2);
+    expect(players.accompCalls.map(c => c.gmProgram).sort()).toEqual([56, 65]);
+  });
+
   it('schedules a plan note a full bar ahead straight away, bar-relative', async () => {
     const { engine, players } = mk();
     now = 0;
@@ -327,6 +436,31 @@ describe('AmtEngine', () => {
     // not left to a later poll.
     expect(scheduled).toEqual([4.25, 4.5, 4.75, 5, 5.25, 5.5, 5.75]);
     expect(players.calls.every(c => c.i === 'keys')).toBe(true);
+  });
+
+  it('schedules a polyphonic keys onset as one chord, not deduped down to one note', async () => {
+    const { engine, players } = mk();
+    now = 0;
+    await engine.start(120, 0);
+    startedSocket().open();
+    engine.setEnabled('keys', true);
+
+    // A single model onset voiced as a 3-note chord: same voice+beat, three different pitches.
+    startedSocket().receiveJson({
+      type: 'plan',
+      fromBeat: 0,
+      notes: [
+        { beat: 1, pitch: 60, dur: 1, vel: 0.6, voice: 'keys' },
+        { beat: 1, pitch: 64, dur: 1, vel: 0.6, voice: 'keys' },
+        { beat: 1, pitch: 67, dur: 1, vel: 0.6, voice: 'keys' },
+      ],
+    });
+
+    // All three land in a single schedule() call, so Players' PolySynth plays them together.
+    expect(players.calls).toHaveLength(1);
+    expect(players.calls[0].i).toBe('keys');
+    const pitches = players.calls[0].events.map(e => e.note).sort((a, b) => a - b);
+    expect(pitches).toEqual([60, 64, 67]);
   });
 
   it('does not re-schedule a note a later plan repeats', async () => {
@@ -440,5 +574,56 @@ describe('AmtEngine', () => {
     ws.open();
     engine.stop();
     expect(ws.closed).toBe(true);
+  });
+
+  it('calls onChord with the parsed chord and fromBeat when a plan carries one', async () => {
+    const { engine } = mk();
+    const onChord = vi.fn(); engine.onChord = onChord;
+    await engine.start(120, 0);
+    const ws = startedSocket(); ws.open();
+    ws.receiveJson({ type: 'plan', notes: [], chord: 'F', chordFrom: 8 });
+    expect(onChord).toHaveBeenCalledTimes(1);
+    expect(onChord).toHaveBeenCalledWith({ root: 5, quality: 'maj' }, 8);
+    engine.stop();
+  });
+
+  it('ignores an unparseable chord name safely', async () => {
+    const { engine } = mk();
+    const onChord = vi.fn(); engine.onChord = onChord;
+    await engine.start(120, 0);
+    const ws = startedSocket(); ws.open();
+    ws.receiveJson({ type: 'plan', notes: [], chord: 'nonsense', chordFrom: 8 });
+    expect(onChord).not.toHaveBeenCalled();
+    engine.stop();
+  });
+
+  it('does not call onChord when the plan carries no chord', async () => {
+    const { engine } = mk();
+    const onChord = vi.fn(); engine.onChord = onChord;
+    await engine.start(120, 0);
+    const ws = startedSocket(); ws.open();
+    ws.receiveJson({ type: 'plan', notes: [] });
+    expect(onChord).not.toHaveBeenCalled();
+    engine.stop();
+  });
+
+  it('calls onSection when a plan carries a section', async () => {
+    const { engine } = mk();
+    const onSection = vi.fn(); engine.onSection = onSection;
+    await engine.start(120, 0);
+    const ws = startedSocket(); ws.open();
+    ws.receiveJson({ type: 'plan', notes: [], section: 'lift' });
+    expect(onSection).toHaveBeenCalledWith('lift');
+    engine.stop();
+  });
+
+  it('does not call onSection when the plan carries no section', async () => {
+    const { engine } = mk();
+    const onSection = vi.fn(); engine.onSection = onSection;
+    await engine.start(120, 0);
+    const ws = startedSocket(); ws.open();
+    ws.receiveJson({ type: 'plan', notes: [] });
+    expect(onSection).not.toHaveBeenCalled();
+    engine.stop();
   });
 });

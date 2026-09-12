@@ -1,10 +1,12 @@
 import * as Tone from 'tone';
+import { Soundfont } from 'smplr';
 import type { Genre, Instrument, NoteEvent } from '../types';
 import { DRUM, INSTRUMENTS } from '../types';
 import { makeSoundSet, type SoundOuts, type SoundSet } from './soundsets';
 import { DEFAULT_DRUM_KIT, type DrumKit } from './sampledVoices';
 import type { PlayersLike } from '../band/bandleader';
 import { routeTargets, type MorphRoute } from '../audio/routing';
+import { GM_INSTRUMENTS } from './gmInstruments';
 
 /** The bit of a Tone/Web Audio node the routing actually uses. Keeps `route()` testable
  *  with plain fakes instead of a real audio graph. */
@@ -40,6 +42,9 @@ export class Players implements PlayersLike {
   /** one gain per instrument, between its synths and the outputs — the re-routing point */
   private busses?: Record<Instrument, Tone.Gain>;
   private mix?: MixBus;
+  /** master compressor, exposed so an outboard chain (e.g. the vocal chain) can join the
+   *  band ahead of the limiter instead of bypassing it. */
+  private compressorNode?: Tone.Compressor;
   /** the MORPH bus input, when an output device has been chosen */
   private morphNode?: AudioNode;
   private routes: Record<Instrument, MorphRoute> = { drums: 'main', bass: 'main', keys: 'main', lead: 'main' };
@@ -52,12 +57,17 @@ export class Players implements PlayersLike {
    * as mono-voice collisions are excluded — the hook reports what will be heard.
    */
   onSchedule?: (instrument: Instrument, events: NoteEvent[], barStartTime: number, bpm: number) => void;
+  /** AMT only: fires per GM program actually scheduled through scheduleAccompaniment(), so
+   *  the AMT panel can show which preset(s) are currently sounding. */
+  onAccompSchedule?: (gmProgram: number, events: NoteEvent[], barStartTime: number, bpm: number) => void;
   /** Count of note events dropped because they were stale (too close to/before now) or a
    * duplicate on the same monophonic voice within the merge window. Test/diagnostic hook. */
   dropped = 0;
   /** Last actually-triggered time per mono voice, so dedup also catches a note at the start
    * of one bar colliding with the tail of the previous bar's schedule() call. */
   private lastVoiceTime = new Map<string, number>();
+  /** Lazily-created real-instrument sampler per GM program, for AMT accompaniment. */
+  private accompVoices = new Map<number, ReturnType<typeof Soundfont>>();
 
   async init() {
     if (!this.out) {
@@ -69,6 +79,7 @@ export class Players implements PlayersLike {
       const compressor = new Tone.Compressor(MASTER_CHAIN.compressor);
       const limiter = new Tone.Limiter(MASTER_CHAIN.limiterCeilingDb);
       this.out.chain(compressor, limiter, Tone.getDestination());
+      this.compressorNode = compressor;
       // Reverb is a send effect (100% wet): each instrument's bus feeds it at its own level
       // via `sends`, and its output joins the same compressor/limiter chain as the dry signal.
       const reverb = new Tone.Reverb({ decay: MASTER_CHAIN.reverbDecay, wet: 1 }).connect(compressor);
@@ -150,6 +161,20 @@ export class Players implements PlayersLike {
     this.analyser = ctx.createAnalyser();
     this.out.connect(this.analyser);
     return this.analyser;
+  }
+
+  /** The band's shared reverb send bus (a plate-style return, 100% wet) — anything else
+   *  that wants a touch of the same room, such as the vocal chain, sends into this
+   *  instead of building a second reverb. Undefined until init() has run. */
+  reverbBus(): Tone.Reverb | undefined {
+    return this.mix?.reverb;
+  }
+
+  /** The master compressor's input, i.e. the point right before the limiter. An outboard
+   *  chain (the vocal chain) connects here so it rides through the same compressor/limiter
+   *  as the band, rather than hitting the limiter alone or bypassing it. */
+  preLimiterInput(): Tone.Compressor | undefined {
+    return this.compressorNode;
   }
 
   /** The AudioContext backing this Players' Tone context; shared with LyriaEngine's PcmPlayer. */
@@ -234,6 +259,42 @@ export class Players implements PlayersLike {
         this.set.keys.triggerAttackRelease(Tone.Frequency(e.note, 'midi').toFrequency(), d, t, e.velocity);
       else this.set[inst].triggerAttackRelease(Tone.Frequency(e.note, 'midi').toFrequency(), d, t, e.velocity);
     }
+  }
+
+  /** AMT's real-instrument accompaniment: one smplr Soundfont voice per GM program, created on
+   *  first use. Connected straight to the AudioContext destination rather than the Keys bus —
+   *  it doesn't need genre routing or the MORPH bus, same tradeoff monitor.ts's MidiMonitor
+   *  already makes for the player's own keyboard sound.
+   *
+   *  smplr silently drops a note whose sample buffer hasn't finished loading yet (no error,
+   *  just no sound) — monitor.ts always awaits `.ready` before playing for that reason, and
+   *  this must too, or a freshly-toggled preset's first bars are inaudible. */
+  scheduleAccompaniment(gmProgram: number, events: NoteEvent[], barStart: number, bpm: number): void {
+    if (!(bpm > 0)) return;
+    const gm = GM_INSTRUMENTS[gmProgram];
+    if (!gm) return;
+    let voice = this.accompVoices.get(gmProgram);
+    if (!voice) {
+      voice = Soundfont(this.rawContext(), { instrument: gm.name, kit: 'MusyngKite' });
+      this.accompVoices.set(gmProgram, voice);
+    }
+    const spb = 60 / bpm;
+    const minT = Tone.getContext().currentTime + 0.005;
+    const kept: NoteEvent[] = [];
+    const notes: { note: number; time: number; duration: number; velocity: number }[] = [];
+    for (const e of events) {
+      const t = barStart + e.time * spb;
+      if (t < minT) {
+        this.dropped++;
+        continue;
+      }
+      kept.push(e);
+      notes.push({ note: e.note, time: t, duration: Math.max(0.05, e.duration * spb), velocity: Math.max(1, Math.round(e.velocity * 127)) });
+    }
+    if (!kept.length) return;
+    voice.ready.then(() => { for (const n of notes) voice.start(n); });
+    this.onSchedule?.('keys', kept, barStart, bpm);
+    this.onAccompSchedule?.(gmProgram, kept, barStart, bpm);
   }
 
   private hit(note: number, t: number, v: number) {

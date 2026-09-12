@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { estimateTempo, TempoLock } from './tempoLock';
+import { bpmFromOnsets, estimateTempo, TempoLock } from './tempoLock';
 
 function beats(bpm: number, n: number, jitter = 0, start = 1) {
   const p = 60 / bpm;
@@ -30,5 +30,66 @@ describe('TempoLock', () => {
     expect(l.locked!.bpm).toBeCloseTo(110, 0);
     beats(140, 12, 0, 20).forEach(t => l.push(t));
     expect(l.locked!.bpm).toBeCloseTo(110, 0);
+  });
+
+  it('adoptProvisional reports a lock before the real one arrives', () => {
+    const l = new TempoLock();
+    expect(l.locked).toBeNull();
+    l.adoptProvisional(100, 2);
+    expect(l.locked).toEqual({ bpm: 100, downbeat: 2 });
+    expect(l.isProvisional).toBe(true);
+  });
+
+  it('a real lock replaces a provisional one', () => {
+    const l = new TempoLock();
+    l.adoptProvisional(100, 2);
+    beats(110, 12).forEach(t => l.push(t));
+    expect(l.locked!.bpm).toBeCloseTo(110, 0);
+    expect(l.isProvisional).toBe(false);
+  });
+
+  it('adoptProvisional is a no-op once a real lock exists', () => {
+    const l = new TempoLock();
+    beats(110, 12).forEach(t => l.push(t));
+    l.adoptProvisional(200, 99);
+    expect(l.locked!.bpm).toBeCloseTo(110, 0);
+  });
+});
+
+describe('voice tempo fold', () => {
+  /** syllables: two per beat, with every other beat's second syllable missing, so the IOI
+   * histogram has a peak at the syllable rate and another at the beat (its half). */
+  function syllables(beatBpm: number, beatsN: number, start = 1) {
+    const p = 60 / beatBpm;
+    const out: number[] = [];
+    for (let i = 0; i < beatsN; i++) {
+      out.push(start + i * p);
+      if (i % 2 === 1) out.push(start + i * p + p / 2);
+    }
+    return out;
+  }
+  it('takes the half tempo when the mic onsets also peak there', () => {
+    const r = bpmFromOnsets(syllables(87, 20), 12, { voice: true })!;
+    expect(Math.abs(r.bpm - 87)).toBeLessThan(2);
+  });
+  it('keeps the fast tempo for MIDI onsets', () => {
+    const r = bpmFromOnsets(syllables(87, 20), 12)!;
+    expect(Math.abs(r.bpm - 174)).toBeLessThan(3);
+  });
+  it('keeps the fast tempo when the half-tempo peak is weak', () => {
+    const p = 60 / 87;
+    const on: number[] = [];
+    for (let i = 0; i < 20; i++) { on.push(1 + i * p); if (i % 5 !== 0) on.push(1 + i * p + p / 2); }
+    const r = bpmFromOnsets(on, 12, { voice: true })!;
+    expect(Math.abs(r.bpm - 174)).toBeLessThan(3);
+  });
+  it('never folds below 70', () => {
+    const r = bpmFromOnsets(syllables(66, 20), 12, { voice: true })!;
+    expect(Math.abs(r.bpm - 132)).toBeLessThan(3);
+  });
+  it('TempoLock folds when the onsets come from a voice', () => {
+    const l = new TempoLock();
+    syllables(87, 20).forEach(t => l.push(t, true));
+    expect(Math.abs(l.locked!.bpm - 87)).toBeLessThan(2);
   });
 });

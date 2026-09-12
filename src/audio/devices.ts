@@ -8,6 +8,9 @@ export const MORPH_SINK_KEY = 'backline.morph.sink';
 export const MIC_DEVICE_KEY = 'backline.mic.device';
 export const MIDI_INPUT_KEY = 'backline.midi.input';
 export const MIC_MUTE_KEY = 'backline.mic.muted';
+export const VOICE_MONITOR_KEY = 'backline.voice.monitor';
+/** persisted as "disabled" (absent = on) so the count-in defaults to on for new users */
+export const COUNT_IN_DISABLED_KEY = 'backline.countIn.disabled';
 
 /**
  * enumerateDevices() output → picker options.

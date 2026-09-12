@@ -1,4 +1,4 @@
-import type { BandState, Instrument } from '../types';
+import type { AccompPreset, BandState, Instrument } from '../types';
 import type { MorphRoute } from '../audio/routing';
 
 export interface BandEngine {
@@ -10,6 +10,10 @@ export interface BandEngine {
   setEnabled(i: Instrument, on: boolean): void;
   setBpm(bpm: number): void;
   setAmount?(amount: number): void;
+  /** AMT only: which GM instrument presets to mix into the accompaniment (beyond the default
+   *  string ensemble) and the instrument-preference sampling bias. Temperature is derived
+   *  server-side from creativity. */
+  setAccompaniment?(presets: AccompPreset[], accompBias: number): void;
   /** smallest bpm change worth forwarding in follow mode */
   readonly bpmStep: number;
   onBar?: (bar: number) => void;

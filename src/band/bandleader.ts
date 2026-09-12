@@ -4,6 +4,7 @@ import { tonicTriad } from '../listener/chordDetector';
 import { colorChord } from '../music/chordColor';
 import { mulberry32 } from '../rng';
 import type { ClockLike } from './clockTypes';
+import { SongForm } from './form';
 
 const BEATS_PER_BAR = 4;
 /** chord-timeline entries kept; two bars of half-bar ticks is plenty to voice a bar from */
@@ -38,6 +39,9 @@ export interface PlayersLike {
   setBandAmount?(amount: number): void;
   cancelScheduled?(): void;
   schedule(instrument: Instrument, events: NoteEvent[], barStartTime: number, bpm: number): void;
+  /** AMT only: play through a real GM instrument sampler (see gmInstruments.ts) instead of
+   *  the synthesized Keys voice. */
+  scheduleAccompaniment?(gmProgram: number, events: NoteEvent[], barStartTime: number, bpm: number): void;
 }
 
 export class Bandleader {
@@ -53,6 +57,8 @@ export class Bandleader {
   private rng: () => number;
   /** chord changes stamped with the absolute beat they took effect on, ascending */
   private chordLog: { beat: number; chord: Chord }[] = [];
+  /** the song's own arrangement — intro/groove/lift/breakdown/ending — reset on every start() */
+  private songForm = new SongForm();
   constructor(
     readonly clock: ClockLike,
     private players: PlayersLike,
@@ -66,15 +72,16 @@ export class Bandleader {
     this.rng = mulberry32(seed);
     clock.onBar((bar, t) => this.onBar(bar, t));
   }
-  set(p: Partial<Pick<BandState, 'genre' | 'key' | 'chord' | 'creativity' | 'dynamics'>> & { chordBeat?: number }) {
+  set(p: Partial<Pick<BandState, 'genre' | 'key' | 'chord' | 'creativity' | 'dynamics' | 'source' | 'sungPitchClass'>> & { chordBeat?: number }) {
     const { chordBeat, ...rest } = p;
     Object.assign(this.state, rest);
     if (p.chord) {
       // Genre-color the detected triad right where the chord is stored, so both the
       // patterns (via chordAtBeat) and anything downstream (e.g. the AMT engine's
-      // chordName upstream) see the same colored chord. Uses genre/key as of this call,
-      // which Object.assign above has already applied if this same `set` also changed them.
-      const colored = colorChord(p.chord, this.state.genre, this.state.key);
+      // chordName upstream) see the same colored chord. Uses genre/key/source as of this
+      // call, which Object.assign above has already applied if this same `set` also changed
+      // them.
+      const colored = colorChord(p.chord, this.state.genre, this.state.key, this.state.source);
       this.state.chord = colored;
       this.pushChord(colored, chordBeat);
     }
@@ -103,10 +110,16 @@ export class Bandleader {
     this.state.enabled[i] = on;
   }
   start(bpm: number, firstBarAt: number) {
+    this.songForm.reset();
     this.clock.start(bpm, firstBarAt);
   }
   stop() {
     this.clock.stop();
+    // Stopping the clock only cancels bars that haven't been scheduled yet — the bar already
+    // in flight was handed to the synths as absolute-time triggerAttackRelease calls, which
+    // keep ringing on their own regardless of transport state. Cancel those too, so pause is
+    // immediate instead of waiting out whatever was already committed.
+    this.players.cancelScheduled?.();
   }
   private onBar(bar: number, t: number) {
     this.onBarCb?.(bar);
@@ -114,8 +127,9 @@ export class Bandleader {
     // start has already slipped into the past, don't schedule stale notes for it — the
     // instrument simply joins on the next bar.
     if (t < this.now()) return;
-    const { genre, key, creativity, enabled, dynamics } = this.state;
+    const { genre, key, creativity, enabled, dynamics, source, sungPitchClass } = this.state;
     const barBeat = bar * BEATS_PER_BAR;
+    const form = this.songForm.tick({ bar, dynamics, silenceBeats: dynamics.silenceBeats, playerStopped: false });
     const ctx = {
       bar,
       key,
@@ -124,10 +138,18 @@ export class Bandleader {
       rng: this.rng,
       chord: this.chordAtBeat(barBeat),
       chordAt: (beat: number) => this.chordAtBeat(barBeat + beat),
+      arrangement: form.arrangement,
+      // Below a singer's range, not a global — only meaningful for the keys comp.
+      keysHigh: source === 'mic' ? 60 : undefined,
+      sungPitchClass: source === 'mic' ? sungPitchClass : undefined,
     };
     const spb = this.clock.bpm > 0 ? 60 / this.clock.bpm : 0.5;
     for (const i of INSTRUMENTS)
       if (enabled[i])
         this.players.schedule(i, humanize(i, this.patterns[genre][i].nextBar(ctx), spb, this.rng), t, this.clock.bpm);
+    // The ending bar above has just been scheduled with arrangement.ending — now stop the
+    // clock so the band doesn't loop forever. The app restarts it through the existing
+    // first-lock path once the singer comes back in (see main.ts).
+    if (form.shouldStop) this.stop();
   }
 }

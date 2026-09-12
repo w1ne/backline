@@ -39,6 +39,31 @@ describe('Listener live tempo estimate', () => {
   });
 });
 
+describe('Listener provisional tempo lock', () => {
+  it('adopts pendingBpm after 8s of onsets when the real 12-onset lock is still pending', async () => {
+    const a = new Fake();
+    const l = new Listener([a]);
+    await l.start();
+    // 6 onsets at 100 bpm (0.6s apart) spanning 3s: enough for pendingBpm, not enough for the
+    // real lock (needs 12), and well under the 8s provisional wait.
+    let t = 1;
+    for (let i = 0; i < 6; i++) { a.note(-1, 0.8, t); t += 0.6; }
+    expect(l.input.bpm).toBeNull();
+    // Keep onsets coming at the same tempo until 8s have passed since the first one.
+    while (t - 1 < 8) { a.note(-1, 0.8, t); t += 0.6; }
+    expect(l.input.bpm).toBeCloseTo(100, 0);
+  });
+
+  it('a real lock (12 onsets) still wins once it lands', async () => {
+    const a = new Fake();
+    const l = new Listener([a]);
+    await l.start();
+    let t = 1;
+    for (let i = 0; i < 12; i++) { a.note(-1, 0.8, t); t += 0.5; } // 120 bpm, locks for real at 12
+    expect(l.input.bpm).toBeCloseTo(120, 0);
+  });
+});
+
 describe('Listener.setMicMuted', () => {
   it('gates only the mic source, leaving midi sources untouched', async () => {
     const midi = new MutableFake();
@@ -57,6 +82,29 @@ describe('Listener.setMicMuted', () => {
     const l = new Listener([midi], ['midi']);
     await l.start();
     expect(() => l.setMicMuted(true)).not.toThrow();
+  });
+});
+
+describe('Listener voice tempo', () => {
+  const syllables = (beatBpm: number, beatsN: number) => {
+    const p = 60 / beatBpm, out: number[] = [];
+    for (let i = 0; i < beatsN; i++) { out.push(1 + i * p); if (i % 2 === 1) out.push(1 + i * p + p / 2); }
+    return out;
+  };
+  it('folds a singer\'s syllable rate to the beat, but not a MIDI player\'s', async () => {
+    const mic = new Fake(); const lm = new Listener([mic], ['mic']); await lm.start();
+    syllables(87, 20).forEach(t => mic.note(-1, 0.8, t));
+    expect(Math.abs(lm.input.bpm! - 87)).toBeLessThan(2);
+    const midi = new Fake(); const lk = new Listener([midi], ['midi']); await lk.start();
+    syllables(87, 20).forEach(t => midi.note(60, 0.8, t));
+    expect(Math.abs(lk.input.bpm! - 174)).toBeLessThan(3);
+  });
+  it('a held sung note weighs in the key by how long it is held', async () => {
+    const a = new Fake(); let now = 0; const l = new Listener([a], ['mic'], () => now); await l.start();
+    // A F G B A held half a second each, frames every 50 ms: locks A minor from coverage
+    // (the correlation alone would not, see keyDetector.test.ts)
+    for (const midi of [69, 77, 79, 71, 69]) for (let i = 0; i < 10; i++) { now += 0.05; a.pitch!({ midi, cents: 0, stable: true }); }
+    expect(l.input.key).toEqual({ root: 9, mode: 'minor' });
   });
 });
 

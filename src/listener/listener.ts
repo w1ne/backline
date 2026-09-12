@@ -24,6 +24,10 @@ export type SourceStatus = { mic: SourceState; midi: SourceState };
 
 /** onsets needed before the LCD dares show a running tempo estimate */
 const PENDING_MIN_ONSETS = 6;
+/** seconds of onsets, with no lock yet, before a provisional tempo is adopted from pendingBpm */
+const PROVISIONAL_WAIT_SEC = 8;
+/** longest gap between two stable pitch frames still counted as the note being held */
+const MAX_PITCH_FRAME_SEC = 0.1;
 
 export class Listener {
   private tempo = new TempoLock();
@@ -38,12 +42,18 @@ export class Listener {
   private pitchNotes: { n: number; t: number }[] = [];
   private pitch: StablePitch | null = null;
   private lastStableMidi: number | null = null;
+  /** the last stable pitch as sung (before snapping), so the key detector counts real note changes */
+  private lastSungMidi: number | null = null;
   /** when a MIDI note last arrived; while none is recent the chord detector runs in melody mode */
   private lastMidiNoteAt = -Infinity;
   private level = 0;
   private onsetCount = 0;
   /** onset times kept only for the live "~98 BPM" readout while listening */
   private onsetTimes: number[] = [];
+  /** how many of `onsetTimes` came from the mic; a voice majority folds syllable rate to the beat */
+  private voiceOnsets = 0;
+  /** clock reading at the previous stable pitch frame, for the key detector's duration weights */
+  private lastPitchAt: number | null = null;
   private override: { bpm?: number; key?: Key } = {};
   private cbs: ((i: BandInput) => void)[] = [];
   private statusCbs: ((s: SourceStatus) => void)[] = [];
@@ -82,8 +92,9 @@ export class Listener {
   }
 
   async start() {
-    const onNote = (n: number, v: number, t: number) => {
-      this.tempo.push(t);
+    const onNote = (n: number, v: number, t: number, kind: SourceKind) => {
+      const voice = kind === 'mic';
+      this.tempo.push(t, voice);
       if (this.tempo.locked && this.mode === 'follow') {
         this.follower ??= new TempoFollower(this.frozenBpm ?? this.tempo.locked.bpm);
         this.followBpm = this.follower.push(t);
@@ -91,7 +102,19 @@ export class Listener {
       this.onsetCount++;
       this.activity.onset(t);
       this.onsetTimes.push(t);
-      if (this.onsetTimes.length > 24) this.onsetTimes.shift();
+      if (voice) this.voiceOnsets++;
+      if (this.onsetTimes.length > 24) { this.onsetTimes.shift(); if (this.voiceOnsets > this.onsetTimes.length) this.voiceOnsets = this.onsetTimes.length; }
+      // A singer with a fast tempo shouldn't wait the full 12 onsets for the band to start:
+      // once there's been 6+ onsets' worth of signal for 8s with still no real lock, adopt
+      // the running estimate as a provisional one — bpmFromOnsets(..., 12) below still runs
+      // every push and will replace it with the real lock as soon as it's ready.
+      if (!this.tempo.locked && this.onsetTimes.length >= PENDING_MIN_ONSETS) {
+        const first = this.onsetTimes[0];
+        if (t - first >= PROVISIONAL_WAIT_SEC) {
+          const pending = bpmFromOnsets(this.onsetTimes, PENDING_MIN_ONSETS, this.tempoOpts);
+          if (pending) this.tempo.adoptProvisional(pending.bpm, pending.downbeat);
+        }
+      }
       if (n >= 0) {
         this.lastMidiNoteAt = t;
         this.keyDet.addNote(n, v);
@@ -111,17 +134,27 @@ export class Listener {
       this.pitch = p;
       const now = this.now();
       if (p && p.stable) {
-        // Preserve the performance; harmony constraints belong to accompaniment output.
+        // The key detector hears the pitch as sung. It weighs a pitch by how long it is held
+        // (frames are ~50 ms apart; a gap after silence is capped so it does not count), and
+        // counts each new pitch once toward its minimum-evidence gate.
+        if (this.lastPitchAt !== null) this.keyDet.addSustain(p.midi, Math.min(Math.max(0, now - this.lastPitchAt), MAX_PITCH_FRAME_SEC));
+        this.lastPitchAt = now;
+        if (p.midi !== this.lastSungMidi) {
+          this.lastSungMidi = p.midi;
+          this.keyDet.addNote(p.midi, 0);
+        }
+        // Send the actual performance to accompaniment; do not quantize input harmony.
         const midi = p.midi;
         if (midi !== this.lastStableMidi) {
           this.lastStableMidi = midi;
-          this.keyDet.addNote(midi, 0.8);
           this.chordDet.addNote(midi, now, 0.8);
           this.pitchNotes.push({ n: midi, t: now });
           this.noteCbs.forEach(cb => cb({ midi, velocity: 0.8, timeSec: now }));
         }
       } else {
         this.lastStableMidi = null;
+        this.lastSungMidi = null;
+        this.lastPitchAt = null;
       }
       this.pitchNotes = this.pitchNotes.filter(r => now - r.t < PITCH_NOTES_WINDOW_SEC);
       this.emit();
@@ -131,7 +164,7 @@ export class Listener {
       this.sources.map(async (source, i) => {
         const kind = this.kinds[i];
         try {
-          await source.start(onNote, onLevel, onPitch);
+          await source.start((n, v, t) => onNote(n, v, t, kind), onLevel, onPitch);
           const getStatus = (source as { getStatus?(): SourceState }).getStatus;
           this.status = { ...this.status, [kind]: getStatus ? getStatus.call(source) : 'on' };
         } catch {
@@ -189,7 +222,7 @@ export class Listener {
       pitch: this.pitch,
       inputLevel: this.level,
       onsets: this.onsetCount,
-      pendingBpm: bpmFromOnsets(this.onsetTimes, PENDING_MIN_ONSETS)?.bpm ?? null,
+      pendingBpm: bpmFromOnsets(this.onsetTimes, PENDING_MIN_ONSETS, this.tempoOpts)?.bpm ?? null,
       dynamics: this.activity.dynamics,
     };
   }
@@ -222,6 +255,8 @@ export class Listener {
   }
 
   get downbeat() { return this.tempo.locked?.downbeat ?? null; }
+
+  private get tempoOpts() { return { voice: this.voiceOnsets * 2 > this.onsetTimes.length }; }
 
   private emit() { const i = this.input; this.cbs.forEach(c => c(i)); }
 
