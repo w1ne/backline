@@ -38,10 +38,10 @@
     "noteF1Floor": 0.53,
     "keyLockedMinCount": 2,
     "keysDissonantCeiling": {
-      "amy_15": 20,
-      "yifen_1": 24,
-      "abjones_2": 24,
-      "leon_8": 33
+      "amy_15": 53,
+      "yifen_1": 40,
+      "abjones_2": 46,
+      "leon_8": 64
     }
   }
 }

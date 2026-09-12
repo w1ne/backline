@@ -74,8 +74,11 @@ export function chordPattern(voicings: number[][], hits: Step[], octave: number,
   const baseHigh = low + 23;
   return { nextBar(ctx) {
     // `ctx.keysHigh` (threaded per bar, not a module-level global) pulls the comping range
-    // below a singer's held note when the chord came from a mic rather than a keyboard.
+    // below a singer's held note when the chord came from a mic rather than a keyboard. The
+    // whole window slides down with the ceiling: clamping only the top left a 58..60 slot for
+    // octave-4 comping, which is one note at most and reads as the keys dropping out.
     const high = ctx.keysHigh !== undefined ? Math.min(baseHigh, ctx.keysHigh) : baseHigh;
+    const lowEff = Math.max(36, Math.min(low, high - 23));
     let i = ctx.bar % voicings.length;
     if (ctx.creativity > 0.5 && ctx.rng() < (ctx.creativity - 0.5)) i = Math.floor(ctx.rng() * voicings.length);
     const voices = voicings[i].length;
@@ -90,7 +93,7 @@ export function chordPattern(voicings: number[][], hits: Step[], octave: number,
       // Voiced against the chord at this hit, not at the downbeat, so the second half of a
       // bar follows a chord that changed underneath it.
       const chord = chordAt(ctx, h.t);
-      const voicing = voiceLead(prev, chord, { low, high, voices });
+      const voicing = voiceLead(prev, chord, { low: lowEff, high, voices });
       prev = voicing;
       // Drop any note a semitone or tritone from the singer's currently held pitch class —
       // exactly the intervals that read as a clash against a sustained sung note.
