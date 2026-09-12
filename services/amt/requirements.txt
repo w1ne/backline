@@ -1,0 +1,7 @@
+fastapi>=0.111
+uvicorn[standard]>=0.30
+websockets>=12.0
+torch
+transformers
+musicpy
+git+https://github.com/jthickstun/anticipation.git

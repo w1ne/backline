@@ -46,6 +46,49 @@ from amt import MELODY_INSTR, ACCOMP_INSTR, ACCOMP_BIAS, make_event, parse_event
 from melody import make_synthetic_melody
 
 
+class AccompanimentCommitter:
+    """Commits generated accompaniment notes into a token history one voice at
+    a time, trimming an earlier note's tail if the next one starts before it
+    ends (monophonic note-stealing).
+
+    Pulled out of `LiveDuet._commit_accompaniment` so a caller that doesn't
+    run the wall-clock transport (e.g. a bar-driven WebSocket server) can
+    reuse the exact same commit/trim behavior as a plain library call.
+    Behavior is unchanged from the original method.
+    """
+
+    def __init__(self, history):
+        self.history = history
+        self._last_end = None
+        self._prev_onset = None
+        self._dur_idx = None
+
+    def commit(self, notes):
+        """Append accompaniment notes (onset_s, dur_s, pitch) to self.history.
+
+        Returns the list of (onset_s, dur_s, pitch) actually committed, after
+        trimming/dropping, in the same shape as `played`'s accompaniment
+        entries expect.
+        """
+        committed = []
+        for onset_s, dur_s, pitch in sorted(notes):
+            onset_s = round(onset_s * TIME_RESOLUTION) / TIME_RESOLUTION  # same tick grid as make_event
+
+            if self._last_end is not None:
+                if onset_s <= self._prev_onset:
+                    continue
+                if onset_s < self._last_end:
+                    trimmed_s = onset_s - self._prev_onset
+                    self.history[self._dur_idx] = DUR_OFFSET + round(trimmed_s * TIME_RESOLUTION)
+
+            self.history.extend(make_event(onset_s, dur_s, ACCOMP_INSTR, pitch))
+            self._dur_idx = len(self.history) - 2  # the triple's middle (duration) slot
+            self._prev_onset = onset_s
+            self._last_end = onset_s + dur_s
+            committed.append((onset_s, dur_s, pitch))
+        return committed
+
+
 class LiveDuet:
     """The scheduling loop: transport, lookahead/commit buffer, live logging.
 
@@ -83,11 +126,9 @@ class LiveDuet:
 
         # One violin can't double-stop across notes: the model has no such
         # constraint and will happily commit overlapping accompaniment
-        # notes. Track the tail of the most recently committed note so
-        # _commit_accompaniment can trim it if the next one starts early.
-        self._accomp_last_end = None
-        self._accomp_prev_onset = None
-        self._accomp_dur_idx = None
+        # notes. AccompanimentCommitter tracks the tail of the most recently
+        # committed note and trims it if the next one starts early.
+        self._committer = AccompanimentCommitter(self.history)
 
     def log(self, msg):
         t = time.monotonic() - self.t0
@@ -177,7 +218,8 @@ class LiveDuet:
         )
 
     def _commit_accompaniment(self, notes):
-        """Append accompaniment notes to history/played, one voice at a time.
+        """Commit accompaniment notes via AccompanimentCommitter, one voice at
+        a time, and log each into self.played.
 
         If a note starts before the previous one has finished ringing, trim
         the previous note's duration down to meet it -- same as note-stealing
@@ -188,20 +230,7 @@ class LiveDuet:
         resolution) can't be told apart at all -- keep the earlier, drop
         the rest, rather than emit a technically-nonzero but inaudible sliver.
         """
-        for onset_s, dur_s, pitch in sorted(notes):
-            onset_s = round(onset_s * TIME_RESOLUTION) / TIME_RESOLUTION  # same tick grid as make_event
-
-            if self._accomp_last_end is not None:
-                if onset_s <= self._accomp_prev_onset:
-                    continue
-                if onset_s < self._accomp_last_end:
-                    trimmed_s = onset_s - self._accomp_prev_onset
-                    self.history[self._accomp_dur_idx] = DUR_OFFSET + round(trimmed_s * TIME_RESOLUTION)
-
-            self.history.extend(make_event(onset_s, dur_s, ACCOMP_INSTR, pitch))
-            self._accomp_dur_idx = len(self.history) - 2  # the triple's middle (duration) slot
-            self._accomp_prev_onset = onset_s
-            self._accomp_last_end = onset_s + dur_s
+        for onset_s, dur_s, pitch in self._committer.commit(notes):
             self.played.append((onset_s, dur_s, "accompaniment", pitch))
 
     def _announce_due(self, playhead):

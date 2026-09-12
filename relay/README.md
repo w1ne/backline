@@ -43,6 +43,12 @@ soundofthe.world zone exists in the account) at https://api.soundofthe.world.
   sends the upstream a `{"type":"ping"}` text frame every 30 s for the life
   of the connection, since RunPod's proxy in front of the pod drops
   connections idle for 100 s; the app-facing side has no keepalive.
+- `GET /amt` — WebSocket upgrade, same admission check as `/lyria`,
+  proxying to the AMT (Anticipatory Music Transformer) pod at
+  `env.AMT_UPSTREAM` (a full `wss://…/ws` URL, kept as a Worker secret so
+  pod ids don't land in git). Returns `503` with body
+  `amt upstream not configured` if the secret isn't set. Same 30 s
+  keepalive ping as `/acestep`.
 
 ## Deploy
 
@@ -56,6 +62,7 @@ npx wrangler secret put GITHUB_CLIENT_SECRET
 npx wrangler secret put SESSION_SECRET
 npx wrangler secret put GITHUB_TOKEN
 npx wrangler secret put ACESTEP_UPSTREAM   # wss://<pod>.../ws, only needed for /acestep
+npx wrangler secret put AMT_UPSTREAM       # wss://<pod>.../ws, only needed for /amt
 npx wrangler deploy
 ```
 
