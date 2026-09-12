@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AceStepEngine } from './acestepEngine';
+import { AceStepEngine, selectBlockInstruments } from './acestepEngine';
+import type { Instrument } from '../types';
+
+const allOn: Record<Instrument, boolean> = { drums: true, bass: true, keys: true, lead: true };
 
 /** Minimal fake AudioContext covering exactly what PcmPlayer/AceStepEngine touch. */
 class FakeGainParam {
@@ -251,5 +254,48 @@ describe('AceStepEngine', () => {
     engine.stop();
 
     expect(ws.readyState).toBe(3);
+  });
+});
+
+describe('selectBlockInstruments', () => {
+  it('busy player (high intensity, no space) → rhythm section only, no fill', () => {
+    const sel = selectBlockInstruments({ intensity: 0.8, space: false }, allOn);
+    expect(sel.instruments).toEqual(['drums', 'bass']);
+    expect(sel.fill).toBe(false);
+    expect(sel.density).toBeGreaterThan(0.6);
+  });
+
+  it('medium player → drums, bass, keys; no lead, no fill', () => {
+    const sel = selectBlockInstruments({ intensity: 0.45, space: false }, allOn);
+    expect(sel.instruments).toEqual(['drums', 'bass', 'keys']);
+    expect(sel.fill).toBe(false);
+  });
+
+  it('space → full set incl. guitar lead, marked as a fill', () => {
+    const sel = selectBlockInstruments({ intensity: 0.9, space: true }, allOn);
+    expect(sel.instruments).toEqual(['drums', 'bass', 'keys', 'lead']);
+    expect(sel.fill).toBe(true);
+    expect(sel.density).toBe(0);
+  });
+
+  it('quiet player (low intensity) → full set + fill even without space', () => {
+    const sel = selectBlockInstruments({ intensity: 0.1, space: false }, allOn);
+    expect(sel.instruments).toEqual(['drums', 'bass', 'keys', 'lead']);
+    expect(sel.fill).toBe(true);
+  });
+
+  it('user-muted instruments are never added (hard mask)', () => {
+    const enabled: Record<Instrument, boolean> = { drums: true, bass: false, keys: false, lead: false };
+    // space would normally bring the full set incl. lead, but the mask wins.
+    const sel = selectBlockInstruments({ intensity: 0.1, space: true }, enabled);
+    expect(sel.instruments).toEqual(['drums']);
+    // still flagged as a fill even though the muted lead cannot sound.
+    expect(sel.fill).toBe(true);
+  });
+
+  it('busy with lead muted stays drums + bass', () => {
+    const enabled: Record<Instrument, boolean> = { drums: true, bass: true, keys: true, lead: false };
+    const sel = selectBlockInstruments({ intensity: 0.85, space: false }, enabled);
+    expect(sel.instruments).toEqual(['drums', 'bass']);
   });
 });

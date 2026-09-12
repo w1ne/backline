@@ -76,15 +76,21 @@ INSTRUMENT_WORDS = {
 }
 
 
-def intensity_words(intensity: float) -> str:
-    # How hard the player is working, as prompt text. ACE-Step has no density control, so
-    # this is the only lever the block request has on how busy the band sounds.
-    intensity = max(0.0, min(1.0, intensity))
-    if intensity < 0.35:
-        return "sparse, laid back"
-    if intensity > 0.7:
-        return "energetic, busy"
+def density_words(density: float) -> str:
+    # How full the band should sound, as prompt text. ACE-Step has no density control, so
+    # this is the only lever the block request has on how busy the band sounds. The client
+    # sends `density` (busy player -> ~1, space -> 0); a busy player wants the band to lay
+    # back and leave room, a quiet player wants it to fill out.
+    density = max(0.0, min(1.0, density))
+    if density > 0.6:
+        return "sparse, laid back, leave space"
+    if density < 0.3:
+        return "full band, energetic, expressive"
     return "medium"
+
+
+# Back-compat alias: older callers referred to this as intensity_words.
+intensity_words = density_words
 
 
 def audible_instruments(instruments: list[str], exclude: Optional[str] = None, space: bool = True) -> list[str]:
@@ -100,10 +106,21 @@ def build_prompt(
     chords: Optional[list[str]] = None,
     intensity: float = 0.5,
     space: bool = True,
+    density: Optional[float] = None,
+    fill: bool = False,
 ) -> str:
     genre_text = GENRE_PROMPTS.get(genre, GENRE_PROMPTS["lofi"])
-    words = [INSTRUMENT_WORDS.get(i, i) for i in audible_instruments(instruments, exclude, space)]
-    parts = [genre_text, intensity_words(intensity)]
+    # The client already chose the instrument set from the player's activity; when it marks a
+    # FILL block, keep the lead in regardless of the space gate so the answer is audible.
+    words = [
+        INSTRUMENT_WORDS.get(i, i)
+        for i in audible_instruments(instruments, exclude, space or fill)
+    ]
+    # density defaults to intensity for callers that only pass intensity (e.g. warmup).
+    d = intensity if density is None else density
+    parts = [genre_text, density_words(d)]
+    if fill:
+        parts.append("answer with a guitar lead fill, expressive")
     if words:
         parts.append(", ".join(words))
     if chords:
@@ -111,12 +128,17 @@ def build_prompt(
         # generation), so the chords the player is outlining can only reach the model as
         # prompt text. It is a nudge, not a constraint -- the model is free to ignore it.
         parts.append("chord progression: " + " ".join(chords[-CHORD_PROMPT_MAX:]))
-    parts.append("instrumental, no vocals, no guitar")
+    has_lead = INSTRUMENT_WORDS["lead"] in words
+    parts.append("instrumental, no vocals" if has_lead else "instrumental, no vocals, no guitar")
     return ", ".join(parts)
 
 
-def track_classes_for(instruments: list[str], exclude: Optional[str] = None, space: bool = True) -> list[str]:
-    return [INSTRUMENT_WORDS.get(i, i) for i in audible_instruments(instruments, exclude, space)]
+def track_classes_for(
+    instruments: list[str], exclude: Optional[str] = None, space: bool = True, fill: bool = False
+) -> list[str]:
+    # On a FILL block keep the lead in the track_classes even without space, so the answering
+    # guitar actually renders; on busy blocks the client has already dropped it.
+    return [INSTRUMENT_WORDS.get(i, i) for i in audible_instruments(instruments, exclude, space or fill)]
 
 
 def creativity_to_guidance(creativity: float) -> float:
@@ -124,6 +146,16 @@ def creativity_to_guidance(creativity: float) -> float:
     # lower guidance (looser adherence to the prompt, more variation).
     creativity = max(0.0, min(1.0, creativity))
     return 15.0 - creativity * 10.0
+
+
+def density_to_guidance(creativity: float, density: float) -> float:
+    # Start from the creativity-driven guidance, then nudge with density: a busy player (high
+    # density) wants the band to lay back, so loosen guidance slightly (lower) to keep it out of
+    # the way; a quiet player (low density, fills) wants a committed answer, so tighten it a
+    # little. The nudge is small (+-1.5) so creativity stays the dominant control.
+    base = creativity_to_guidance(creativity)
+    density = max(0.0, min(1.0, density))
+    return max(1.0, base + (0.5 - density) * 3.0)
 
 
 def creativity_to_seed(creativity: float, seq: int) -> int:
@@ -366,12 +398,23 @@ class Session:
         chords = [str(c) for c in (msg.get("chords") or [])]
         intensity = float(msg.get("intensity", 0.5))
         space = bool(msg.get("space", True))
+        fill = bool(msg.get("fill", False))
+        density = float(msg.get("density", intensity))
 
         duration = bars * 240.0 / bpm
         needs_restart = bpm != self.last_bpm or key != self.last_key or self.prev_audio_path is None
+        # A fill keeps the stream continuous: still `complete` from the previous block, so the
+        # answering guitar rides on the existing groove rather than restarting cold.
         task_type = "text2music" if needs_restart else "complete"
         prompt = build_prompt(
-            genre, instruments, exclude=player_instrument, chords=chords, intensity=intensity, space=space
+            genre,
+            instruments,
+            exclude=player_instrument,
+            chords=chords,
+            intensity=intensity,
+            space=space,
+            density=density,
+            fill=fill,
         )
 
         params = GenParams(
@@ -381,12 +424,12 @@ class Session:
             key_scale=key,
             audio_duration=duration,
             inference_steps=INFERENCE_STEPS,
-            guidance=creativity_to_guidance(creativity),
+            guidance=density_to_guidance(creativity, density),
             seed=creativity_to_seed(creativity, seq),
             src_audio_path=None if task_type == "text2music" else self.prev_audio_path,
             track_classes=None
             if task_type == "text2music"
-            else track_classes_for(instruments, player_instrument, space),
+            else track_classes_for(instruments, player_instrument, space, fill),
         )
 
         loop = asyncio.get_running_loop()
