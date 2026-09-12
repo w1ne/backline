@@ -70,6 +70,8 @@ function skeleton(): string {
         <div class="beats" id="beats">
           <b>Beat</b><i style="--n:0"></i><i style="--n:1"></i><i style="--n:2"></i><i style="--n:3"></i>
         </div>
+        <canvas class="viz" id="viz" role="img"
+                aria-label="Scrolling timeline of your notes and the band's next bars"></canvas>
       </div>
       <div class="inst" id="inst-tiles">
         ${INSTRUMENTS.map(

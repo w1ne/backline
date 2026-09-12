@@ -17,4 +17,7 @@ export interface BandEngine {
   onStats?: (s: { loops: number; starvedSec: number }) => void;
   /** ms until a control change is audible; UI shows "joining…" for this long */
   readonly changeLatencyMs: number;
+  /** Audio engines expose a tap on their output so the visualiser can draw a spectrum.
+   *  Only valid after start(); note-based engines don't implement it. */
+  getAnalyser?(): AnalyserNode | undefined;
 }

@@ -7,7 +7,14 @@ import type { PlayersLike } from '../band/bandleader';
 export class Players implements PlayersLike {
   private set?: SoundSet;
   private out!: Tone.Volume;
+  private analyser?: AnalyserNode;
   private genre: Genre = 'lofi';
+  /**
+   * Fires for every batch of notes that actually reaches a voice, with absolute times,
+   * so the visualiser can draw what the band is about to play. Notes dropped as stale or
+   * as mono-voice collisions are excluded — the hook reports what will be heard.
+   */
+  onSchedule?: (instrument: Instrument, events: NoteEvent[], barStartTime: number, bpm: number) => void;
   /** Count of note events dropped because they were stale (too close to/before now) or a
    * duplicate on the same monophonic voice within the merge window. Test/diagnostic hook. */
   dropped = 0;
@@ -22,6 +29,16 @@ export class Players implements PlayersLike {
     }
     await Tone.start();
     this.setGenre(this.genre);
+  }
+
+  /** An analyser on the Tone output bus, created on first use. */
+  getAnalyser(): AnalyserNode | undefined {
+    if (this.analyser) return this.analyser;
+    if (!this.out) return undefined;
+    const ctx = this.rawContext();
+    this.analyser = ctx.createAnalyser();
+    this.out.connect(this.analyser);
+    return this.analyser;
   }
 
   /** The AudioContext backing this Players' Tone context; shared with LyriaEngine's PcmPlayer. */
@@ -89,6 +106,8 @@ export class Players implements PlayersLike {
       lastInBatch.set(voice, item);
       kept.push(item);
     }
+
+    if (this.onSchedule && kept.length) this.onSchedule(inst, kept.map(k => k.e), barStart, bpm);
 
     for (const { e, t, d } of kept) {
       const voice = inst === 'drums' ? `drums:${e.note}` : inst;

@@ -29,6 +29,10 @@ interface Scheduled {
  */
 export class PcmPlayer {
   private queue: Scheduled[] = [];
+  /** Every scheduled chunk goes through here rather than straight to the destination, so a
+   * visualiser can tap the mixed output with an analyser at any point. */
+  private out?: GainNode;
+  private analyser?: AnalyserNode;
   private lastEnd = 0;
   /** undefined = start at full gain; otherwise fade in from 0 over this many seconds. */
   private pendingFadeInSec?: number;
@@ -46,7 +50,27 @@ export class PcmPlayer {
     private bufferAheadSec = 3,
   ) {
     this.nextLead = bufferAheadSec;
+    if (typeof ctx.createGain === 'function') {
+      this.out = ctx.createGain();
+      this.out.connect(ctx.destination);
+    }
     this.watchdog = setInterval(() => this.checkUnderrun(), 50);
+  }
+
+  /** Where scheduled chunks connect: the shared bus when the context can make one, the
+   * destination otherwise (test fakes). */
+  private sink(): AudioNode {
+    return this.out ?? this.ctx.destination;
+  }
+
+  /** An analyser on the mixed output, created on first use. Undefined if the context
+   * doesn't provide one. */
+  getAnalyser(): AnalyserNode | undefined {
+    if (this.analyser) return this.analyser;
+    if (!this.out || typeof this.ctx.createAnalyser !== 'function') return undefined;
+    this.analyser = this.ctx.createAnalyser();
+    this.out.connect(this.analyser);
+    return this.analyser;
   }
 
   /** Bar length in seconds (240 / bpm), used both for the loop segment length and ring capacity. */
@@ -73,7 +97,7 @@ export class PcmPlayer {
     this.nextLead = this.bufferAheadSec;
 
     const gain = this.ctx.createGain();
-    gain.connect(this.ctx.destination);
+    gain.connect(this.sink());
     if (this.pendingFadeInSec !== undefined) {
       gain.gain.setValueAtTime(0, startAt);
       gain.gain.linearRampToValueAtTime(1, startAt + this.pendingFadeInSec);
@@ -144,7 +168,7 @@ export class PcmPlayer {
     }
 
     const gain = this.ctx.createGain();
-    gain.connect(this.ctx.destination);
+    gain.connect(this.sink());
     const fadeSec = Math.min(LOOP_FADE_SEC, buffer.duration / 2);
     // Equal-power-ish fade in at the start and fade out at the end so the loop
     // seam (into and out of it) is smoothed rather than clicking.

@@ -110,6 +110,11 @@ export class AceStepEngine implements BandEngine {
     }, delay);
   }
 
+  /** Tap on the streamed audio, for the visualiser's spectrum. Valid once start() has run. */
+  getAnalyser(): AnalyserNode | undefined {
+    return this.player?.getAnalyser();
+  }
+
   stop(): void {
     this.stopping = true;
     if (this.startTimer !== undefined) clearTimeout(this.startTimer);
