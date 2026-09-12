@@ -1,7 +1,7 @@
 import './ui/styles.css';
 import * as Tone from 'tone';
 import { Store } from './ui/state';
-import { renderLive, setLatency } from './ui/live';
+import { renderLive } from './ui/live';
 import { Listener } from './listener/listener';
 import { MidiSource } from './listener/midiSource';
 import { MidiMonitor } from './players/monitor';
@@ -31,6 +31,9 @@ import {
   MIC_DEVICE_KEY,
   MIDI_INPUT_KEY,
   MORPH_SINK_KEY,
+  MIC_MUTE_KEY,
+  loadBool,
+  saveBool,
 } from './audio/devices';
 import { defaultRouting, isAllMain, nextRoute } from './audio/routing';
 import { createViz, type Viz } from './ui/viz';
@@ -152,7 +155,6 @@ function wireBand(b: BandEngine): void {
   b.routeBand?.(store.state.routing.band, morph?.input);
   b.onBar = bar => {
     store.update({ bar });
-    setLatency(root, players.latencyMs());
     const beat = bar * BEATS_PER_BAR;
     // The downbeat's dynamics have to be in the band's hands before it schedules this bar,
     // and onBar runs ahead of scheduling, so tick the beat first.
@@ -242,6 +244,7 @@ async function power() {
   const perfOffset = Tone.now() - performance.now() / 1000; // MIDI times are performance.now-based
 
   listener = new Listener([midi, mic], ['midi', 'mic']);
+  listener.setMicMuted(store.state.micMuted);
   monitor = new MidiMonitor(players.rawContext(), store.state.sound);
   monitor.start().catch(() => undefined);
   band = makeBand(engine);
@@ -409,6 +412,11 @@ store.subscribe(s => {
       // Only this source restarts: the Listener keeps its tempo lock, so the band plays on.
       mic?.setDevice(id).catch(err => store.update({ error: `mic: ${err instanceof Error ? err.message : String(err)}` }));
     },
+    setMicMuted: muted => {
+      saveBool(MIC_MUTE_KEY, muted);
+      store.update({ micMuted: muted });
+      listener?.setMicMuted(muted);
+    },
     setMidiInput: id => {
       saveDeviceId(MIDI_INPUT_KEY, id);
       midi?.setInput(id);
@@ -433,6 +441,7 @@ store.update({
   morphOut: loadDeviceId(MORPH_SINK_KEY),
   micIn: loadDeviceId(MIC_DEVICE_KEY),
   midiIn: loadDeviceId(MIDI_INPUT_KEY),
+  micMuted: loadBool(MIC_MUTE_KEY),
 });
 if (store.state.morphOut) store.update({ routing: defaultRouting(true) });
 void refreshDevices();
@@ -478,7 +487,6 @@ if (demo) {
     enabled: { drums: true, bass: true, keys: false, lead: true },
     input: { bpm: 96, key: { root: 9, mode: 'minor' }, chord: { root: 9, quality: 'min' }, notesNow: [57, 60, 64], pitch: { midi: 64, cents: 3, stable: true }, inputLevel: 0.72, onsets: 12, pendingBpm: null, dynamics: { intensity: 0.62, space: false, fillDue: false, silenceBeats: 0.25 } },
   });
-  setLatency(root, 38);
   runVizDemo(96, 9);
 }
 

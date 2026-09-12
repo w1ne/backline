@@ -1088,7 +1088,7 @@ body {
 
 .you {
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  grid-template-columns: auto 1fr auto auto auto;
   align-items: center;
   gap: 14px;
 }
@@ -1572,6 +1572,20 @@ body {
 .morph-key.on {
   background: var(--panel);
   box-shadow: inset 0 0 0 2px var(--pink);
+}
+
+/* mic mute lives inline in the YOU strip, not pinned to a pad corner like other morph keys */
+#mic-mute {
+  position: static;
+}
+
+/* mic mute: red, not pink — muted is a warning, not a routing choice */
+#mic-mute.on .morph-led {
+  background: var(--red);
+}
+
+#mic-mute.on {
+  box-shadow: inset 0 0 0 2px var(--red);
 }
 
 /* ---------- short desktop viewports ---------- */

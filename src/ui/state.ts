@@ -40,6 +40,8 @@ export interface AppState {
   audioOutputs: DeviceOption[];
   /** chosen mic input, or null for the system default */
   micIn: string | null;
+  /** mic gated from the listener (onsets/pitch/level); MIDI is unaffected */
+  micMuted: boolean;
   audioInputs: DeviceOption[];
   /** chosen MIDI input id, or null for "all" */
   midiIn: string | null;
@@ -70,6 +72,7 @@ const defaults: AppState = {
   morphSupported: true,
   audioOutputs: [],
   micIn: null,
+  micMuted: false,
   audioInputs: [],
   midiIn: null,
   midiInputs: [],
