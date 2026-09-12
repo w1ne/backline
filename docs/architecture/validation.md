@@ -27,7 +27,7 @@ health, and roll back failed or interrupted installations. See
 
 Validation performed during integration:
 
-- Production web and Pi builds; 674 frontend tests; 161 backend tests (plus two
+- Production web and Pi builds; 680 frontend tests; 161 backend tests (plus two
   subtests); 40 Pi tests (one optional dependency skip); all 44 benchmark gates,
   including the MIR-1K real-voice subset.
 - Browser fake microphone: quiet 220/440 Hz tones, +20-cent bend, and silence release;
@@ -53,3 +53,9 @@ refuses a stale rolling release unless GitHub confirms it is ahead of the instal
 commit. A real failed legacy-release installation rolled back to the working assets;
 a simulated MIDI performance correctly caused the updater to defer. The Pi's output
 monitor captured nonzero audio while AMT scheduling and response timing were active.
+
+The final transport check exposed a native missing-edge exception during microphone
+monitor teardown. The monitor is now disposed before the shared source disconnects,
+with idempotent disposal. GM scheduler handles are cancelled on stop. Pi command
+failures are acknowledged once and cannot prevent status publication; regression
+tests cover subsequent commands and heartbeat after failure.
