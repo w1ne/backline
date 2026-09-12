@@ -4,6 +4,7 @@ import pytest
 
 from bench_harmony import ARPEGGIO, BEATS_PER_BAR, BPM, HALF_BAR, arpeggio_events, run, score
 from brain import HarmonyBrain, sampling_for
+from harmony import chord_name
 from form import ENDING_SILENCE_BEATS
 
 
@@ -29,6 +30,56 @@ def _chord(name):
     from harmony import Chord, NAMES
     root, quality = re.match(r"^([A-G]#?)(m?)$", name).groups()
     return Chord(NAMES.index(root), "min" if quality else "maj")
+
+
+def live_replay(lookahead, bars=16, genre="lofi", client_chord="Am"):
+    """The message sequence bench/streammuse/tools/tick_latency.mjs sends for the `arpeggio`
+    clip, as server.py hands it to the brain: `start` (key, genre, lookaheadBeats), `set`
+    (chord Am), every note as a `notes` message carrying its onset beat but arriving
+    DETECTION_LATENCY_S later, and a `tick` every two beats. Returns the tool's own
+    "chord at bar start" line (latest plan whose chordFrom <= bar start; Am before any)."""
+    brain = HarmonyBrain(key="A minor", genre=genre, lookahead_beats=lookahead, bpm=BPM)
+    brain.set_controls({"key": "A minor", "chord": client_chord, "creativity": 0.3})
+    events = arpeggio_events(ARPEGGIO * (bars // len(ARPEGGIO)))
+    fed = 0
+    plans = []
+    for tick in range(0, bars * BEATS_PER_BAR, HALF_BAR):
+        while fed < len(events) and events[fed][2] <= tick:
+            midi, onset, _arrival = events[fed]
+            brain.on_note(midi, onset)
+            fed += 1
+        r = brain.on_tick(float(tick))
+        plans.append((r["chord_from"], r["chord"]))
+    at_start = []
+    for bar in range(bars):
+        chord = "Am"
+        for chord_from, name in plans:
+            if name and chord_from <= bar * BEATS_PER_BAR + 0.01:
+                chord = name
+        at_start.append(chord)
+    return at_start
+
+
+class TestLiveReplay:
+    """What the relay run scores must be what the brain scores on the same messages."""
+
+    def test_arpeggio_live_sequence_lookahead_2(self):
+        truth = [chord_name(c) for c in ARPEGGIO] * 2
+        at_start = live_replay(2.0)
+        hits = sum(a == t for a, t in zip(at_start, truth))
+        assert at_start[:8] == ["Am", "Am", "G", "F", "Am", "F", "Em", "Am"], at_start
+        assert hits / len(truth) >= 0.5, (hits, at_start)
+
+    def test_lookahead_4_is_the_relay_run_before_the_fix(self):
+        """server.py planned one bar ahead whatever `lookaheadBeats` said; this is the line the
+        relay reported at both settings (3/8), so the bug was the server, not the brain."""
+        assert live_replay(4.0)[:8] == ["Am", "Am", "G", "Am", "Am", "Am", "G", "Am"]
+
+    def test_first_bar_is_the_client_chord(self):
+        """Bar 1 is Am not F on either lookahead: the `set.chord` rule holds until four notes,
+        and the tick before bar 1 has heard two."""
+        assert live_replay(2.0, client_chord=None)[1] == "F"
+        assert live_replay(2.0)[1] == "Am"
 
 
 class TestChordDecision:

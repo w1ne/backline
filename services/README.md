@@ -38,7 +38,7 @@ Inside: first block `text2music`, later blocks `complete` from the previous bloc
 
 Wraps the Anticipatory Music Transformer (`stanford-crfm/music-small-800k`, Apache-2.0) with a lookahead/commit scheduler. Follows the player's notes and writes accompaniment a few beats ahead; the browser plays it through its own synths.
 
-Client → `{"type":"start","bpm":100,"key":"A minor","genre":"lofi","lookaheadBeats":4,"commitBeats":2,"listenBeats":8}`, then `{"type":"notes","notes":[{"beat":12.5,"pitch":64,"dur":0.5,"vel":0.8}]}` as the player plays, a cue every half bar `{"type":"tick","beat":14}` (absolute beat the half bar started at; the server plans the `commitBeats` window one bar ahead, `[18,20)`), `{"type":"set","genre":...,"creativity":...,"instruments":[...],"chord":"Am","intensity":0.6,"silenceBeats":0}`.
+Client → `{"type":"start","bpm":100,"key":"A minor","genre":"lofi","lookaheadBeats":4,"commitBeats":2,"listenBeats":8}`, then `{"type":"notes","notes":[{"beat":12.5,"pitch":64,"dur":0.5,"vel":0.8}]}` as the player plays, a cue every half bar `{"type":"tick","beat":14}` (absolute beat the half bar started at; the server plans the `commitBeats` window `lookaheadBeats` ahead, `[18,20)` at 4, `[16,18)` at the 2 the browser sends), `{"type":"set","genre":...,"creativity":...,"instruments":[...],"chord":"Am","intensity":0.6,"silenceBeats":0}`.
 Server → `{"type":"ready","tick":true}` right after `start`, then per cue `{"type":"plan","fromBeat":18,"toBeat":20,"chord":"F","chordFrom":18,"section":"groove","notes":[{"beat":18,"pitch":57,"dur":1,"vel":0.7,"voice":"bass|keys"}]}` and `{"type":"status","latencyMs":230,"tokensPerSec":70}`.
 
 The service owns harmony and form (`amt/brain.py`, docs/superpowers/specs/2026-09-12-one-brain-design.md):

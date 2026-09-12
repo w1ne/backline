@@ -120,8 +120,8 @@ class ChordInference:
 
 
 BEATS_PER_BAR = 4.0
-# Beats between a cue and the start of the window it plans: one bar, so a plan has a bar of
-# wall time before its first note is due whether the cue is a `bar` or a `tick`.
+# Default beats between a cue and the start of the window it plans; the `start` message's
+# `lookaheadBeats` overrides it per session (the browser sends 2 with half-bar commits).
 PLAN_LOOKAHEAD_BEATS = 4.0
 
 
@@ -139,7 +139,7 @@ class Session:
 
     def __init__(self, model):
         self.model = model
-        self.reset(bpm=100.0, lookahead_beats=4.0, commit_beats=2.0, listen_beats=8.0, top_p=0.95)
+        self.reset(bpm=100.0, lookahead_beats=PLAN_LOOKAHEAD_BEATS, commit_beats=2.0, listen_beats=8.0, top_p=0.95)
 
     def reset(self, bpm, lookahead_beats, commit_beats, listen_beats, top_p,
               instrument_names=None, accomp_bias=ACCOMP_BIAS, key=None, genre=None):
@@ -174,7 +174,7 @@ class Session:
         self.chord = None
         self.section = "intro"
         self.space = False
-        self.brain = HarmonyBrain(key=key, genre=genre, lookahead_beats=PLAN_LOOKAHEAD_BEATS, bpm=bpm)
+        self.brain = HarmonyBrain(key=key, genre=genre, lookahead_beats=lookahead_beats, bpm=bpm)
 
     def set_controls(self, msg):
         self.key = msg.get("key", self.key)
@@ -234,7 +234,7 @@ class Session:
 
     def generate_plan(self, now_beat: float, span_beats: float, label: str = "") -> dict:
         """Generate the accompaniment plan for the `span_beats` window starting
-        PLAN_LOOKAHEAD_BEATS past the cue at `now_beat` (4/4 assumed -- matches
+        `self.lookahead_beats` past the cue at `now_beat` (4/4 assumed -- matches
         the app's Players.schedule bar granularity).
 
         The window is anchored to the cue that just happened. It used to start
@@ -246,7 +246,7 @@ class Session:
         the kept window stayed two beats -- which is why most bars came back
         with no notes at all.
         """
-        target_start_beat, target_end_beat = plan_window(now_beat, span_beats, PLAN_LOOKAHEAD_BEATS)
+        target_start_beat, target_end_beat = plan_window(now_beat, span_beats, self.lookahead_beats)
 
         # Chord and section for this window: harmony.py/predict.py and form.py via the brain.
         brain_out = self.brain.on_tick(now_beat)
@@ -415,7 +415,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 elif mtype == "start":
                     session.reset(
                         bpm=float(msg.get("bpm", 100.0)),
-                        lookahead_beats=float(msg.get("lookaheadBeats", 4.0)),
+                        lookahead_beats=float(msg.get("lookaheadBeats", PLAN_LOOKAHEAD_BEATS)),
                         commit_beats=float(msg.get("commitBeats", 2.0)),
                         listen_beats=float(msg.get("listenBeats", 8.0)),
                         top_p=0.95,

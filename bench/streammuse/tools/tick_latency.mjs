@@ -2,7 +2,7 @@
 // browser does (start -> notes at their wall-clock onsets -> a cue every half bar) and reports
 // the cue-to-plan latency per commit through the relay. Node 20, `ws` from node_modules.
 //
-//   node bench/streammuse/tools/tick_latency.mjs wss://backline-relay.shylenkoa.workers.dev/amt [bars] [out.json] [melody|arpeggio]
+//   node bench/streammuse/tools/tick_latency.mjs wss://backline-relay.shylenkoa.workers.dev/amt [bars] [out.json] [melody|arpeggio] [lookaheadBeats]
 //
 // `arpeggio` plays the Am F C G Am Dm Em Am progression (root-third-fifth-third per bar, from
 // bench/voice/synth.ts) and scores the plan's `chord` in force at each bar start against it.
@@ -13,6 +13,8 @@ const URL = process.argv[2] ?? 'wss://backline-relay.shylenkoa.workers.dev/amt';
 const BARS = Number(process.argv[3] ?? 16);
 const OUT = process.argv[4];
 const CLIP = process.argv[5] ?? 'melody';
+// The browser's LOOKAHEAD_BEATS (src/engines/amtEngine.ts).
+const LOOKAHEAD_BEATS = Number(process.argv[6] ?? 2);
 const BPM = 90;
 const BEAT_MS = 60000 / BPM;
 const COMMIT_BEATS = 2;
@@ -58,12 +60,12 @@ ws.on('message', raw => {
 
 await new Promise((res, rej) => { ws.on('open', res); ws.on('error', rej); });
 ws.send(JSON.stringify({ type: 'start', bpm: BPM, key: 'A minor', genre: 'lofi',
-  lookaheadBeats: 4, commitBeats: COMMIT_BEATS, listenBeats: LISTEN_BEATS }));
+  lookaheadBeats: LOOKAHEAD_BEATS, commitBeats: COMMIT_BEATS, listenBeats: LISTEN_BEATS }));
 ws.send(JSON.stringify({ type: 'set', key: 'A minor', chord: 'Am', creativity: 0.3, amount: 1,
   instruments: { drums: true, bass: true, keys: true, lead: false } }));
 await new Promise(r => setTimeout(r, 500)); // let `ready` (or nothing, on an old server) arrive
 const mode = ready ? 'tick' : 'bar';
-console.log(`server ${ready ? 'plans per half bar (tick)' : 'plans per bar (no ready)'}; ${BARS} bars at ${BPM} bpm, clip ${CLIP}`);
+console.log(`server ${ready ? 'plans per half bar (tick)' : 'plans per bar (no ready)'}; ${BARS} bars at ${BPM} bpm, clip ${CLIP}, lookahead ${LOOKAHEAD_BEATS}`);
 
 const t0 = performance.now();
 let i = 0;
