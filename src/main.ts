@@ -97,6 +97,7 @@ let tapCount = 0;
 let disarmFallback: (() => void) | undefined;
 let halfBarTimer: ReturnType<typeof setTimeout> | undefined;
 let beatTimers: ReturnType<typeof setTimeout>[] = [];
+let toastTimer: ReturnType<typeof setTimeout> | undefined;
 let countInSynth: Tone.Synth | undefined;
 let countInTimers: ReturnType<typeof setTimeout>[] = [];
 /** Mirrors the Bandleader's own SongForm one-for-one, driven by the same per-bar dynamics,
@@ -118,6 +119,17 @@ const SECTION_LABEL: Record<Section, string> = {
   ending: 'Ending',
   ended: 'Ended · sing to start again',
 };
+
+/** Shows a self-dismissing notice in the LCD-styled toast. A later call replaces whatever
+ *  is currently showing and restarts the dismiss clock, rather than stacking messages. */
+function showToast(message: string, ms = 3500): void {
+  if (toastTimer !== undefined) clearTimeout(toastTimer);
+  store.update({ toast: message });
+  toastTimer = setTimeout(() => {
+    toastTimer = undefined;
+    store.update({ toast: null });
+  }, ms);
+}
 
 /** Re-reads the player's activity for one beat and hands the result to the band. Engines only
  *  call back on the bar, so beats 1..3 come off timers re-armed from every downbeat — they
@@ -471,12 +483,20 @@ async function power() {
   // The listener timestamps notes on the performance.now clock; the strip draws on the
   // AudioContext one, which is what every scheduled band note is already in.
   listener.onNote(n => {
+    // Paused means paused: the performer's own notes are neither shown nor recorded
+    // until they let the band play again.
+    if (store.state.paused) return;
     const t = n.timeSec + perfOffset();
     viz?.addNote('you', n.midi, t, YOU_NOTE_SEC, n.velocity);
     if (store.state.recording) midiRecorder.addYou(n.midi, n.velocity, t);
   });
 
   listener.onChange(input => {
+    if (store.state.paused) return;
+    // The strip's voice line: the continuous reading, not the snapped note, so a slide looks
+    // like a slide. Runs on every listener emit (~20 Hz from the mic's pitch poll).
+    const p = input.pitch;
+    viz?.addPitch(Tone.now(), p ? p.midi + p.cents / 100 : null, p?.stable ?? false);
     // The service's chord wins the display too while its plan is fresh — see planOverride.ts.
     const fresh = planFreshness.chordFresh(store.state.bar);
     store.update({ input: fresh ? { ...input, chord: chooseChord(store.state.engine, fresh, planChord, input.chord) } : input });
@@ -529,6 +549,8 @@ async function power() {
 function powerOff() {
   whiteNoise.setEnabled(false);
   drone.setEnabled(false);
+  if (toastTimer !== undefined) clearTimeout(toastTimer);
+  toastTimer = undefined;
   disarmFallback?.();
   disarmFallback = undefined;
   if (halfBarTimer !== undefined) clearTimeout(halfBarTimer);
@@ -561,6 +583,7 @@ function powerOff() {
     loopsUpdatedAt: undefined,
     effectiveIntensity: 0,
     input: { bpm: null, key: null, chord: null, notesNow: [], pitch: null, inputLevel: 0, onsets: 0, pendingBpm: null, dynamics: { ...IDLE_DYNAMICS } },
+    toast: null,
   });
 }
 
@@ -602,10 +625,19 @@ store.subscribe(s => {
         clearBeatTimers();
         band.stop();
         playbackActivity.clear();
+        // The band alone isn't the whole mix: the ambient drone/noise beds run independently
+        // of the transport, so pause has to silence those too or it isn't actually silent.
+        drone.setEnabled(false);
+        whiteNoise.setEnabled(false);
         store.update({ paused: true, activeParts: {}, accompanimentStatus: 'Paused' });
+        showToast('Paused — mic & MIDI input is not being taken');
         return;
       }
-      store.update({ paused: false, accompanimentStatus: 'Listening' });
+      if (toastTimer !== undefined) clearTimeout(toastTimer);
+      toastTimer = undefined;
+      drone.setEnabled(true);
+      whiteNoise.setEnabled(true);
+      store.update({ paused: false, accompanimentStatus: 'Listening', toast: null });
       const bpm = lastFollowedBpm ?? store.state.input.bpm;
       if (bpm && store.state.locked) {
         startBand(band, bpm, Tone.now() + 0.1).catch(err => {
@@ -744,13 +776,13 @@ store.subscribe(s => {
     },
     setDroneVolume: value => {
       const droneVolume = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
-      drone.setEnabled(store.state.power === 'on');
+      drone.setEnabled(store.state.power === 'on' && !store.state.paused);
       drone.setLevel(droneVolume);
       store.update({ droneVolume });
     },
     setNoiseVolume: value => {
       const noiseVolume = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
-      whiteNoise.setEnabled(store.state.power === 'on');
+      whiteNoise.setEnabled(store.state.power === 'on' && !store.state.paused);
       whiteNoise.setLevel(noiseVolume);
       store.update({ noiseVolume });
     },
@@ -885,6 +917,20 @@ function runVizDemo(bpm: number, startBar: number): void {
     // the player, slightly behind the grid and only in bars already gone by
     for (let i = 0; i < you.length; i++)
       viz!.addNote('you', you[(i + bar) % you.length], at + i * 0.66 * beat + 0.02, 0.3 * beat, 0.9);
+    // and the voice line under those notes: a scoop into each note, a little vibrato on it,
+    // a breath between phrases
+    for (let i = 0; i < you.length; i++) {
+      const target = you[(i + bar) % you.length];
+      const start = at + i * 0.66 * beat + 0.02;
+      for (let k = 0; k <= 8; k++) {
+        const f = k / 8;
+        const t = start + f * 0.5 * beat;
+        const scoop = f < 0.25 ? -(0.25 - f) * 4 : 0;
+        const vib = Math.sin(f * Math.PI * 4) * 0.12;
+        viz!.addPitch(t, target + scoop + vib, f >= 0.25);
+      }
+      viz!.addPitch(start + 0.55 * beat, null, false);
+    }
   };
 
   // two bars behind the playhead, three ahead, topped up every bar

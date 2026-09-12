@@ -3,6 +3,7 @@ import {
   BARS_VISIBLE,
   NOW_FRAC,
   NoteRing,
+  PitchRing,
   PITCH_MAX,
   PITCH_MIN,
   drumLane,
@@ -187,5 +188,47 @@ describe('logSpacedBins', () => {
     const edges = logSpacedBins(10, 1, 8000, sampleRate, fftSize);
     expect(edges[0]).toBe(0);
     expect(edges.every(e => e >= 0)).toBe(true);
+  });
+});
+
+describe('PitchRing', () => {
+  it('keeps samples in time order with their fractional midi and stability', () => {
+    const r = new PitchRing(8);
+    r.add(1.0, 60.2, true);
+    r.add(1.05, 60.4, false);
+    expect(r.length).toBe(2);
+    expect(r.at(0)).toMatchObject({ t: 1.0, midi: 60.2, stable: true });
+    expect(r.at(1)).toMatchObject({ t: 1.05, midi: 60.4, stable: false });
+  });
+
+  it('records silence as a gap so the line breaks instead of joining two phrases', () => {
+    const r = new PitchRing(8);
+    r.add(1.0, 60, true);
+    r.add(1.05, null, false);
+    r.add(1.1, 62, true);
+    expect(r.at(1).midi).toBeNull();
+  });
+
+  it('collapses consecutive gaps into one so silence never fills the ring', () => {
+    const r = new PitchRing(8);
+    r.add(1.0, 60, true);
+    for (let i = 1; i <= 20; i++) r.add(1 + i * 0.05, null, false);
+    expect(r.length).toBe(2);
+  });
+
+  it('never grows past capacity and drops the oldest sample first', () => {
+    const r = new PitchRing(3);
+    for (let i = 0; i < 5; i++) r.add(i, 60 + i, true);
+    expect(r.length).toBe(3);
+    expect(r.at(0).t).toBe(2);
+    expect(r.at(2).t).toBe(4);
+  });
+
+  it('prunes samples older than the cutoff', () => {
+    const r = new PitchRing(8);
+    for (let i = 0; i < 5; i++) r.add(i, 60, true);
+    r.prune(2.5);
+    expect(r.length).toBe(2);
+    expect(r.at(0).t).toBe(3);
   });
 });
