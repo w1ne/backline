@@ -15,10 +15,10 @@ if available, else CPU).
 - client -> `{type:'start', bpm, key, genre, lookaheadBeats, commitBeats, listenBeats, accompInstruments?, accompBias?}`
 - client -> `{type:'notes', notes:[{beat, pitch, dur, vel}]}`
 - client -> `{type:'bar', bar}` -- server replies with the plan for `bar+1`
-- client -> `{type:'set', genre?, creativity?, instruments?, accompInstruments?, accompBias?}` (`genre`/`instruments` accepted, no-op on generation)
+- client -> `{type:'set', genre?, key?, chord?, creativity?, amount?, space?, intensity?, silenceBeats?, instruments?, accompInstruments?, accompBias?}` (`instruments` accepted, no-op on generation; `intensity`/`silenceBeats` drive the song form)
 - client -> `{type:'ping'}` -> server `{type:'pong'}`
 - server -> `{type:'ready', tick:true}` after `start`; a client cues with `tick` only once it has seen this
-- server -> `{type:'plan', fromBeat, toBeat, notes:[{beat, pitch, dur, vel, voice:'keys'|'bass'}]}`
+- server -> `{type:'plan', fromBeat, toBeat, chord?, chordFrom?, section, notes:[{beat, pitch, dur, vel, voice:'keys'|'bass'}]}` (`chord`/`chordFrom`/`section` from `brain.py`; see ../README.md)
 - server -> `{type:'status', latencyMs, tokensPerSec}` after each generation
 - server -> `{type:'error', message}`
 

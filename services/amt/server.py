@@ -54,6 +54,7 @@ from arrangement import (  # noqa: E402
     shape_notes, bass_pitch, harmony_classes, voice_chord, early_entry_plan, fill_silent_window, plan_window,
 )
 from cached import cached_generate  # noqa: E402
+from brain import HarmonyBrain, sampling_for  # noqa: E402
 from instruments import resolve as resolve_instruments, TOGGLEABLE_PRESETS  # noqa: E402,F401
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -141,7 +142,7 @@ class Session:
         self.reset(bpm=100.0, lookahead_beats=4.0, commit_beats=2.0, listen_beats=8.0, top_p=0.95)
 
     def reset(self, bpm, lookahead_beats, commit_beats, listen_beats, top_p,
-              instrument_names=None, accomp_bias=ACCOMP_BIAS):
+              instrument_names=None, accomp_bias=ACCOMP_BIAS, key=None, genre=None):
         self.bpm = bpm
         self.beat_s = 60.0 / bpm
         self.lookahead_beats = lookahead_beats
@@ -166,17 +167,21 @@ class Session:
         self.human_notes: list[tuple[float, float, int]] = []  # (onset_beat, dur_beat, pitch)
         self.committed_horizon_beats = 0.0
         self.last_accomp_notes: list[tuple[float, float, int]] = []
-        self.key = None
+        self.key = key
+        self.genre = genre
+        # The chord the model's window is voiced against: decided by the brain on every tick
+        # (an old client's `set.chord` only until four human notes have been heard).
         self.chord = None
+        self.section = "intro"
         self.space = False
+        self.brain = HarmonyBrain(key=key, genre=genre, lookahead_beats=PLAN_LOOKAHEAD_BEATS)
 
     def set_controls(self, msg):
         self.key = msg.get("key", self.key)
-        self.chord = msg.get("chord", self.chord)
+        self.brain.set_controls(msg)
         self.space = bool(msg.get("space", self.space))
         self.creativity = max(0.0, min(1.0, float(msg.get("creativity", self.creativity))))
-        self.top_p = 0.85 + self.creativity * 0.14
-        self.temperature = 0.9 + self.creativity * 0.4
+        self.temperature, self.top_p = sampling_for(self.creativity)
         self.amount = max(0.0, min(1.0, float(msg.get("amount", self.amount))))
         if "accompInstruments" in msg:
             self.instrument_names = list(msg["accompInstruments"] or [])
@@ -190,6 +195,7 @@ class Session:
             dur_beat = float(n.get("dur", 0.5))
             pitch = int(n["pitch"])
             self.human_notes.append((onset_beat, dur_beat, pitch))
+            self.brain.on_note(pitch, onset_beat)
             self.history.extend(
                 make_event(onset_beat * self.beat_s, dur_beat * self.beat_s, MELODY_INSTR, pitch)
             )
@@ -242,6 +248,18 @@ class Session:
         """
         target_start_beat, target_end_beat = plan_window(now_beat, span_beats, PLAN_LOOKAHEAD_BEATS)
 
+        # Chord and section for this window: harmony.py/predict.py and form.py via the brain.
+        brain_out = self.brain.on_tick(now_beat)
+        self.chord = brain_out["chord"]
+        self.section = brain_out["section"]
+        if brain_out["idle"]:
+            # The form has ended: nothing until a start or new human notes reset it.
+            log.info("%s: ended, empty plan", label)
+            return {
+                "plan": self.plan_message(target_start_beat, target_end_beat, []),
+                "status": {"type": "status", "latencyMs": 0.0, "tokensPerSec": 0.0},
+            }
+
         # Listen-first (ReaLJam): commit nothing until `listen_beats` of the
         # player's melody have been heard, so the model answers real material
         # instead of guessing from a nearly empty bar. This was parsed from
@@ -250,12 +268,9 @@ class Session:
             log.info("%s: listening (target window ends at beat %.1f, listen=%.1f)",
                      label, target_end_beat, self.listen_beats)
             return {
-                "plan": {
-                    "type": "plan",
-                    "fromBeat": target_start_beat,
-                    "toBeat": target_end_beat,
-                    "notes": early_entry_plan(self.key, self.chord, target_start_beat, target_end_beat),
-                },
+                "plan": self.plan_message(
+                    target_start_beat, target_end_beat,
+                    early_entry_plan(self.key, self.chord, target_start_beat, target_end_beat)),
                 "status": {"type": "status", "latencyMs": 0.0, "tokensPerSec": 0.0},
             }
 
@@ -360,14 +375,18 @@ class Session:
         tokens_per_sec = (tokens_generated / (latency_ms / 1000.0)) if latency_ms > 0 else 0.0
 
         return {
-            "plan": {
-                "type": "plan",
-                "fromBeat": start_beat,
-                "toBeat": commit_end_beat,
-                "notes": notes_out,
-            },
+            "plan": self.plan_message(start_beat, commit_end_beat, notes_out),
             "status": {"type": "status", "latencyMs": latency_ms, "tokensPerSec": tokens_per_sec},
         }
+
+    def plan_message(self, from_beat: float, to_beat: float, notes: list) -> dict:
+        """A plan with the chord in force from the window start and the current section.
+        `chord`/`chordFrom`/`section` are optional: an old client ignores them."""
+        plan = {"type": "plan", "fromBeat": from_beat, "toBeat": to_beat, "notes": notes, "section": self.section}
+        if self.chord:
+            plan["chord"] = self.chord
+            plan["chordFrom"] = from_beat
+        return plan
 
 
 @app.websocket("/ws")
@@ -402,8 +421,9 @@ async def websocket_endpoint(websocket: WebSocket):
                         top_p=0.95,
                         instrument_names=msg.get("accompInstruments"),
                         accomp_bias=float(msg.get("accompBias", ACCOMP_BIAS)),
+                        key=msg.get("key"),
+                        genre=msg.get("genre"),
                     )
-                    session.key = msg.get("key")
                     # Tells a new client it may cue with `tick` every commitBeats instead of
                     # `bar` every bar. An old client ignores unknown message types.
                     await websocket.send_text(json.dumps({"type": "ready", "tick": True}))
