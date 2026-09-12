@@ -115,6 +115,11 @@ export class Bandleader {
   }
   stop() {
     this.clock.stop();
+    // Stopping the clock only cancels bars that haven't been scheduled yet — the bar already
+    // in flight was handed to the synths as absolute-time triggerAttackRelease calls, which
+    // keep ringing on their own regardless of transport state. Cancel those too, so pause is
+    // immediate instead of waiting out whatever was already committed.
+    this.players.cancelScheduled?.();
   }
   private onBar(bar: number, t: number) {
     this.onBarCb?.(bar);
