@@ -34,7 +34,9 @@ export class AceStepEngine implements BandEngine {
   readonly bpmStep = 4;
   onBar?: (bar: number) => void;
   onError?: (msg: string) => void;
+  onFirstBlock?: () => void;
   onStats?: (s: { loops: number; starvedSec: number }) => void;
+  private gotFirstBlock = false;
 
   private state: BandState = {
     genre: 'lofi',
@@ -70,6 +72,7 @@ export class AceStepEngine implements BandEngine {
     this.bar = 0;
     this.nextSeq = 1;
     this.latestRequestedSeq = 0;
+    this.gotFirstBlock = false;
     this.blockSeconds = (240 / bpm) * BARS_PER_BLOCK;
     this.firstBarAt = firstBarAt;
     this.nextBlockAt = firstBarAt;
@@ -206,6 +209,10 @@ export class AceStepEngine implements BandEngine {
       if (seq < this.latestRequestedSeq) return;
       const pcm = new Uint8Array(buf, 4);
       this.player?.push(pcm);
+      if (!this.gotFirstBlock) {
+        this.gotFirstBlock = true;
+        this.onFirstBlock?.();
+      }
       this.nextBlockAt += this.blockSeconds;
       this.requestBlock();
     } catch (err) {

@@ -404,6 +404,95 @@ body {
   cursor: not-allowed;
 }
 
+/* ---------- engine keys ---------- */
+
+.engine-keys {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.engine-key {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  background: var(--panel);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  border-radius: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  text-align: left;
+  box-shadow: 2px 2px 0 var(--ink);
+}
+
+.engine-key:active {
+  transform: none;
+}
+
+.engine-key-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.engine-key-name {
+  font-family: var(--display);
+  font-size: 13px;
+  line-height: 1.1;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.engine-key-desc {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.02em;
+  color: #5a564c;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.engine-key.on {
+  background: var(--ink);
+}
+.engine-key.on .engine-key-name {
+  color: var(--panel);
+}
+.engine-key.on .engine-key-desc {
+  color: #a8a49a;
+}
+
+.engine-led {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #8b8b84;
+}
+.engine-led.online {
+  background: var(--led);
+  box-shadow: 0 0 4px var(--led);
+}
+.engine-led.offline {
+  background: #6b6a63;
+}
+.engine-led.connecting {
+  background: var(--led);
+  animation: engine-led-blink 0.9s steps(2, start) infinite;
+}
+
+@keyframes engine-led-blink {
+  50% {
+    opacity: 0.15;
+  }
+}
+
 .switch-row {
   display: flex;
   align-items: center;

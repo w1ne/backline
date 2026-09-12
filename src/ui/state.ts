@@ -17,13 +17,17 @@ export interface AppState {
   error: string | null;
   loops: number;
   loopsUpdatedAt: number | undefined;
+  /** engines the /health probe found unreachable at page load; still selectable, just flagged in the UI */
+  offlineEngines: EngineChoice[];
+  /** true while the current engine is waiting on its 8s connect/first-block watchdog */
+  engineConnecting: boolean;
 }
 
 const defaults: AppState = {
   power: 'off',
   sources: { mic: 'off', midi: 'off' },
   genre: 'lofi',
-  engine: 'patterns',
+  engine: 'acestep',
   creativity: 0.3,
   enabled: { drums: true, bass: false, keys: false, lead: false },
   input: { bpm: null, key: null, notesNow: [], inputLevel: 0, onsets: 0 },
@@ -33,6 +37,8 @@ const defaults: AppState = {
   error: null,
   loops: 0,
   loopsUpdatedAt: undefined,
+  offlineEngines: [],
+  engineConnecting: false,
 };
 
 export class Store {
@@ -41,6 +47,7 @@ export class Store {
     enabled: { ...defaults.enabled },
     input: { ...defaults.input },
     sources: { ...defaults.sources },
+    offlineEngines: [...defaults.offlineEngines],
   };
   private cbs: ((s: AppState) => void)[] = [];
 

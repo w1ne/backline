@@ -9,6 +9,11 @@ describe('Store', () => {
     expect((s.state as unknown as { screen?: unknown }).screen).toBeUndefined();
   });
 
+  it('defaults the engine to acestep', () => {
+    const s = new Store();
+    expect(s.state.engine).toBe('acestep');
+  });
+
   it('notifies subscribers with merged state', () => {
     const s = new Store();
     const seen: number[] = [];

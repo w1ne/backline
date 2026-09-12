@@ -90,4 +90,21 @@ describe('engine and genre controls while power is off', () => {
     root.querySelector<HTMLButtonElement>('#genre-chips .chip[data-genre="funk"]')!.click();
     expect(store.state.genre).toBe('funk');
   });
+
+  it('flags ACE/Lyria as offline in the switch but keeps them clickable', () => {
+    const root = setup();
+    store.update({ offlineEngines: ['acestep', 'lyria'] });
+    renderLive(root, store, actions);
+
+    const ace = root.querySelector<HTMLButtonElement>('#engine-acestep')!;
+    const lyria = root.querySelector<HTMLButtonElement>('#engine-lyria')!;
+    const patterns = root.querySelector<HTMLButtonElement>('#engine-patterns')!;
+    expect(ace.title).toBe('OFFLINE');
+    expect(lyria.title).toBe('OFFLINE');
+    expect(patterns.title).toBe('');
+    expect(ace.querySelector('.engine-led')!.classList.contains('offline')).toBe(true);
+
+    ace.click();
+    expect(store.state.engine).toBe('acestep');
+  });
 });

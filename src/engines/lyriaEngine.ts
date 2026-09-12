@@ -21,7 +21,9 @@ export class LyriaEngine implements BandEngine {
   readonly bpmStep = 2;
   onBar?: (bar: number) => void;
   onError?: (msg: string) => void;
+  onFirstBlock?: () => void;
   onStats?: (s: { loops: number; starvedSec: number }) => void;
+  private gotFirstBlock = false;
 
   private state: BandState = {
     genre: 'lofi',
@@ -47,6 +49,7 @@ export class LyriaEngine implements BandEngine {
   async start(bpm: number, firstBarAt: number): Promise<void> {
     this.stopping = false;
     this.bpm = bpm;
+    this.gotFirstBlock = false;
     this.player = new PcmPlayer(this.ctx);
     this.player.setBarSeconds(240 / bpm);
 
@@ -74,6 +77,10 @@ export class LyriaEngine implements BandEngine {
               for (const chunk of chunks) {
                 if (!chunk.data) continue;
                 this.player!.push(base64ToBytes(chunk.data));
+                if (!this.gotFirstBlock) {
+                  this.gotFirstBlock = true;
+                  this.onFirstBlock?.();
+                }
               }
             } catch (err) {
               this.onError?.(`Lyria: ${err instanceof Error ? err.message : String(err)}`);

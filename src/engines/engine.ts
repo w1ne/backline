@@ -11,6 +11,8 @@ export interface BandEngine {
   onBar?: (bar: number) => void;
   /** called with a human-readable message when the engine hits an unrecoverable error */
   onError?: (msg: string) => void;
+  /** called once the engine has actually produced/received its first audio block */
+  onFirstBlock?: () => void;
   /** periodic playback stats (e.g. Lyria's audio-buffer loop/underrun counters) */
   onStats?: (s: { loops: number; starvedSec: number }) => void;
   /** ms until a control change is audible; UI shows "joining…" for this long */

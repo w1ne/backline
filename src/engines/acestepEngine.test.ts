@@ -190,6 +190,32 @@ describe('AceStepEngine', () => {
     expect(pushSpy).not.toHaveBeenCalled();
   });
 
+  it('calls onError when the socket errors', async () => {
+    const engine = new AceStepEngine(ctx as unknown as AudioContext);
+    const onError = vi.fn();
+    engine.onError = onError;
+    await engine.start(100, 0);
+    const ws = startedSocket();
+
+    ws.emit('error', {});
+
+    expect(onError).toHaveBeenCalledWith(expect.stringContaining('ACE'));
+  });
+
+  it('calls onFirstBlock exactly once, on the first received block', async () => {
+    const engine = new AceStepEngine(ctx as unknown as AudioContext);
+    const onFirstBlock = vi.fn();
+    engine.onFirstBlock = onFirstBlock;
+    await engine.start(100, 0);
+    const ws = startedSocket();
+    ws.open();
+
+    ws.receiveBlock(1);
+    ws.receiveBlock(2);
+
+    expect(onFirstBlock).toHaveBeenCalledTimes(1);
+  });
+
   it('stop closes the socket', async () => {
     const engine = new AceStepEngine(ctx as unknown as AudioContext);
     await engine.start(100, 0);

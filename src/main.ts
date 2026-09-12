@@ -14,6 +14,11 @@ import { LyriaEngine } from './engines/lyriaEngine';
 import { AceStepEngine } from './engines/acestepEngine';
 import { forwardBpm } from './band/bpmForward';
 import { installDebug, recordToggle } from './debug';
+import { chooseFallback } from './engines/fallback';
+import { RELAY_URL } from './config';
+import type { EngineChoice } from './ui/state';
+
+const FALLBACK_TIMEOUT_MS = 8000;
 
 const root = document.getElementById('app')!;
 const store = new Store();
@@ -21,6 +26,80 @@ let listener: Listener | undefined;
 let band: BandEngine | undefined;
 const players = new Players();
 let lastFollowedBpm: number | undefined;
+let disarmFallback: (() => void) | undefined;
+
+function makeBand(engine: EngineChoice): BandEngine {
+  if (engine === 'lyria') return new LyriaEngine(players.rawContext());
+  if (engine === 'acestep') return new AceStepEngine(players.rawContext());
+  return new PatternEngine(players, PATTERNS);
+}
+
+function wireBand(b: BandEngine): void {
+  INSTRUMENTS.forEach(i => b.setEnabled(i, store.state.enabled[i]));
+  b.onBar = bar => {
+    store.update({ bar });
+    setLatency(root, players.latencyMs());
+  };
+  b.onError = msg => store.update({ error: msg });
+  b.onStats = s => {
+    const increased = s.loops > store.state.loops;
+    store.update({ loops: s.loops, loopsUpdatedAt: increased ? Date.now() : store.state.loopsUpdatedAt });
+  };
+}
+
+/** Arms the 8s connect/first-block watchdog for `engine`'s band `b`. If it fails to connect or
+ *  produce a first block in time (or errors out sooner), stops it and starts Patterns in its
+ *  place at the same bpm. Returns a disposer to call once the engine is confirmed healthy or the
+ *  band is torn down for another reason. */
+function armFallback(engine: EngineChoice, b: BandEngine): () => void {
+  const fallback = chooseFallback(engine, '');
+  if (!fallback) return () => {};
+
+  let settled = false;
+  store.update({ engineConnecting: true });
+
+  const settle = () => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(timer);
+    if (store.state.engine === engine) store.update({ engineConnecting: false });
+  };
+
+  const timer = setTimeout(() => trigger('timeout'), FALLBACK_TIMEOUT_MS);
+
+  const userOnError = b.onError;
+  b.onFirstBlock = settle;
+  b.onError = msg => {
+    userOnError?.(msg);
+    trigger(msg);
+  };
+
+  function trigger(reason: string): void {
+    if (settled) return;
+    settle();
+    const result = chooseFallback(engine, reason);
+    if (!result || band !== b) return;
+    b.stop();
+    band = makeBand(result.engine);
+    wireBand(band);
+    band.set({ genre: store.state.genre, creativity: store.state.creativity });
+    store.update({ engine: result.engine, error: result.note });
+    const bpm = lastFollowedBpm ?? store.state.input.bpm ?? undefined;
+    if (bpm) {
+      band.start(bpm, Tone.now() + 0.1).catch(err => {
+        store.update({ error: err instanceof Error ? err.message : String(err) });
+      });
+    }
+  }
+
+  return settle;
+}
+
+// Cheap readiness probe: flag ACE/Lyria as offline in the ENGINE switch if the relay is
+// unreachable at load time. Both stay selectable — this is advisory, not a lock.
+fetch(RELAY_URL + '/health').catch(() => {
+  store.update({ offlineEngines: ['acestep', 'lyria'] });
+});
 
 async function power() {
   store.update({ error: null });
@@ -34,24 +113,9 @@ async function power() {
   const perfOffset = Tone.now() - performance.now() / 1000; // MIDI times are performance.now-based
 
   listener = new Listener([midi, mic], ['midi', 'mic']);
-  if (engine === 'lyria') {
-    band = new LyriaEngine(players.rawContext());
-  } else if (engine === 'acestep') {
-    band = new AceStepEngine(players.rawContext());
-  } else {
-    band = new PatternEngine(players, PATTERNS);
-  }
+  band = makeBand(engine);
   band.set({ genre: store.state.genre, creativity: store.state.creativity });
-  INSTRUMENTS.forEach(i => band!.setEnabled(i, store.state.enabled[i]));
-  band.onBar = bar => {
-    store.update({ bar });
-    setLatency(root, players.latencyMs());
-  };
-  band.onError = msg => store.update({ error: msg });
-  band.onStats = s => {
-    const increased = s.loops > store.state.loops;
-    store.update({ loops: s.loops, loopsUpdatedAt: increased ? Date.now() : store.state.loopsUpdatedAt });
-  };
+  wireBand(band);
 
   listener.onSourceStatus(sources => store.update({ sources: { ...sources } }));
 
@@ -65,8 +129,10 @@ async function power() {
       while (first < Tone.now() + 0.1) first += barLen;
       store.update({ locked: true });
       lastFollowedBpm = input.bpm;
+      disarmFallback?.();
+      disarmFallback = armFallback(store.state.engine, band!);
       band!.start(input.bpm, first).catch(err => {
-        store.update({ error: `Lyria: ${err instanceof Error ? err.message : String(err)}` });
+        store.update({ error: `${store.state.engine}: ${err instanceof Error ? err.message : String(err)}` });
       });
     } else if (
       store.state.locked &&
@@ -86,6 +152,8 @@ async function power() {
 }
 
 function powerOff() {
+  disarmFallback?.();
+  disarmFallback = undefined;
   band?.stop();
   listener?.stop();
   listener = undefined;
@@ -132,25 +200,14 @@ store.subscribe(s => {
       // making the user power off first.
       const bpm = lastFollowedBpm ?? store.state.input.bpm ?? undefined;
       const key = store.state.input.key ?? undefined;
+      disarmFallback?.();
+      disarmFallback = undefined;
       band.stop();
-      band =
-        e === 'lyria'
-          ? new LyriaEngine(players.rawContext())
-          : e === 'acestep'
-            ? new AceStepEngine(players.rawContext())
-            : new PatternEngine(players, PATTERNS);
+      band = makeBand(e);
       band.set({ genre: store.state.genre, creativity: store.state.creativity, key: key ?? undefined });
-      INSTRUMENTS.forEach(i => band!.setEnabled(i, store.state.enabled[i]));
-      band.onBar = bar => {
-        store.update({ bar });
-        setLatency(root, players.latencyMs());
-      };
-      band.onError = msg => store.update({ error: msg });
-      band.onStats = s => {
-        const increased = s.loops > store.state.loops;
-        store.update({ loops: s.loops, loopsUpdatedAt: increased ? Date.now() : store.state.loopsUpdatedAt });
-      };
+      wireBand(band);
       if (bpm) {
+        disarmFallback = armFallback(e, band);
         band.start(bpm, Tone.now() + 0.1).catch(err => {
           store.update({ error: `${e}: ${err instanceof Error ? err.message : String(err)}` });
         });
