@@ -990,6 +990,9 @@ body {
   grid-template-columns: 1fr 1fr;
   align-content: start;
   gap: 6px 9px;
+  /* the zone is fixed to the row height and keeps gaining controls: scroll rather
+     than hide the last one */
+  overflow-y: auto;
 }
 
 /* the MANUAL zone holds eight controls: give it a wider track on desktop */
