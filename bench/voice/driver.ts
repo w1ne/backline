@@ -17,7 +17,7 @@ import { OnsetDetector } from '../../src/listener/onset';
 import { FFT_SIZE, HOP_SIZE, magnitudeSpectrum } from '../../src/listener/fft';
 import { detectPitch } from '../../src/listener/pitch';
 import { PitchTracker, type PitchTrackerOptions, type StablePitch } from '../../src/listener/pitchTracker';
-import type { Chord, Key } from '../../src/types';
+import type { Chord, Dynamics, Key } from '../../src/types';
 import { SR } from './synth';
 
 const PITCH_WINDOW = 4096;
@@ -59,6 +59,10 @@ export interface RunResult {
   bpm: number | null;
   /** every change of the listener's chord reading, stamped with simulated time */
   chords: { t: number; chord: Chord | null }[];
+  /** the listener's dynamics frame after every beat tick (only when a clock was given) */
+  beats: { t: number; beat: number; dynamics: Dynamics }[];
+  /** TempoLock's downbeat estimate (seconds) once locked, else null */
+  downbeat: number | null;
 }
 
 /**
@@ -73,6 +77,7 @@ export function runClip(audio: Float32Array, profile: PitchTrackerOptions, clock
   let keyLockT: number | null = null;
   let tempoLockT: number | null = null;
   const chords: { t: number; chord: Chord | null }[] = [];
+  const beats: { t: number; beat: number; dynamics: Dynamics }[] = [];
 
   listener.onNote(n => {
     detectedNotes.push({ midi: n.midi, velocity: n.velocity, t: currentSimT });
@@ -122,7 +127,7 @@ export function runClip(audio: Float32Array, profile: PitchTrackerOptions, clock
       const beat = Math.floor((t - clock.t0) / beatSec);
       if (t >= clock.t0 && beat > lastBeat) {
         lastBeat = beat;
-        listener.tickBeat(beat, t);
+        beats.push({ t, beat, dynamics: listener.tickBeat(beat, t) });
         if (beat % 2 === 0) listener.tickChord(beat);
       }
     }
@@ -163,5 +168,7 @@ export function runClip(audio: Float32Array, profile: PitchTrackerOptions, clock
     tempoLockT,
     bpm: listener.input.bpm,
     chords,
+    beats,
+    downbeat: listener.downbeat,
   };
 }

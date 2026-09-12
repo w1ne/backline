@@ -43,6 +43,20 @@ export const chordName = (c: Chord): string => NAMES[mod12(c.root)] + SUFFIX[c.q
 
 export const chordTones = (c: Chord): number[] => QUALITY_TONES[c.quality].map(t => mod12(c.root + t));
 
+/** Inverse of {@link chordName}: parses a name it produced back into a {@link Chord}.
+ *  Returns null for anything else (unknown root, unknown suffix, garbage), so callers
+ *  can ignore unrecognized values from an external source safely. */
+export function parseChordName(name: string): Chord | null {
+  const rootIndex = [...NAMES.keys()]
+    .filter(i => name.startsWith(NAMES[i]))
+    .sort((a, b) => NAMES[b].length - NAMES[a].length)[0];
+  if (rootIndex === undefined) return null;
+  const suffix = name.slice(NAMES[rootIndex].length);
+  const quality = QUALITIES.find(q => SUFFIX[q] === suffix);
+  if (quality === undefined) return null;
+  return { root: rootIndex, quality };
+}
+
 /** The chord the band falls back to when nothing is being played: the key's tonic triad. */
 export const tonicTriad = (k: Key): Chord => ({ root: k.root, quality: k.mode === 'major' ? 'maj' : 'min' });
 

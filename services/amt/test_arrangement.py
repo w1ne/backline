@@ -1,5 +1,5 @@
 import unittest
-from arrangement import fill_silent_window, shape_notes, bass_pitch, voice_chord, harmony_classes, early_entry_plan
+from arrangement import fill_silent_window, shape_notes, bass_pitch, voice_chord, harmony_classes, early_entry_plan, plan_window
 
 
 class ArrangementTest(unittest.TestCase):
@@ -121,3 +121,41 @@ class FillSilentWindowTests(unittest.TestCase):
     def test_no_key_no_chord_stays_empty(self):
         self.assertEqual(fill_silent_window([], None, None, 8.0, 12.0), [])
 
+
+
+class PlanWindowTests(unittest.TestCase):
+    """The window a cue asks for: `lookahead` beats past the cue, `span` beats long."""
+
+    def test_bar_cue_keeps_the_full_bar_window(self):
+        # An old client's `bar` message: the plan for bar+1 is the four beats one bar ahead.
+        self.assertEqual(plan_window(0.0, 4.0), (4.0, 8.0))
+        self.assertEqual(plan_window(12.0, 4.0), (16.0, 20.0))
+
+    def test_tick_cue_plans_one_half_bar_a_bar_ahead(self):
+        self.assertEqual(plan_window(0.0, 2.0), (4.0, 6.0))
+        self.assertEqual(plan_window(2.0, 2.0), (6.0, 8.0))
+        self.assertEqual(plan_window(10.0, 2.0), (14.0, 16.0))
+
+    def test_consecutive_ticks_tile_the_timeline_without_gaps(self):
+        windows = [plan_window(beat, 2.0) for beat in (0.0, 2.0, 4.0, 6.0)]
+        for (_, end), (start, _) in zip(windows, windows[1:]):
+            self.assertEqual(end, start)
+
+    def test_lookahead_is_configurable(self):
+        self.assertEqual(plan_window(0.0, 2.0, lookahead_beats=2.0), (2.0, 4.0))
+
+
+class HalfBarFallbackTests(unittest.TestCase):
+    def test_early_entry_plan_fits_a_half_bar(self):
+        notes = early_entry_plan('A minor', 'Am', 4.0, 6.0)
+        self.assertTrue(notes)
+        self.assertTrue(all(4.0 <= n['beat'] < 6.0 for n in notes))
+        self.assertTrue(all(n['beat'] + n['dur'] <= 6.0 + 1e-9 for n in notes))
+        bass = [n for n in notes if n['voice'] == 'bass']
+        self.assertEqual(sorted(n['beat'] for n in bass), [4.0, 5.0])
+
+    def test_silent_half_bar_is_filled_within_the_window(self):
+        out = fill_silent_window([], 'A minor', 'Am', 6.0, 8.0)
+        self.assertTrue(out)
+        self.assertTrue(all(6.0 <= n['beat'] < 8.0 for n in out))
+        self.assertTrue(all(n['beat'] + n['dur'] <= 8.0 + 1e-9 for n in out))

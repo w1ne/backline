@@ -1,7 +1,8 @@
 import * as Tone from 'tone';
-import type { BandState, Instrument, Key, NoteEvent } from '../types';
+import type { AccompPreset, BandState, Chord, Instrument, Key, NoteEvent } from '../types';
 import { IDLE_DYNAMICS } from '../types';
-import { chordName } from '../listener/chordDetector';
+import { chordName, parseChordName } from '../listener/chordDetector';
+import type { Section } from '../band/form';
 import type { BandEngine } from './engine';
 import { ToneClock } from '../band/clock';
 import type { ClockLike } from '../band/clockTypes';
@@ -36,6 +37,9 @@ interface PlanNote {
   dur: number;
   vel: number;
   voice: 'keys' | 'bass';
+  /** GM program number the server generated this note for (voice:'keys' only); see
+   *  src/players/gmInstruments.ts. Absent plays through the plain Keys voice. */
+  gmInstr?: number;
 }
 
 /** Minimal notifier interface the engine needs from the app's Listener, kept narrow so
@@ -62,6 +66,8 @@ export class AmtEngine implements BandEngine {
   onFirstBlock?: () => void;
   onConnected?: () => void;
   onStatus?: (message: string, latencyMs?: number) => void;
+  onChord?: (chord: Chord, fromBeat: number) => void;
+  onSection?: (section: Section) => void;
   private amount = 1;
   private responseTimer?: ReturnType<typeof setTimeout>;
   setAmount(value: number): void {
@@ -80,6 +86,8 @@ export class AmtEngine implements BandEngine {
     enabled: { drums: false, bass: false, keys: false, lead: false },
     dynamics: { ...IDLE_DYNAMICS },
   };
+  private accompPresets: AccompPreset[] = [];
+  private accompBias = 2.0;
   private ws?: WebSocket;
   private clock: ClockLike;
   private bpm = 0;
@@ -87,6 +95,10 @@ export class AmtEngine implements BandEngine {
   private bar = 0;
   private stopping = false;
   private gotFirstNotes = false;
+  /** Set by the server's `ready {tick:true}`: it plans per half bar from `tick` cues. Until
+   *  then (and against an older server, forever) the engine cues with `bar` once a bar. */
+  private tickCapable = false;
+  private halfBarTimer?: ReturnType<typeof setTimeout>;
 
   private noteBuf: { beat: number; pitch: number; dur: number; vel: number }[] = [];
   private noteFlushTimer?: ReturnType<typeof setInterval>;
@@ -132,6 +144,7 @@ export class AmtEngine implements BandEngine {
     this.bpm = bpm;
     this.bar = 0;
     this.gotFirstNotes = false;
+    this.tickCapable = false;
     this.firstBarAt = firstBarAt;
     this.noteBuf = [];
     this.pending = [];
@@ -153,6 +166,8 @@ export class AmtEngine implements BandEngine {
         lookaheadBeats: LOOKAHEAD_BEATS,
         commitBeats: COMMIT_BEATS,
         listenBeats: LISTEN_BEATS,
+        accompInstruments: this.accompPresets,
+        accompBias: this.accompBias,
       });
       this.queueSet();
       this.flushSet();
@@ -172,14 +187,15 @@ export class AmtEngine implements BandEngine {
       if (bar === 0) this.firstBarAt = time;
       this.bar = bar;
       this.onBar?.(bar);
-      this.flushSet();
-      this.flushNotes();
-      if (this.sendRaw(JSON.stringify({ type: 'bar', bar })) && this.responseTimer === undefined) {
-        this.responseTimer = setTimeout(() => {
-          this.responseTimer = undefined;
-          this.onError?.('AMT: model response timed out');
-        }, 8000);
-      }
+      this.cue(bar, bar * BEATS_PER_BAR);
+      // The second half-bar cue: one bar of lead time for the model, a half bar of commit.
+      if (this.halfBarTimer !== undefined) clearTimeout(this.halfBarTimer);
+      const halfBarAt = time + (COMMIT_BEATS * 60) / this.bpm;
+      this.halfBarTimer = setTimeout(() => {
+        this.halfBarTimer = undefined;
+        if (this.stopping) return;
+        this.cue(bar, bar * BEATS_PER_BAR + COMMIT_BEATS);
+      }, Math.max(0, (halfBarAt - this.now()) * 1000));
       const ctx = {bar, key:this.state.key, chord:this.state.chord ?? undefined,
         creativity:this.state.creativity, dynamics:this.state.dynamics, rng:this.rhythmRng};
       for (const voice of ['drums', 'lead'] as const) {
@@ -210,6 +226,8 @@ export class AmtEngine implements BandEngine {
     this.players.setBandAmount?.(1);
     clearTimeout(this.responseTimer);
     this.responseTimer = undefined;
+    clearTimeout(this.halfBarTimer);
+    this.halfBarTimer = undefined;
     ++this.inputSession;
     this.detach?.();
     this.detach = undefined;
@@ -244,6 +262,12 @@ export class AmtEngine implements BandEngine {
     this.queueSet();
   }
 
+  setAccompaniment(presets: AccompPreset[], accompBias: number): void {
+    this.accompPresets = presets;
+    this.accompBias = accompBias;
+    this.queueSet();
+  }
+
   /** The store re-emits on every update, and `set()` used to put a frame on the wire for each
    *  one — 1255 `set` messages in 40 seconds of playing. Send only when the payload actually
    *  differs from what the server was last told, and never more than once per
@@ -261,6 +285,9 @@ export class AmtEngine implements BandEngine {
       instruments: { ...this.state.enabled },
       // Dynamics hint; the manual amount also scales local playback directly.
       intensity: Math.round(this.state.dynamics.intensity * 5) / 5,
+      accompInstruments: this.accompPresets,
+      accompBias: this.accompBias,
+      silenceBeats: this.state.dynamics.silenceBeats,
     });
     if (payload === this.lastSetPayload) {
       // Back to what the server already has — drop anything queued in between.
@@ -329,6 +356,23 @@ export class AmtEngine implements BandEngine {
     this.send({ type: 'notes', notes: this.noteBuf.splice(0, this.noteBuf.length) });
   }
 
+  /** Asks the server for the next plan: `tick {beat}` at every half bar when it has said it
+   *  plans per half bar, else the old `bar {bar}` at downbeats only. The latest input and
+   *  controls go out first so the plan answers what was actually just played. */
+  private cue(bar: number, beat: number): void {
+    const msg = this.tickCapable ? { type: 'tick', beat }
+      : beat === bar * BEATS_PER_BAR ? { type: 'bar', bar } : undefined;
+    if (!msg) return;
+    this.flushSet();
+    this.flushNotes();
+    if (this.sendRaw(JSON.stringify(msg)) && this.responseTimer === undefined) {
+      this.responseTimer = setTimeout(() => {
+        this.responseTimer = undefined;
+        this.onError?.('AMT: model response timed out');
+      }, 8000);
+    }
+  }
+
   private static noteKey(n: PlanNote): string {
     return `${n.voice}:${n.beat.toFixed(4)}:${n.pitch}`;
   }
@@ -356,7 +400,9 @@ export class AmtEngine implements BandEngine {
         continue;
       }
       const barNum = Math.floor(n.beat / BEATS_PER_BAR);
-      const key = `${barNum}:${n.voice}`;
+      // Notes on the 'keys' voice with different gmInstr are different real instruments
+      // (see gmInstruments.ts) and must reach separate Players.scheduleAccompaniment() calls.
+      const key = `${barNum}:${n.voice}:${n.gmInstr ?? ''}`;
       const list = byBarVoice.get(key) ?? [];
       list.push(n);
       byBarVoice.set(key, list);
@@ -364,7 +410,7 @@ export class AmtEngine implements BandEngine {
     this.pending = keep;
 
     for (const [key, list] of byBarVoice) {
-      const [barNumStr, voice] = key.split(':') as [string, 'keys' | 'bass'];
+      const [barNumStr, voice, gmInstrStr] = key.split(':') as [string, 'keys' | 'bass', string];
       const barNum = Number(barNumStr);
       const barStart = this.firstBarAt + barNum * barSeconds;
       const events: NoteEvent[] = list.map(n => ({
@@ -373,7 +419,12 @@ export class AmtEngine implements BandEngine {
         duration: n.dur,
         velocity: n.vel * this.velocityAmount,
       }));
-      this.players.schedule(voice, events, barStart, this.bpm);
+      const gmInstr = gmInstrStr ? Number(gmInstrStr) : undefined;
+      if (voice === 'keys' && gmInstr !== undefined && this.players.scheduleAccompaniment) {
+        this.players.scheduleAccompaniment(gmInstr, events, barStart, this.bpm);
+      } else {
+        this.players.schedule(voice, events, barStart, this.bpm);
+      }
       if (!this.gotFirstNotes) {
         this.gotFirstNotes = true;
         this.onFirstBlock?.();
@@ -414,6 +465,10 @@ export class AmtEngine implements BandEngine {
       this.onError?.(`AMT: ${String(msg.message)}`);
       return;
     }
+    if (msg.type === 'ready') {
+      this.tickCapable = msg.tick === true;
+      return;
+    }
     if (msg.type === 'plan' || msg.type === 'status') {
       clearTimeout(this.responseTimer); this.responseTimer = undefined;
     }
@@ -436,6 +491,11 @@ export class AmtEngine implements BandEngine {
       }
       this.pruneScheduled();
       this.scheduleDue();
+      if (typeof msg.chord === 'string' && Number.isFinite(msg.chordFrom as number)) {
+        const chord = parseChordName(msg.chord);
+        if (chord) this.onChord?.(chord, msg.chordFrom as number);
+      }
+      if (typeof msg.section === 'string') this.onSection?.(msg.section as Section);
     }
   }
 }
