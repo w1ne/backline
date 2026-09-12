@@ -97,6 +97,23 @@ this bring-up) must be purged after installs
 with `No space left on device`. `pod-bootstrap.sh` does this
 automatically after both services' deps are installed.
 
+## Verified (per-block fill redeploy, 2026-09-12)
+
+- `services/acestep/server.py` now reads `fill`/`density` off the block
+  request; the client (`acestepEngine.ts::selectBlockInstruments`) picks
+  the instrument set from the effective dynamics. Pulled on the pod, tmux
+  `ace` restarted, `/health` OK.
+- End-to-end in real Chrome (raw CDP, `?debug=1`, fake Web MIDI, busy 4
+  bars / silent 4 bars x2): block requests tracked the player exactly ---
+  busy blocks (intensity ~0.63-0.70) asked for `['drums','bass']` only;
+  every silent stretch (space=true, intensity 0.28-0.42) flipped to
+  `['drums','bass','keys','lead']` with `fill=true`. So the band lays back
+  to the rhythm section under the player and answers with the full set +
+  guitar in the gaps. Block-audio RMS stayed ~0.15-0.23 across both (the
+  model loudness-normalizes), so the texture change is spectral
+  (instrumentation), not amplitude --- expected, since drums+bass keep the
+  groove going when the lead drops.
+
 ## Verified (dynamics redeploy, 2026-09-12)
 
 - `services/acestep/server.py` now reads `intensity` and `space` off the
