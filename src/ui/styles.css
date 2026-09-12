@@ -351,6 +351,11 @@ body {
   flex: 0 0 auto;
 }
 
+#power-off-key {
+  background: #ff2d2d;
+  color: var(--ink);
+}
+
 .dimmed {
   opacity: 0.4;
   filter: grayscale(0.4);
