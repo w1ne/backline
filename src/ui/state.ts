@@ -30,7 +30,7 @@ const defaults: AppState = {
   engine: 'acestep',
   creativity: 0.3,
   enabled: { drums: true, bass: false, keys: false, lead: false },
-  input: { bpm: null, key: null, notesNow: [], inputLevel: 0, onsets: 0, pendingBpm: null },
+  input: { bpm: null, key: null, notesNow: [], pitch: null, inputLevel: 0, onsets: 0, pendingBpm: null },
   locked: false,
   tempoMode: 'locked',
   bar: 0,

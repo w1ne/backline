@@ -2,11 +2,19 @@ import type { BandInput, Key } from '../types';
 import { TempoLock, bpmFromOnsets } from './tempoLock';
 import { TempoFollower } from './tempoFollower';
 import { KeyDetector } from './keyDetector';
+import type { StablePitch } from './pitchTracker';
 
 export interface Source {
-  start(onNote: (midi: number, velocity: number, timeSec: number) => void, onLevel: (level: number) => void): Promise<void>;
+  start(
+    onNote: (midi: number, velocity: number, timeSec: number) => void,
+    onLevel: (level: number) => void,
+    onPitch?: (p: StablePitch | null) => void,
+  ): Promise<void>;
   stop(): void;
 }
+
+/** stable pitch-tracker notes are kept this long for the YOU strip's chip list */
+const PITCH_NOTES_WINDOW_SEC = 1.5;
 
 export type SourceKind = 'mic' | 'midi';
 export type SourceState = 'off' | 'on' | 'denied' | 'none';
@@ -19,6 +27,10 @@ export class Listener {
   private tempo = new TempoLock();
   private keyDet = new KeyDetector();
   private recent: { n: number; t: number }[] = [];
+  /** distinct stable notes from the continuous mic pitch tracker */
+  private pitchNotes: { n: number; t: number }[] = [];
+  private pitch: StablePitch | null = null;
+  private lastStableMidi: number | null = null;
   private level = 0;
   private onsetCount = 0;
   /** onset times kept only for the live "~98 BPM" readout while listening */
@@ -75,12 +87,27 @@ export class Listener {
       this.emit();
     };
     const onLevel = (lvl: number) => { this.level = lvl; this.emit(); };
+    const onPitch = (p: StablePitch | null) => {
+      this.pitch = p;
+      const now = performance.now() / 1000;
+      if (p && p.stable) {
+        if (p.midi !== this.lastStableMidi) {
+          this.lastStableMidi = p.midi;
+          this.keyDet.addNote(p.midi, 0.8);
+          this.pitchNotes.push({ n: p.midi, t: now });
+        }
+      } else {
+        this.lastStableMidi = null;
+      }
+      this.pitchNotes = this.pitchNotes.filter(r => now - r.t < PITCH_NOTES_WINDOW_SEC);
+      this.emit();
+    };
 
     await Promise.all(
       this.sources.map(async (source, i) => {
         const kind = this.kinds[i];
         try {
-          await source.start(onNote, onLevel);
+          await source.start(onNote, onLevel, onPitch);
           const getStatus = (source as { getStatus?(): SourceState }).getStatus;
           this.status = { ...this.status, [kind]: getStatus ? getStatus.call(source) : 'on' };
         } catch {
@@ -114,7 +141,8 @@ export class Listener {
         this.tempo.locked?.bpm ??
         null,
       key: this.override.key ?? this.keyDet.key,
-      notesNow: [...new Set(this.recent.map(r => r.n))],
+      notesNow: [...new Set([...this.recent.map(r => r.n), ...this.pitchNotes.map(r => r.n)])],
+      pitch: this.pitch,
       inputLevel: this.level,
       onsets: this.onsetCount,
       pendingBpm: bpmFromOnsets(this.onsetTimes, PENDING_MIN_ONSETS)?.bpm ?? null,

@@ -83,6 +83,32 @@ describe('the listening LCD', () => {
   });
 });
 
+describe('the YOU strip note label', () => {
+  const noop = (): void => {};
+  const actions: LiveActions = { power: noop, powerOff: noop, toggle: noop, setGenre: noop, setEngine: noop, setCreativity: noop };
+
+  function note(pitch: Store['state']['input']['pitch']): { text: string; stable: boolean } {
+    const store = new Store();
+    const root = document.createElement('div');
+    store.update({ power: 'on', sources: { mic: 'on', midi: 'off' }, input: { ...store.state.input, pitch } });
+    renderLive(root, store, actions);
+    const el = root.querySelector<HTMLElement>('#you-note')!;
+    return { text: el.textContent!, stable: el.classList.contains('stable') };
+  }
+
+  it('shows a dash when there is no stable pitch', () => {
+    expect(note(null)).toEqual({ text: '—', stable: false });
+  });
+
+  it('shows note name, octave and cents, tinted stable when locked in', () => {
+    expect(note({ midi: 57, cents: 7, stable: true })).toEqual({ text: 'A3 +7¢', stable: true });
+  });
+
+  it('is dim when the reading is not yet stable', () => {
+    expect(note({ midi: 60, cents: -3, stable: false })).toEqual({ text: 'C4 -3¢', stable: false });
+  });
+});
+
 describe('engine and genre controls while power is off', () => {
   const noop = (): void => {};
   const actions: LiveActions = {

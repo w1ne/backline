@@ -163,6 +163,7 @@ function skeleton(): string {
         <div class="zone zone--green you">
           <span class="label">You</span>
           <span class="level"><i id="you-level"></i></span>
+          <span class="pill note" id="you-note">—</span>
           <span class="pill" id="you-notes"></span>
         </div>
         <div class="foot">
@@ -491,6 +492,17 @@ function updateYouStrip(screen: HTMLElement, s: AppState): void {
   screen.querySelector<HTMLElement>('#you-notes')!.textContent = s.input.notesNow.length
     ? s.input.notesNow.map(noteName).join(' · ')
     : '—';
+
+  const noteEl = screen.querySelector<HTMLElement>('#you-note')!;
+  const p = s.input.pitch;
+  if (p) {
+    const sign = p.cents >= 0 ? '+' : '';
+    noteEl.textContent = `${noteName(p.midi)}${octave(p.midi)} ${sign}${p.cents}¢`;
+  } else {
+    noteEl.textContent = '—';
+  }
+  noteEl.classList.toggle('stable', !!p?.stable);
+  noteEl.classList.toggle('unstable', !p?.stable);
 }
 
 const enabledAtBar = new WeakMap<HTMLElement, Partial<Record<Instrument, number>>>();
@@ -580,4 +592,8 @@ function escapeHtml(s: string): string {
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 function noteName(n: number): string {
   return NOTE_NAMES[((n % 12) + 12) % 12];
+}
+
+function octave(n: number): number {
+  return Math.floor(n / 12) - 1;
 }

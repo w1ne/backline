@@ -9,6 +9,8 @@ export interface BandInput {
   bpm: number | null;
   key: Key | null;
   notesNow: number[];
+  /** current stable pitch reading, or null when silent/unstable */
+  pitch: { midi: number; cents: number; stable: boolean } | null;
   inputLevel: number;
   onsets: number;
   /** read-only running estimate from the onsets so far, shown while still listening */
