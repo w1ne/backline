@@ -93,6 +93,7 @@ export function renderLive(root: HTMLElement, store: Store, actions: LiveActions
 function skeleton(): string {
   return `
     <div class="screen" data-live>
+      <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
       <div class="bar">
         <div class="bar-top">
           <h1 class="logo">duet<i>.ai</i></h1>
@@ -407,6 +408,7 @@ function wireKnob(screen: HTMLElement, input: HTMLInputElement, knobSel: string)
 
 function update(screen: HTMLElement, s: AppState, changeLatencyMs: number): void {
   updatePower(screen, s);
+  updateToast(screen, s);
   updateHeader(screen, s);
   updateEngine(screen, s);
   updateReadouts(screen, s);
@@ -475,6 +477,12 @@ function lcdText(s: AppState): string {
   // only feedback that the mic is hearing a tempo and not just noise
   const guess = s.input.pendingBpm ? ` · ~${Math.round(s.input.pendingBpm)} BPM` : '';
   return `LISTENING · MIC ${mark(s.sources.mic)} ${midiLabel(s)} · ${s.input.onsets}/12${guess}`;
+}
+
+function updateToast(screen: HTMLElement, s: AppState): void {
+  const toast = screen.querySelector<HTMLElement>('#toast')!;
+  if (s.toast) toast.textContent = s.toast; // keep the last message visible through the hide transition
+  toast.hidden = !s.toast;
 }
 
 function updatePower(screen: HTMLElement, s: AppState): void {
