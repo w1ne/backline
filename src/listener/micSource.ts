@@ -12,8 +12,7 @@ const WORKLET_URL = `${import.meta.env.BASE_URL}worklet/onset-processor.js`;
 const LEVEL_EVERY = 3;
 /** continuous pitch poll period, independent of onsets */
 const PITCH_POLL_MS = 50;
-/** below this rms there is nothing to track a pitch on (same floor the onset path treats as silence) */
-const PITCH_RMS_FLOOR = 0.01;
+
 
 export class MicSource implements Source {
   private stream?: MediaStream;
@@ -109,10 +108,8 @@ export class MicSource implements Source {
 
     this.pitchTimer = window.setInterval(() => {
       if (this.muted) return;
-      if (this.lastRms <= PITCH_RMS_FLOOR) {
-        onPitch?.(tracker.push(null));
-        return;
-      }
+      // Gate on this full pitch frame inside detectPitch, rather than an unrelated
+      // short onset hop that cuts off quiet notes and decaying guitar strings.
       an.getFloatTimeDomainData(pitchBuf);
       const est = detectPitch(pitchBuf, ctx.sampleRate);
       onPitch?.(tracker.push(est ? { hz: est.hz, clarity: est.clarity, t: ctx.currentTime } : null));

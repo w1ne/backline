@@ -111,9 +111,8 @@ export class Listener {
       this.pitch = p;
       const now = this.now();
       if (p && p.stable) {
-        // A voice glides through the cracks between scale tones; once the key is known,
-        // land each sung pitch on the nearest scale tone so a slide does not drag the harmony.
-        const midi = snapToKey(p.midi, this.override.key ?? this.keyDet.key);
+        // Preserve the performance; harmony constraints belong to accompaniment output.
+        const midi = p.midi;
         if (midi !== this.lastStableMidi) {
           this.lastStableMidi = midi;
           this.keyDet.addNote(midi, 0.8);
@@ -227,16 +226,4 @@ export class Listener {
   private emit() { const i = this.input; this.cbs.forEach(c => c(i)); }
 
   private emitStatus() { const s = this.status; this.statusCbs.forEach(c => c(s)); }
-}
-
-const MAJOR = [0, 2, 4, 5, 7, 9, 11];
-const MINOR = [0, 2, 3, 5, 7, 8, 10];
-
-/** Nearest scale tone of `key` to `midi` (ties resolve downward); `midi` itself when no key is known. */
-export function snapToKey(midi: number, key: { root: number; mode: 'major' | 'minor' } | null): number {
-  if (!key) return midi;
-  const scale = key.mode === 'major' ? MAJOR : MINOR;
-  const inKey = (m: number) => scale.includes((((m - key.root) % 12) + 12) % 12);
-  if (inKey(midi)) return midi;
-  return inKey(midi - 1) ? midi - 1 : midi + 1;
 }
