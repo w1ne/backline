@@ -27,6 +27,7 @@
   "description": "",
   "dependencies": {
     "@google/genai": "^2.22.0",
+    "pitchy": "^4.1.0",
     "smplr": "^1.0.0",
     "tone": "^15.1.22"
   },
