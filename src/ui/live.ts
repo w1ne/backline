@@ -34,6 +34,8 @@ export interface LiveActions {
   setMorphOutput?(deviceId: string | null): void;
   /** pick the mic input device, or null for the system default */
   setMicInput?(deviceId: string | null): void;
+  /** gate the mic out of the listener (onsets/pitch/level); MIDI keeps working */
+  setMicMuted?(muted: boolean): void;
   /** pick the MIDI input by id, or null to listen to every connected one */
   setMidiInput?(id: string | null): void;
   /** ms a toggled instrument spends showing "joining…"/"leaving…" before it settles */
@@ -227,11 +229,11 @@ function skeleton(): string {
           </span>
           <span class="pill note" id="you-note">—</span>
           <span class="pill" id="you-notes"></span>
+          <button type="button" class="morph-key" id="mic-mute" aria-label="Mute the mic from the listener">MIC<span class="morph-led"></span></button>
         </div>
         <div class="foot">
           <button type="button" class="btn big power-on" id="power-key">Power</button>
           <button type="button" class="btn big power-off" id="power-off-key" hidden>Power Off</button>
-          <span class="hint" id="latency"></span>
         </div>
       </div>
     </div>
@@ -274,6 +276,11 @@ function wireControls(screen: HTMLElement, store: Store): void {
   morphOut.addEventListener('change', () => actions().setMorphOutput?.(morphOut.value || null));
   const micIn = screen.querySelector<HTMLSelectElement>('#mic-in')!;
   micIn.addEventListener('change', () => actions().setMicInput?.(micIn.value || null));
+  const micMute = screen.querySelector<HTMLButtonElement>('#mic-mute')!;
+  micMute.addEventListener('click', () => {
+    if (micMute.disabled) return;
+    actions().setMicMuted?.(!store.state.micMuted);
+  });
   const midiIn = screen.querySelector<HTMLSelectElement>('#midi-in')!;
   midiIn.addEventListener('change', () => actions().setMidiInput?.(midiIn.value || null));
   const powerBtn = screen.querySelector<HTMLButtonElement>('#power-key')!;
@@ -613,6 +620,13 @@ function updateYouStrip(screen: HTMLElement, s: AppState): void {
   }
   noteEl.classList.toggle('stable', !!p?.stable);
   noteEl.classList.toggle('unstable', !p?.stable);
+
+  const micMute = screen.querySelector<HTMLButtonElement>('#mic-mute')!;
+  const midiOnly = s.sources.mic === 'denied' || s.sources.mic === 'none';
+  micMute.hidden = midiOnly;
+  micMute.disabled = midiOnly;
+  micMute.classList.toggle('on', s.micMuted);
+  micMute.firstChild!.textContent = s.micMuted ? 'MIC MUTED' : 'MIC';
 }
 
 const enabledAtBar = new WeakMap<HTMLElement, Partial<Record<Instrument, number>>>();
@@ -732,12 +746,7 @@ function updateMorph(screen: HTMLElement, s: AppState): void {
 }
 
 function updateFooter(_screen: HTMLElement, _s: AppState): void {
-  // latency text is set independently via setLatency(), refreshed per bar
-}
-
-export function setLatency(root: HTMLElement, ms: number): void {
-  const el = root.querySelector<HTMLElement>('#latency');
-  if (el) el.textContent = `latency ${Math.round(ms)} ms`;
+  // nothing to update here currently
 }
 
 function cap(s: string): string {

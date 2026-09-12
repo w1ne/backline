@@ -134,6 +134,14 @@ export class Listener {
 
   stop() { this.sources.forEach(s => s.stop()); }
 
+  /** Gates the mic source(s) only; MIDI sources are untouched. */
+  setMicMuted(muted: boolean): void {
+    this.sources.forEach((s, i) => {
+      if (this.kinds[i] !== 'mic') return;
+      (s as { setMuted?(m: boolean): void }).setMuted?.(muted);
+    });
+  }
+
   setOverride(p: { bpm?: number; key?: Key }) { Object.assign(this.override, p); this.emit(); }
 
   onChange(cb: (i: BandInput) => void) { this.cbs.push(cb); }
