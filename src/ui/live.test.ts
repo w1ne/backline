@@ -1,5 +1,8 @@
+// @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
-import { tileLabel } from './live';
+import { tileLabel, renderLive } from './live';
+import { Store } from './state';
+import type { LiveActions } from './live';
 
 describe('tileLabel', () => {
   // Regression test for the bug where clicking an instrument tile "kept
@@ -52,5 +55,39 @@ describe('tileLabel', () => {
         }
       }
     }
+  });
+});
+
+describe('engine and genre controls while power is off', () => {
+  const noop = (): void => {};
+  const actions: LiveActions = {
+    power: noop,
+    powerOff: noop,
+    toggle: noop,
+    setGenre: g => store.state.genre = g,
+    setEngine: e => store.state.engine = e,
+    setCreativity: noop,
+  };
+  let store: Store;
+
+  function setup(): HTMLElement {
+    store = new Store();
+    const root = document.createElement('div');
+    renderLive(root, store, actions);
+    return root;
+  }
+
+  it('clicking the Lyria engine switch updates store.state.engine while off', () => {
+    const root = setup();
+    expect(store.state.power).toBe('off');
+    root.querySelector<HTMLButtonElement>('#engine-lyria')!.click();
+    expect(store.state.engine).toBe('lyria');
+  });
+
+  it('clicking a genre chip updates store.state.genre while off', () => {
+    const root = setup();
+    expect(store.state.power).toBe('off');
+    root.querySelector<HTMLButtonElement>('#genre-chips .chip[data-genre="funk"]')!.click();
+    expect(store.state.genre).toBe('funk');
   });
 });

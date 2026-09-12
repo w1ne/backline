@@ -353,8 +353,14 @@ body {
 
 .dimmed {
   opacity: 0.4;
-  pointer-events: none;
   filter: grayscale(0.4);
+}
+
+/* zones that truly need a running band (pads, knob, manual overrides) get
+   this instead of relying on .dimmed — ENGINE and GENRE stay clickable while
+   off since they only set state. */
+.inert {
+  pointer-events: none;
 }
 
 /* ---------- slide switch ---------- */
