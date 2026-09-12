@@ -71,11 +71,11 @@ function skeleton(): string {
           <button type="button" class="morph-key" id="mic-mute" aria-label="Mute the mic from the listener">MIC<span class="morph-led"></span></button>
         </div>
         <span class="lcd" id="lcd"></span>
+        <div class="bar-input">
+          <p class="connection-line" id="input-status"></p>
+          <button type="button" id="enable-audio" class="audio-start">Enable sound</button>
+        </div>
       </div>
-      <section class="instrument-section" aria-labelledby="instrument-heading">
-        <div class="section-heading"><div><h2 id="instrument-heading">Your instrument</h2></div><button type="button" id="enable-audio" class="audio-start">Enable sound</button></div>
-        <p class="connection-line" id="input-status"></p>
-      </section>
       <div class="section-heading band-heading"><div><h2>Your band</h2><p id="band-status" role="status"></p></div><span id="model-latency"></span></div>
       <div class="readout">
         <div class="ro-tempo"><small>Tempo</small><strong id="ro-tempo">&mdash;</strong></div>
@@ -175,6 +175,7 @@ function skeleton(): string {
 <p id="engine-status" role="status"></p>
         <div class="zone zone--orange instrument-zone">
           <span class="zone-label">Your instrument</span>
+        <p class="connection-line" id="midi-status"></p>
         <div class="instrument-controls">          <div class="field">
             <label for="sound">Keyboard sound</label>
             <select id="sound">
@@ -333,6 +334,7 @@ function update(screen: HTMLElement, s: AppState, changeLatencyMs: number): void
   const audio = screen.querySelector<HTMLButtonElement>('#enable-audio')!;
   audio.hidden = !s.audioSuspended && s.power === 'on';
   screen.querySelector<HTMLElement>('#input-status')!.textContent = `${midiLabel(s)}${hearingLabel(s)}${s.audioSuspended ? ' · TAP TO ENABLE SOUND' : ''}`;
+  screen.querySelector<HTMLElement>('#midi-status')!.textContent = midiLabel(s);
   screen.querySelector<HTMLElement>('#band-status')!.textContent = s.accompanimentStatus;
   screen.querySelector<HTMLElement>('#model-latency')!.textContent = s.modelLatencyMs == null ? '' : `${Math.round(s.modelLatencyMs)} ms`;
   screen.querySelector<HTMLElement>('#engine-status')!.textContent = s.engineConnecting ? `${ENGINE_NAMES[s.engine]} · connecting…` : s.offlineEngines.includes(s.engine) ? `${ENGINE_NAMES[s.engine]} · offline` : '';
