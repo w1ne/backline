@@ -1,0 +1,20 @@
+{
+  "_comment": "Regression floors/ceilings for bench/gate.ts, set from the RESULTS.md values recorded on 2026-09-12/13 minus (or plus) a small margin. Update deliberately when a bench change is a real, reviewed improvement or regression, not to silence a failing gate.",
+  "voice": {
+    "melodyF1Floor": {
+      "melody-A3-root": 0.85,
+      "arpeggio-Am-progression": 0.86,
+      "melody-A2-root-low": 0.75,
+      "melody-A4-root-high": 0.91
+    }
+  },
+  "harmony": {
+    "maxSingleVoiceLeap": 4
+  },
+  "patterns": {
+    "minSignaturesAtCreativity": {
+      "0.5": 3,
+      "1": 3
+    }
+  }
+}

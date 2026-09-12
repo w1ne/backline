@@ -16,7 +16,8 @@
     "bench:voice:output": "vite-node bench/voice/output.ts",
     "bench:patterns": "vite-node bench/patterns/run.ts",
     "bench:harmony": "vite-node bench/harmony/run.ts",
-    "bench:realvoice": "vite-node bench/realvoice/run.ts"
+    "bench:realvoice": "vite-node bench/realvoice/run.ts",
+    "bench:gate": "vite-node bench/gate.ts"
   },
   "keywords": [],
   "author": "",
