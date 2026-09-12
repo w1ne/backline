@@ -377,8 +377,8 @@ store.subscribe(s => {
           Tone.getDestination().connect(masterTap);
           audioRecorder.addSource(masterTap);
         }
-        audioRecorder.start(ctx);
-        store.update({ recording: true });
+        const audioOk = audioRecorder.start(ctx);
+        store.update({ recording: true, error: audioOk ? null : 'This browser cannot record audio; only MIDI will be saved' });
         return;
       }
       store.update({ recording: false });
@@ -388,7 +388,7 @@ store.subscribe(s => {
         if (audio && audio.blob.size) downloadBlob(audio.blob, `${name}.${audio.ext}`);
       });
       if (midiRecorder.empty) {
-        if (!hadAudio) store.update({ error: 'Nothing was played while recording' });
+        store.update({ error: hadAudio ? 'Audio saved. No notes for MIDI: the band was not playing and no sung note was heard' : 'Nothing was recorded: no audio support and no notes heard' });
         return;
       }
       const bpm = lastFollowedBpm ?? store.state.input.bpm ?? undefined;
