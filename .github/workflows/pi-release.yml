@@ -12,11 +12,20 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 20, cache: npm }
       - run: npm ci
+      - run: python3 -m unittest discover -s services/unoq/python -p 'test_*.py'
       - uses: actions/cache@v4
         with:
           path: .pi-samples
           key: pi-samples-${{ hashFiles('services/pi/fetch-samples.mjs') }}
       - run: node services/pi/fetch-samples.mjs
+      - name: Compile the UNO Q sketch
+        run: |
+          set -euo pipefail
+          curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR=/usr/local/bin sh
+          arduino-cli core update-index
+          arduino-cli core install arduino:zephyr
+          arduino-cli lib install Arduino_RouterBridge
+          arduino-cli compile --fqbn arduino:zephyr:unoq services/unoq/sketch
       - run: npm run build:pi
       - name: Pack
         run: |
@@ -26,6 +35,7 @@ jobs:
           mkdir -p pkg/site/backline/samples && cp -a .pi-samples/. pkg/site/backline/samples/
           cp -a services/pi pkg/services-pi && rm -rf pkg/services-pi/__pycache__
           mkdir -p pkg/services && mv pkg/services-pi pkg/services/pi
+          cp -a services/unoq pkg/services/unoq && rm -rf pkg/services/unoq/python/__pycache__
           echo "$GITHUB_SHA" > pkg/COMMIT
           tar -C pkg -czf duet-pi.tar.gz .
           cp pkg/COMMIT COMMIT

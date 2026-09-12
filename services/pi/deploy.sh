@@ -12,6 +12,6 @@ cp -a .pi-samples/. dist-pi/samples/
 git rev-parse HEAD > COMMIT.pi
 ssh "${ssh_args[@]}" "$target" 'mkdir -p /home/test/duet-ai/site/backline /home/test/duet-ai/services/pi'
 tar -C dist-pi -cf - . | ssh "${ssh_args[@]}" "$target" 'tar --warning=no-timestamp -C /home/test/duet-ai/site/backline -xf -'
-tar --exclude=__pycache__ -cf - services/pi | ssh "${ssh_args[@]}" "$target" 'tar --warning=no-timestamp -C /home/test/duet-ai -xf -'
+tar --exclude=__pycache__ -cf - services/pi services/unoq | ssh "${ssh_args[@]}" "$target" 'tar --warning=no-timestamp -C /home/test/duet-ai -xf -'
 ssh "${ssh_args[@]}" "$target" 'cat > /home/test/duet-ai/COMMIT' < COMMIT.pi
 ssh "${ssh_args[@]}" "$target" 'bash /home/test/duet-ai/services/pi/install.sh'

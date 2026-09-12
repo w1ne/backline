@@ -1796,3 +1796,17 @@ button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-v
 .bar-input { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .bar-input .connection-line { margin: 0; color: var(--led); }
 .instrument-zone .connection-line { margin: 8px 0 0; }
+
+
+.inst .pad-btn.sax {
+  --c: var(--orange);
+}
+.inst .pad-btn.strings {
+  --c: var(--yellow);
+}
+.inst .pad-btn.orchestral {
+  --c: var(--blue);
+}
+.inst .pad-btn.ambient {
+  --c: var(--pink);
+}

@@ -24,7 +24,7 @@ if [ -d "$BACKLINE_DIR/.git" ]; then
   git -C "$BACKLINE_DIR" pull --no-rebase origin main
 else
   rm -rf "$BACKLINE_DIR"
-  git clone https://github.com/w1ne/backline "$BACKLINE_DIR"
+  git clone https://github.com/w1ne/duet.ai "$BACKLINE_DIR"
 fi
 
 log "clone ACE-Step @ $ACE_COMMIT"

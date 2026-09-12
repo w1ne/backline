@@ -21,7 +21,12 @@ import { MicSource } from './listener/micSource';
 import { Players } from './players/players';
 import { PATTERNS } from './patterns';
 import { INSTRUMENTS, IDLE_DYNAMICS } from './types';
-import type { Chord } from './types';
+import type { AccompPreset, Chord } from './types';
+import { GM_INSTRUMENTS } from './players/gmInstruments';
+
+/** AMT's instrument-preference sampling bias; not user-adjustable. The server derives its
+ *  sampling temperature from the Creativity knob. */
+const ACCOMP_BIAS = 2.0;
 import { effectiveDynamics } from './listener/activity';
 import type { BandEngine } from './engines/engine';
 import { PatternEngine } from './engines/patternEngine';
@@ -72,6 +77,7 @@ let band: BandEngine | undefined;
 let monitor: MidiMonitor | undefined;
 const players = new Players();
 const playbackActivity = new PlaybackActivity();
+const accompActivity = new PlaybackActivity<AccompPreset>();
 const midiRecorder = new MidiRecorder();
 /** native tap on Tone's master output so the audio recorder can capture the synth band */
 let masterTap: GainNode | undefined;
@@ -282,7 +288,8 @@ function setBandBpm(b: BandEngine, bpm: number): void {
 
 function makeBand(engine: EngineChoice): BandEngine {
   playbackActivity.clear();
-  store.update({activeParts: {}, modelLatencyMs:null, accompanimentStatus: 'Listening'});
+  accompActivity.clear();
+  store.update({activeParts: {}, accompActive: {}, modelLatencyMs:null, accompanimentStatus: 'Listening'});
   if (engine === 'lyria') return new LyriaEngine(players.rawContext());
   if (engine === 'acestep') return new AceStepEngine(players.rawContext());
   if (engine === 'amt') return new AmtEngine(players, listener!);
@@ -291,10 +298,11 @@ function makeBand(engine: EngineChoice): BandEngine {
 
 function wireBand(b: BandEngine): void {
   b.setAmount?.(store.state.intensity);
+  b.setAccompaniment?.(store.state.accompPresets, ACCOMP_BIAS);
   INSTRUMENTS.forEach(i => b.setEnabled(i, store.state.enabled[i]));
   b.routeBand?.(store.state.routing.band, morph?.input);
   b.onBar = bar => {
-    store.update({ bar });
+    store.update({ bar, barStartedAt: Date.now() });
     const beat = bar * BEATS_PER_BAR;
     // The downbeat's dynamics have to be in the band's hands before it schedules this bar,
     // and onBar runs ahead of scheduling, so tick the beat first.
@@ -530,6 +538,7 @@ function powerOff() {
   band?.stop();
   songForm.reset();
   playbackActivity.clear();
+  accompActivity.clear();
   listener?.stop();
   listener = undefined;
   vocalChain?.dispose();
@@ -541,6 +550,7 @@ function powerOff() {
     power: 'off',
     paused: false,
     activeParts: {},
+    accompActive: {},
     accompanimentStatus: 'Paused',
     sources: { mic: 'off', midi: 'off' },
     locked: false,
@@ -664,6 +674,13 @@ store.subscribe(s => {
     setCreativity: c => {
       band?.set({ creativity: c });
       store.update({ creativity: c });
+    },
+    toggleAccompPreset: (preset: AccompPreset, on: boolean) => {
+      const presets = on
+        ? [...store.state.accompPresets, preset]
+        : store.state.accompPresets.filter(p => p !== preset);
+      band?.setAccompaniment?.(presets, ACCOMP_BIAS);
+      store.update({ accompPresets: presets });
     },
     setIntensity: i => {
       const amount = Math.min(1, Math.max(0, i));
@@ -812,6 +829,9 @@ players.onSchedule = (inst, events, barStart, bpm) => {
     if (scheduled.length > 200) scheduled.shift();
   }
 };
+players.onAccompSchedule = (gmProgram, events, barStart, bpm) => {
+  for (const preset of GM_INSTRUMENTS[gmProgram]?.presets ?? []) accompActivity.add(preset, events, barStart, bpm);
+};
 
 // Meter state uses the audio clock so future model plans do not look audible early.
 setInterval(() => {
@@ -820,6 +840,9 @@ setInterval(() => {
   const activeParts = s.power === 'on' && !s.audioSuspended
     ? playbackActivity.at(Tone.getContext().currentTime) : {};
   if (JSON.stringify(activeParts) !== JSON.stringify(s.activeParts)) store.update({activeParts});
+  const accompActive = s.power === 'on' && !s.audioSuspended
+    ? accompActivity.at(Tone.getContext().currentTime) : {};
+  if (JSON.stringify(accompActive) !== JSON.stringify(s.accompActive)) store.update({accompActive});
 }, 100);
 
 // ?demo=1 paints the live panel with sample state (design review / screenshots only).

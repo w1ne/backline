@@ -71,8 +71,12 @@ class FakeNoteSource {
 
 class FakePlayers {
   calls: { i: Instrument; events: NoteEvent[]; barStart: number; bpm: number }[] = [];
+  accompCalls: { gmProgram: number; events: NoteEvent[]; barStart: number; bpm: number }[] = [];
   schedule(i: Instrument, events: NoteEvent[], barStart: number, bpm: number) {
     this.calls.push({ i, events, barStart, bpm });
+  }
+  scheduleAccompaniment(gmProgram: number, events: NoteEvent[], barStart: number, bpm: number) {
+    this.accompCalls.push({ gmProgram, events, barStart, bpm });
   }
 }
 
@@ -192,7 +196,7 @@ describe('AmtEngine', () => {
       bpm: 100,
       key: 'A minor',
       genre: 'jazz',
-      lookaheadBeats: 4,
+      lookaheadBeats: 2,
       commitBeats: 2,
       listenBeats: 8,
     });
@@ -363,6 +367,26 @@ describe('AmtEngine', () => {
     expect(players.calls[0].i).toBe('keys');
     expect(players.calls[0].barStart).toBe(0);
     expect(players.calls[0].events).toEqual([{ time: 1, note: 64, duration: 1, velocity: 0.7 }]);
+  });
+
+  it('routes a keys note with gmInstr to scheduleAccompaniment, grouped separately per instrument', async () => {
+    const { engine, players } = mk();
+    now = 0;
+    await engine.start(120, 0);
+    startedSocket().open();
+    engine.setEnabled('keys', true);
+
+    startedSocket().receiveJson({
+      type: 'plan',
+      notes: [
+        { beat: 1, pitch: 64, dur: 1, vel: 0.7, voice: 'keys', gmInstr: 65 },
+        { beat: 1.5, pitch: 60, dur: 0.5, vel: 0.5, voice: 'keys', gmInstr: 56 },
+      ],
+    });
+
+    expect(players.calls).toHaveLength(0);
+    expect(players.accompCalls).toHaveLength(2);
+    expect(players.accompCalls.map(c => c.gmProgram).sort()).toEqual([56, 65]);
   });
 
   it('schedules a plan note a full bar ahead straight away, bar-relative', async () => {

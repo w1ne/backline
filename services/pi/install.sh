@@ -6,15 +6,16 @@ test -f site/backline/index.html
 if [ ! -f original-morpho-enabled ]; then
   systemctl is-enabled PiMorpho.service > original-morpho-enabled || true
 fi
-sudo install -m 644 services/pi/duet-web.service services/pi/duet-browser.service services/pi/duet-lcd.service services/pi/duet-arturia.service services/pi/duet-update.service services/pi/duet-update.timer /etc/systemd/system/
+sudo install -m 644 services/pi/duet-web.service services/pi/duet-browser.service services/pi/duet-lcd.service services/pi/duet-arturia.service services/pi/duet-update.service services/pi/duet-update.timer services/pi/duet-unoq.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl disable --now PiMorpho.service
 if systemctl cat duet-amt.service >/dev/null 2>&1; then
   sudo systemctl disable --now duet-amt.service
 fi
-sudo systemctl enable duet-web.service duet-browser.service duet-lcd.service duet-arturia.service duet-update.timer
+command -v adb >/dev/null || sudo apt-get install -y -q adb
+sudo systemctl enable duet-web.service duet-browser.service duet-lcd.service duet-arturia.service duet-update.timer duet-unoq.service
 sudo systemctl start duet-update.timer
-sudo systemctl restart duet-web.service duet-browser.service duet-lcd.service duet-arturia.service
+sudo systemctl restart duet-web.service duet-browser.service duet-lcd.service duet-arturia.service duet-unoq.service
 python3 - <<'PY'
 import json
 import time

@@ -39,6 +39,9 @@ export interface PlayersLike {
   setBandAmount?(amount: number): void;
   cancelScheduled?(): void;
   schedule(instrument: Instrument, events: NoteEvent[], barStartTime: number, bpm: number): void;
+  /** AMT only: play through a real GM instrument sampler (see gmInstruments.ts) instead of
+   *  the synthesized Keys voice. */
+  scheduleAccompaniment?(gmProgram: number, events: NoteEvent[], barStartTime: number, bpm: number): void;
 }
 
 export class Bandleader {
