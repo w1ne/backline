@@ -32,7 +32,7 @@ const INSTRUMENT_PROMPT: Record<Instrument, { text: string; weight: number }> = 
   drums: { text: 'drums', weight: 0.8 },
   bass: { text: 'bass guitar', weight: 0.8 },
   keys: { text: 'electric piano chords', weight: 0.7 },
-  lead: { text: 'lead guitar melody', weight: 0.7 },
+  lead: { text: 'electric guitar lead', weight: 0.7 },
 };
 
 const INSTRUMENT_ORDER: Instrument[] = ['drums', 'bass', 'keys', 'lead'];

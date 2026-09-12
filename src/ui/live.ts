@@ -91,7 +91,7 @@ function skeleton(): string {
             `<div class="pad">
               <button type="button" class="pad-btn ${i}" data-inst="${i}">
                 <span class="dot"></span>
-                <span class="name">${cap(i)}</span>
+                <span class="name">${displayLabel(i)}</span>
                 <span class="st"><span class="st-text"></span><span class="meter"><i style="width:0"></i></span></span>
               </button>
               <button type="button" class="morph-key" id="morph-${i}" data-morph="${i}"
@@ -699,7 +699,7 @@ function updateMorph(screen: HTMLElement, s: AppState): void {
     key.dataset.route = route;
     key.classList.toggle('on', live);
     key.classList.toggle('both', live && route === 'both');
-    key.title = `${cap(t)} → ${s.morphOut ? ROUTE_TITLE[route] : 'main output (no morph device)'}`;
+    key.title = `${displayLabel(t)} → ${s.morphOut ? ROUTE_TITLE[route] : 'main output (no morph device)'}`;
     key.setAttribute('aria-pressed', String(live));
   }
 }
@@ -715,6 +715,13 @@ export function setLatency(root: HTMLElement, ms: number): void {
 
 function cap(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// Display-only label overrides: the internal instrument id stays `lead`
+// everywhere (state, routing, tests); only the on-screen text changes.
+const DISPLAY_LABEL: Record<string, string> = { lead: 'Guitar' };
+function displayLabel(i: string): string {
+  return DISPLAY_LABEL[i] ?? cap(i);
 }
 
 function escapeHtml(s: string): string {
