@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import {describe,it,expect,vi} from 'vitest';
-import {createRemoteActions, applyRemoteStatus} from './remote';
+import {createRemoteActions, applyRemoteStatus, startRemoteUI} from './remote';
 import {Store} from '../ui/state';
 import {renderLive} from '../ui/live';
 
@@ -35,4 +35,39 @@ describe('shared Pi controller',()=>{
     expect(applyRemoteStatus(remote,{online:false,state:local.state})).toBe(false);
     expect(remote.state.error).toMatch(/disconnected/i);
   });
+});
+
+it('forwards preset selection from real remote tiles without altering role mutes', () => {
+  const store = new Store();
+  store.update({power:'on',engine:'amt',enabled:{drums:false,bass:false,keys:false,lead:false}});
+  const send = vi.fn(); const root = document.createElement('div');
+  const actions = createRemoteActions(send, store);
+  renderLive(root, store, actions);
+  root.querySelector<HTMLButtonElement>('[data-preset="sax"]')!.click();
+  root.querySelector<HTMLButtonElement>('[data-preset="strings"]')!.click();
+  expect(send.mock.calls).toEqual([
+    [{type:'accompPreset',preset:'sax',on:true}],
+    [{type:'accompPreset',preset:'strings',on:false}],
+  ]);
+  expect(store.state.enabled).toEqual({drums:false,bass:false,keys:false,lead:false});
+});
+
+
+it('keeps quick selections of different presets as independent remote commands', async () => {
+  vi.useFakeTimers();
+  const store = new Store(); store.update({power:'on',engine:'amt'});
+  const commands: unknown[] = [];
+  vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => {
+    if (url === '/api/command') commands.push(JSON.parse(options!.body as string));
+    return {ok:true,json:async()=>url==='/api/status'?{online:true,state:store.state}:{id:commands.length}};
+  }));
+  const root=document.createElement('div');
+  const stop=startRemoteUI(root);
+  try {
+    await vi.advanceTimersByTimeAsync(0);
+    root.querySelector<HTMLButtonElement>('[data-preset="sax"]')!.click();
+    root.querySelector<HTMLButtonElement>('[data-preset="ambient"]')!.click();
+    await vi.advanceTimersByTimeAsync(75);
+    expect(commands).toEqual([{type:'accompPreset',preset:'sax',on:true},{type:'accompPreset',preset:'ambient',on:true}]);
+  } finally {stop();vi.unstubAllGlobals();vi.useRealTimers();}
 });

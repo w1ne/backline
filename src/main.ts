@@ -851,7 +851,8 @@ if (PI_EDITION && !demo) {
     Tone.getDestination().mute = !playing;
     if (playing) await power();
     else powerOff();
-  }, () => performanceGuard.snapshot(store.state));
+  }, () => ({ ...performanceGuard.snapshot(store.state),
+    ...(listener?.manualOverrides ?? { bpmOverride: null, keyOverride: null }) }));
 }
 
 // The strip runs on the AudioContext clock, the same one every scheduled note is timed

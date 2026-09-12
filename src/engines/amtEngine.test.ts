@@ -772,3 +772,25 @@ describe('confirmed response telemetry', () => {
     engine.stop();
   });
 });
+
+it('requests the model guitar when the visible lead role is enabled with the default string preset', async () => {
+  vi.useFakeTimers();
+  const engine = new AmtEngine(new FakePlayers(), new FakeNoteSource(), new FakeClock(), () => 0);
+  engine.setAccompaniment(['strings'], 2);
+  engine.setEnabled('lead', true);
+  await engine.start(120, 0);
+  const ws = startedSocket(); ws.open();
+  expect(ws.sent).toContainEqual(expect.objectContaining({type:'start',accompInstruments:['strings','guitar'],
+    enabledRoles:expect.objectContaining({lead:true})}));
+  ws.sent = [];
+  engine.setEnabled('lead', false);
+  await vi.advanceTimersByTimeAsync(300);
+  expect(ws.sent).toContainEqual(expect.objectContaining({type:'set',accompInstruments:['strings'],
+    enabledRoles:expect.objectContaining({lead:false})}));
+  engine.setEnabled('lead', true);
+  await vi.advanceTimersByTimeAsync(300);
+  expect(ws.sent).toContainEqual(expect.objectContaining({type:'set',accompInstruments:['strings','guitar'],
+    enabledRoles:expect.objectContaining({lead:true})}));
+  engine.stop();
+  vi.useRealTimers();
+});

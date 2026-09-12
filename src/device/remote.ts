@@ -13,6 +13,7 @@ export function createRemoteActions(send: (command: Command) => void, store: Sto
     wake:()=>{},
     setPlaying:playing=>send({type:'transport',playing}),
     toggle:instrument=>send({type:'toggle',instrument}),
+    toggleAccompPreset:(preset,on)=>send({type:'accompPreset',preset,on}),
     setGenre:value=>set('genre',value), setEngine:value=>set('engine',value),
     setCreativity:value=>set('creativity',value), setIntensity:value=>set('intensity',value),
     setSound:value=>set('sound',value), setNoiseVolume:value=>set('noiseVolume',value),
@@ -61,7 +62,7 @@ export function startRemoteUI(root: HTMLElement): () => void {
   };
   const actions = createRemoteActions(command => {
     if (!online) return;
-    const key = command.type === 'toggle' ? `toggle:${sequence++}` : `${command.type}:${command.field??''}`;
+    const key = command.type === 'toggle' ? `toggle:${sequence++}` : `${command.type}:${command.field??command.preset??''}`;
     pending.set(key,command);
     if (sendTimer === undefined) sendTimer = setTimeout(()=>{sendTimer=undefined;void drain();},75);
   }, store);
