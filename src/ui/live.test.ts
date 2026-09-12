@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
-import { tileLabel, renderLive } from './live';
+import { tileLabel, renderLive, accompPresetMuted } from './live';
 import { Store } from './state';
 import type { LiveActions } from './live';
 
@@ -381,4 +381,26 @@ it('only offers RunPod models and offline Patterns', () => {
   renderLive(root, new Store(), { wake: () => {}, toggle: () => {}, setGenre: () => {}, setEngine: () => {}, setCreativity: () => {} });
   expect(root.querySelector('#engine-lyria')).toBeNull();
   expect(Array.from(root.querySelectorAll('[data-engine]')).map(button => button.getAttribute('data-engine')).sort()).toEqual(['acestep', 'amt', 'patterns']);
+});
+
+it('labels a selected preset muted when all of its roles are disabled, even with stale activity', () => {
+  const store = new Store();
+  store.update({engine:'amt',accompPresets:['strings','sax'],accompActive:{strings:true,sax:true},
+    enabled:{drums:false,bass:false,keys:false,lead:false}});
+  const root=document.createElement('div');
+  const actions={wake:()=>{},toggle:()=>{},setGenre:()=>{},setEngine:()=>{},setCreativity:()=>{}};
+  renderLive(root,store,actions);
+  expect(root.querySelector('[data-preset="strings"] .st-text')!.textContent).toBe('muted');
+  expect(root.querySelector('[data-preset="sax"] .st-text')!.textContent).toBe('muted');
+  expect(root.querySelector('[data-preset="sax"]')!.classList.contains('active')).toBe(false);
+  store.update({enabled:{...store.state.enabled,bass:true},accompActive:{}});
+  renderLive(root,store,actions);
+  expect(root.querySelector('[data-preset="strings"] .st-text')!.textContent).toBe('ready');
+  expect(root.querySelector('[data-preset="sax"] .st-text')!.textContent).toBe('muted');
+});
+
+
+it('treats the guitar preset as muted only by its Lead role', () => {
+  expect(accompPresetMuted('guitar', {drums:true,bass:true,keys:true,lead:false})).toBe(true);
+  expect(accompPresetMuted('guitar', {drums:false,bass:false,keys:false,lead:true})).toBe(false);
 });

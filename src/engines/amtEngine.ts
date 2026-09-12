@@ -192,7 +192,7 @@ export class AmtEngine implements BandEngine {
         commitBeats: COMMIT_BEATS,
         listenBeats: LISTEN_BEATS,
         enabledRoles: { keys: this.state.enabled.keys, bass: this.state.enabled.bass, lead: this.state.enabled.lead },
-        accompInstruments: this.accompPresets,
+        accompInstruments: this.effectiveAccompPresets,
         accompBias: this.accompBias,
       });
       this.queueSet();
@@ -309,6 +309,12 @@ export class AmtEngine implements BandEngine {
     this.queueSet();
   }
 
+  /** The visible Guitar role directly requests the model's guitar voice. Other
+   * preset selections remain intact, including explicit selections while muted. */
+  private get effectiveAccompPresets(): AccompPreset[] {
+    return this.state.enabled.lead ? [...new Set([...this.accompPresets, 'guitar' as const])] : this.accompPresets;
+  }
+
   setAccompaniment(presets: AccompPreset[], accompBias: number): void {
     this.accompPresets = presets;
     this.accompBias = accompBias;
@@ -333,7 +339,7 @@ export class AmtEngine implements BandEngine {
       enabledRoles: { keys: this.state.enabled.keys, bass: this.state.enabled.bass, lead: this.state.enabled.lead },
       // Dynamics hint; the manual amount also scales local playback directly.
       intensity: Math.round(this.state.dynamics.intensity * 5) / 5,
-      accompInstruments: this.accompPresets,
+      accompInstruments: this.effectiveAccompPresets,
       accompBias: this.accompBias,
       silenceBeats: this.state.dynamics.silenceBeats,
     });
