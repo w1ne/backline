@@ -19,7 +19,7 @@ export interface DeviceCommand {
 /** Local control plane for the Pi renderer. Never installed in the public web build. */
 export function startDeviceRuntime(store: Store, actions: () => LiveActions,
   transport: (playing: boolean) => Promise<void>,
-  performanceStatus: () => { performanceActive: boolean; performanceLastAt: number } = () => ({ performanceActive: true, performanceLastAt: Date.now() })): () => void {
+  performanceStatus: () => { performanceActive: boolean; performanceLastAt: number; bpmOverride?: number | null; keyOverride?: {root:number;mode:'major'|'minor'} | null } = () => ({ performanceActive: true, performanceLastAt: Date.now() })): () => void {
   let stopped = false;
   let ack = 0;
   let epoch = '';

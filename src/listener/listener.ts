@@ -237,6 +237,9 @@ export class Listener {
 
   get sourceStatus(): SourceStatus { return this.status; }
 
+  get manualOverrides(): { bpmOverride: number | null; keyOverride: Key | null } {
+    return { bpmOverride: this.override.bpm ?? null, keyOverride: this.override.key ? { ...this.override.key } : null };
+  }
   get hasBpmOverride(): boolean { return this.override.bpm !== undefined; }
 
   get input(): BandInput {
