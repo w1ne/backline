@@ -56,12 +56,12 @@ export interface TimedNote {
  * Pitch-class energy over the last `windowSec` seconds ending at `now`.
  * Older notes fade linearly to zero at the edge of the window; bass notes count for more.
  */
-export function pitchClassWeights(notes: TimedNote[], now: number, windowSec: number): number[] {
+export function pitchClassWeights(notes: TimedNote[], now: number, windowSec: number, fade = true): number[] {
   const w = new Array(12).fill(0);
   for (const n of notes) {
     const age = now - n.t;
     if (age < 0 || age >= windowSec) continue;
-    const decay = 1 - age / windowSec;
+    const decay = fade ? 1 - age / windowSec : 1;
     const boost = n.midi <= BASS_MAX_MIDI ? BASS_BOOST : 1;
     w[mod12(n.midi)] += (n.weight ?? 1) * decay * boost;
   }
@@ -126,6 +126,8 @@ export class ChordDetector {
   windowSec = 1;
   private notes: TimedNote[] = [];
   private current: ChordReading | null = null;
+  /** last chord chosen by the melody harmonizer, kept for its hysteresis */
+  private melody: Chord | null = null;
 
   addNote(midi: number, timeSec: number, weight = 1): void {
     if (midi < 0) return;
@@ -144,8 +146,28 @@ export class ChordDetector {
    * Re-decides the chord from the current window. Returns the chord the band should play:
    * the detected one, or the key's tonic triad while nothing convincing is being played.
    */
-  tick(nowSec: number, key: Key | null): Chord | null {
+  /**
+   * `mode` 'melody' says the notes came from a single voice (the mic pitch tracker), so the
+   * triad templates are never consulted; 'auto' lets a played chord with three real tones win.
+   */
+  tick(nowSec: number, key: Key | null, mode: 'auto' | 'melody' = 'auto'): Chord | null {
     const w = pitchClassWeights(this.notes, nowSec, this.windowSec);
+    // A single voice never fills a triad template: a lone E scores the same against Am, C
+    // and Em, and two notes a fifth apart read as a sus4 at 0.8 confidence. Only a window
+    // with three pitch classes that each carry real weight is a chord somebody played; a
+    // sparser one is a line, harmonized within the key over the last full bar.
+    const total = w.reduce((a, b) => a + b, 0);
+    const voiced = w.filter(v => v >= total * TEMPLATE_MIN_SHARE).length;
+    if (mode === 'melody' || voiced < 3) {
+      if (!key) return null;
+      // flat over the bar: the root a singer opens the bar on must count as much as the last note
+      // a bar and a half of fading memory: long enough to hold the root a singer opened on,
+      // short enough that the previous bar's chord has faded by the second half of this one
+      const wm = pitchClassWeights(this.notes, nowSec, this.windowSec * MELODY_WINDOW_MUL);
+      const held = this.melody ?? (this.current && { root: this.current.root, quality: this.current.quality });
+      this.melody = harmonizeMelody(wm, key, held);
+      return this.melody;
+    }
     const best = bestChord(w);
     const held = this.current ? scoreChord(w, this.current) : 0;
 
@@ -161,13 +183,64 @@ export class ChordDetector {
     }
 
     if (this.current) return { root: this.current.root, quality: this.current.quality };
-    return key ? tonicTriad(key) : null;
+    if (!key) return null;
+    // A single voice never fills a triad template, so harmonize the melody instead.
+    this.melody = harmonizeMelody(w, key, this.melody);
+    return this.melody;
   }
 
   reset(): void {
     this.notes = [];
     this.current = null;
+    this.melody = null;
   }
+}
+
+/** A pitch class must carry this share of the window's energy to count as a chord tone somebody played. */
+export const TEMPLATE_MIN_SHARE = 0.1;
+
+/** Harmonizer memory as a multiple of the chord window (two beats). */
+const MELODY_WINDOW_MUL = 1.5;
+
+/** A rival must cover this much more of the sung energy than the held chord to replace it. */
+const MELODY_SWITCH_MARGIN = 0.15;
+/** Below this coverage no diatonic triad explains the melody; the held chord (or tonic) stays. */
+const MELODY_MIN_COVERAGE = 0.5;
+
+/** The six diatonic triads of `key` the band may sit on, tonic first, then by harmonic weight. */
+export function diatonicTriads(key: Key): Chord[] {
+  const scale = scaleOf(key);
+  const order = key.mode === 'major' ? [0, 4, 3, 5, 1, 2] : [0, 4, 5, 3, 6, 2];
+  return order.map(deg => {
+    const root = scale[deg];
+    const third = mod12(scale[(deg + 2) % 7] - root);
+    return { root, quality: third === 4 ? 'maj' : 'min' } as Chord;
+  });
+}
+
+/**
+ * Harmonizes a single sung line: of the key's diatonic triads, the one whose tones carry the
+ * most of the pitch-class energy in the window. The held chord keeps its place unless a rival
+ * covers clearly more, and ties fall to the tonic, so a lone note that fits three chords does
+ * not make the band lurch. Nothing sung yet: the tonic.
+ */
+export function harmonizeMelody(weights: number[], key: Key, held: Chord | null): Chord {
+  const total = weights.reduce((a, b) => a + b, 0);
+  const candidates = diatonicTriads(key);
+  const tonic = candidates[0];
+  if (total <= 0) return held ?? tonic;
+  const coverage = (c: Chord) => chordTones(c).reduce((a, pc) => a + weights[pc], 0) / total;
+  // Two sung notes G and B are a G chord before they are an E minor: when more than one
+  // pitch class is present, a triad whose root was actually sung wins an otherwise equal tie.
+  const rootSung = weights.filter(v => v > 0).length >= 2 ? (c: Chord) => (weights[c.root] > 0 ? 1e-6 : 0) : () => 0;
+  let best = tonic, bestCov = coverage(tonic), bestScore = bestCov + rootSung(tonic);
+  for (const c of candidates) {
+    const cov = coverage(c), score = cov + rootSung(c);
+    if (score > bestScore + 1e-9) { best = c; bestCov = cov; bestScore = score; }
+  }
+  if (bestCov < MELODY_MIN_COVERAGE) return held ?? tonic;
+  if (held && !sameChord(held, best) && bestCov - coverage(held) < MELODY_SWITCH_MARGIN) return held;
+  return best;
 }
 
 /**

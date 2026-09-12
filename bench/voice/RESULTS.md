@@ -28,6 +28,8 @@ Generated 2026-09-12 by bench/voice/run.ts.
 | scale-vib100-port60 | INSTRUMENT | 38.5 | 0.0 | 0.27 | 0.88 | 0.41 | 301 | 4.11 | — | — | — |
 | melody-A3-root | VOICE | 87.4 | 0.0 | 0.85 | 0.91 | 0.88 | 125 | 5.65 | yes | 7.61 | -0.2 |
 | melody-A3-root | INSTRUMENT | 87.4 | 0.0 | 0.38 | 0.63 | 0.47 | 197 | 3.61 | no | 7.61 | -0.2 |
+| arpeggio-Am-progression | VOICE | 89.5 | 0.0 | 0.80 | 1.00 | 0.89 | 136 | 3.70 | yes | 7.61 | -0.2 |
+| arpeggio-Am-progression | INSTRUMENT | 89.5 | 0.0 | 0.64 | 1.00 | 0.78 | 205 | 3.05 | no | 7.61 | -0.2 |
 | melody-A2-root-low | VOICE | 86.9 | 0.0 | 0.70 | 0.88 | 0.78 | 125 | 4.35 | yes | 6.95 | -0.1 |
 | melody-A2-root-low | INSTRUMENT | 86.9 | 0.0 | 0.44 | 0.94 | 0.60 | 211 | 3.75 | yes | 6.95 | -0.1 |
 | melody-A4-root-high | VOICE | 87.8 | 0.0 | 0.97 | 0.91 | 0.94 | 125 | 5.65 | yes | 10.15 | -0.2 |

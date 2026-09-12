@@ -177,3 +177,43 @@ describe('chordScale degenerate gaps', () => {
     }
   });
 });
+
+describe('ChordDetector melody harmonizer (single voice)', () => {
+  const Am: Key = { root: 9, mode: 'minor' };
+  it('harmonizes two sung notes with the diatonic triad that holds both', () => {
+    const d = new ChordDetector();
+    d.windowSec = 1.33;
+    d.addNote(67, 0.2, 0.8); // G
+    d.addNote(71, 0.8, 0.8); // B
+    expect(d.tick(1.3, Am)).toEqual({ root: 7, quality: 'maj' }); // G major
+  });
+  it('holds the current chord when the next note still fits it', () => {
+    const d = new ChordDetector();
+    d.windowSec = 1.33;
+    d.addNote(57, 0.2, 0.8); d.addNote(60, 0.8, 0.8); // A C → Am
+    expect(d.tick(1.3, Am)).toEqual({ root: 9, quality: 'min' });
+    d.addNote(64, 1.5, 0.8); // E fits Am (and C) → stay on Am
+    expect(d.tick(2.6, Am)).toEqual({ root: 9, quality: 'min' });
+  });
+  it('sits on the tonic while nothing has been sung', () => {
+    const d = new ChordDetector();
+    expect(d.tick(1, Am)).toEqual({ root: 9, quality: 'min' });
+  });
+  it('prefers the tonic over a rival that covers a lone sung note equally well', () => {
+    const d = new ChordDetector();
+    d.windowSec = 1.33;
+    d.addNote(64, 0.5, 0.8); // E alone: Am, C and Em all hold it
+    expect(d.tick(1.3, Am)).toEqual({ root: 9, quality: 'min' });
+  });
+});
+
+describe('ChordDetector melody mode', () => {
+  it('never uses the triad templates on a sung line, even when three pitch classes linger', () => {
+    const Am: Key = { root: 9, mode: 'minor' };
+    const d = new ChordDetector();
+    d.windowSec = 1.33;
+    d.addNote(69, 0.0, 0.8); // A, tail of the previous bar
+    d.addNote(60, 0.7, 0.8); d.addNote(64, 1.3, 0.8); d.addNote(67, 1.9, 0.8); // C E G
+    expect(d.tick(2.0, Am, 'melody')).toEqual({ root: 0, quality: 'maj' });
+  });
+});

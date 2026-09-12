@@ -26,6 +26,8 @@ export interface ClipTruth {
   notes: Note[];
   key?: { root: number; mode: 'major' | 'minor' };
   bpm?: number;
+  /** the chord each bar implies, when the melody was written to outline one */
+  chords?: { root: number; quality: 'maj' | 'min' }[];
   /** total clip length in seconds */
   durationSec: number;
 }
@@ -263,6 +265,28 @@ function hummedMelodyNotes(rootMidi: number, bpm: number): Note[] {
   return notes;
 }
 
+/** Am F C G Am Dm Em Am in A minor: one bar each, sung as root-third-fifth-third arpeggios. */
+export const ARPEGGIO_CHORDS: { root: number; quality: 'maj' | 'min' }[] = [
+  { root: 9, quality: 'min' }, { root: 5, quality: 'maj' }, { root: 0, quality: 'maj' }, { root: 7, quality: 'maj' },
+  { root: 9, quality: 'min' }, { root: 2, quality: 'min' }, { root: 4, quality: 'min' }, { root: 9, quality: 'min' },
+];
+
+function arpeggioNotes(bpm: number, lowMidi = 55): Note[] {
+  const beatSec = 60 / bpm;
+  const notes: Note[] = [];
+  let t = 0.2;
+  for (const c of ARPEGGIO_CHORDS) {
+    const third = c.quality === 'maj' ? 4 : 3;
+    // keep every note in one octave above lowMidi so the line stays singable
+    const root = lowMidi + (((c.root - lowMidi) % 12) + 12) % 12;
+    for (const off of [0, third, 7, third]) {
+      notes.push({ midi: root + off, start: t, end: t + beatSec });
+      t += beatSec;
+    }
+  }
+  return notes;
+}
+
 function clipDuration(notes: Note[], tailSec = 0.5): number {
   return notes[notes.length - 1].end + tailSec;
 }
@@ -310,6 +334,13 @@ export function buildClips(): ClipSpec[] {
       bpm: 90,
       durationSec: clipDuration(melodyMid),
     },
+    opts: { vibratoCents: 50, portamentoMs: 40, breathDb: -30 },
+  });
+
+  // 3b. Chord-outlining melody: arpeggios of Am F C G Am Dm Em Am, one bar each
+  const arp = arpeggioNotes(90);
+  specs.push({
+    truth: { name: 'arpeggio-Am-progression', notes: arp, key: { root: 9, mode: 'minor' }, bpm: 90, chords: ARPEGGIO_CHORDS, durationSec: clipDuration(arp) },
     opts: { vibratoCents: 50, portamentoMs: 40, breathDb: -30 },
   });
 

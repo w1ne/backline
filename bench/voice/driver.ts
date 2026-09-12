@@ -17,7 +17,7 @@ import { OnsetDetector } from '../../src/listener/onset';
 import { FFT_SIZE, HOP_SIZE, magnitudeSpectrum } from '../../src/listener/fft';
 import { detectPitch } from '../../src/listener/pitch';
 import { PitchTracker, type PitchTrackerOptions, type StablePitch } from '../../src/listener/pitchTracker';
-import type { Key } from '../../src/types';
+import type { Chord, Key } from '../../src/types';
 import { SR } from './synth';
 
 const PITCH_WINDOW = 4096;
@@ -57,19 +57,22 @@ export interface RunResult {
   /** simulated time the tempo first locked (non-null bpm), or null if never */
   tempoLockT: number | null;
   bpm: number | null;
+  /** every change of the listener's chord reading, stamped with simulated time */
+  chords: { t: number; chord: Chord | null }[];
 }
 
 /**
  * Runs one clip through the pipeline with the given pitch-tracker profile.
  */
-export function runClip(audio: Float32Array, profile: PitchTrackerOptions): RunResult {
+export function runClip(audio: Float32Array, profile: PitchTrackerOptions, clock?: { bpm: number; t0: number }): RunResult {
   const sr = SR;
   const source = new SimSource();
-  const listener = new Listener([source], ['mic']);
-  const detectedNotes: DetectedNote[] = [];
   let currentSimT = 0;
+  const listener = new Listener([source], ['mic'], () => currentSimT);
+  const detectedNotes: DetectedNote[] = [];
   let keyLockT: number | null = null;
   let tempoLockT: number | null = null;
+  const chords: { t: number; chord: Chord | null }[] = [];
 
   listener.onNote(n => {
     detectedNotes.push({ midi: n.midi, velocity: n.velocity, t: currentSimT });
@@ -86,6 +89,7 @@ export function runClip(audio: Float32Array, profile: PitchTrackerOptions): RunR
   const hopSec = HOP_SIZE / sr;
   const nHops = Math.floor(audio.length / HOP_SIZE);
   let nextPollT = 0;
+  let lastBeat = -1;
   const frame = new Float32Array(FFT_SIZE);
   const pitchWin = new Float32Array(PITCH_WINDOW);
 
@@ -112,6 +116,17 @@ export function runClip(audio: Float32Array, profile: PitchTrackerOptions): RunR
       currentSimT = t;
     }
 
+    // --- band clock: the app re-decides the chord every half bar and reads dynamics every beat ---
+    if (clock) {
+      const beatSec = 60 / clock.bpm;
+      const beat = Math.floor((t - clock.t0) / beatSec);
+      if (t >= clock.t0 && beat > lastBeat) {
+        lastBeat = beat;
+        listener.tickBeat(beat, t);
+        if (beat % 2 === 0) listener.tickChord(beat);
+      }
+    }
+
     // --- pitch path: poll every 50ms of simulated time ---
     if (t >= nextPollT) {
       nextPollT += PITCH_POLL_SEC;
@@ -132,6 +147,9 @@ export function runClip(audio: Float32Array, profile: PitchTrackerOptions): RunR
       currentSimT = t;
       source.pitch?.(pRms > PITCH_RMS_FLOOR ? tracker.push(est ? { hz: est.hz, clarity: est.clarity, t } : null) : tracker.push(null));
 
+      const c = listener.input.chord;
+      const last = chords[chords.length - 1];
+      if (!last || (c?.root !== last.chord?.root || c?.quality !== last.chord?.quality)) chords.push({ t, chord: c });
       if (keyLockT === null && listener.input.key !== null) keyLockT = t;
       if (tempoLockT === null && listener.input.bpm !== null) tempoLockT = t;
     }
@@ -144,5 +162,6 @@ export function runClip(audio: Float32Array, profile: PitchTrackerOptions): RunR
     key: listener.input.key,
     tempoLockT,
     bpm: listener.input.bpm,
+    chords,
   };
 }
