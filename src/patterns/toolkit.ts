@@ -9,7 +9,14 @@ export interface Step { t: number; p: number; vel?: number; dur?: number }
  *  bar's chord, else the key's tonic triad — so a pattern always has something to sit on. */
 export const chordAt = (ctx: BarContext, beat: number): Chord =>
   ctx.chordAt?.(beat) ?? ctx.chord ?? tonicTriad(ctx.key);
-export const fires = (s: Step, ctx: BarContext) => s.p >= 1 || ctx.rng() < s.p + (1 - s.p) * ctx.creativity;
+/** Whether an optional step plays. Creativity is the baseline gate; the effective intensity
+ *  in `dynamics` adds on top (never below it), so a fuller band drops fewer optional hits and
+ *  a sparse one drops more. Without a listener (`dynamics` absent) only creativity applies. */
+export const fires = (s: Step, ctx: BarContext) => {
+  if (s.p >= 1) return true;
+  const boost = ctx.dynamics ? 0.5 * Math.min(1, Math.max(0, ctx.dynamics.intensity)) : 0;
+  return ctx.rng() < s.p + (1 - s.p) * Math.min(1, ctx.creativity + boost);
+};
 
 /** How hard the band plays this bar: 0.6 of written velocity when the player is idle, full
  *  when they are going flat out. Without a listener (`dynamics` absent) nothing is scaled. */

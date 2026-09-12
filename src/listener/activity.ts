@@ -20,6 +20,44 @@ import { IDLE_DYNAMICS } from '../types';
  *   player is quiet — a fill under a busy player is a collision, not a fill.
  */
 
+/** Default for the manual INTENSITY knob — "how much the band adds". 0.5 tracks the player. */
+export const MANUAL_INTENSITY_DEFAULT = 0.5;
+
+/**
+ * Folds the user's manual INTENSITY knob into the auto activity intensity.
+ *
+ * `manual` 0 keeps the band sparse even under hard playing (factor 0.4), 0.5 tracks the
+ * player (factor 1.0), 1 fills the band out regardless (factor 1.6, then clamped).
+ */
+export function effectiveIntensity(auto: number, manual: number): number {
+  const a = Math.min(1, Math.max(0, auto));
+  const m = Math.min(1, Math.max(0, manual));
+  return Math.min(1, Math.max(0, a * (0.4 + 1.2 * m)));
+}
+
+const BEATS_PER_BAR = 4;
+const BARS_PER_GROUP = 4;
+
+/**
+ * A `Dynamics` frame with the manual knob folded in: intensity scaled by {@link effectiveIntensity},
+ * and — at a high manual setting (> 0.85) — a fuller band than the player's gaps alone would allow:
+ * the lead answers even without space, and a fill lands on the last bar of each group regardless of
+ * how quiet the player is. `beat` is the absolute beat, used only to place the forced fill.
+ */
+export function effectiveDynamics(auto: Dynamics, manual: number, beat = 0): Dynamics {
+  const m = Math.min(1, Math.max(0, manual));
+  const full = m > 0.85;
+  const bar = Math.floor(beat / BEATS_PER_BAR);
+  const onDownbeat = beat % BEATS_PER_BAR === 0;
+  const lastOfGroup = ((bar % BARS_PER_GROUP) + BARS_PER_GROUP) % BARS_PER_GROUP === BARS_PER_GROUP - 1;
+  return {
+    intensity: effectiveIntensity(auto.intensity, manual),
+    space: full ? true : auto.space,
+    fillDue: full ? onDownbeat && lastOfGroup : auto.fillDue,
+    silenceBeats: auto.silenceBeats,
+  };
+}
+
 export interface ActivityOptions {
   /** onsets in one beat that count as fully busy */
   busyOnsets?: number;

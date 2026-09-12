@@ -15,6 +15,10 @@ export interface AppState {
   /** sound used to play the player's own MIDI keyboard */
   sound: MonitorSound;
   creativity: number;
+  /** manual INTENSITY knob, 0..1: how much the band adds, folded into the auto activity intensity */
+  intensity: number;
+  /** the intensity the band actually uses this beat (auto × manual), shown on the INTENSITY bar */
+  effectiveIntensity: number;
   enabled: Record<Instrument, boolean>;
   input: BandInput;
   locked: boolean;
@@ -49,6 +53,8 @@ const defaults: AppState = {
   engine: 'acestep',
   sound: 'grand',
   creativity: 0.3,
+  intensity: 0.5,
+  effectiveIntensity: 0,
   enabled: { drums: true, bass: false, keys: false, lead: false },
   input: { bpm: null, key: null, chord: null, notesNow: [], pitch: null, inputLevel: 0, onsets: 0, pendingBpm: null, dynamics: IDLE_DYNAMICS },
   locked: false,

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { scaleFor, promptsFor, configFor } from './lyriaMap';
-import type { Key } from '../types';
+import { effectiveIntensity } from '../listener/activity';
+import type { Dynamics, Key } from '../types';
 
 describe('scaleFor', () => {
   it('maps minor key via relative major', () => {
@@ -32,5 +33,16 @@ describe('configFor', () => {
     expect(cfg.bpm).toBe(200);
     expect(cfg.temperature).toBeCloseTo(2.2, 5);
     expect(cfg.muteBass).toBe(false);
+  });
+
+  it('density follows the effective intensity it is handed', () => {
+    const dyn = (intensity: number): Dynamics => ({ intensity, space: false, fillDue: false, silenceBeats: 0 });
+    // auto 0.6, manual 0 -> effective 0.24 -> density 0.25 + 0.24*0.5
+    const low = effectiveIntensity(0.6, 0);
+    expect(configFor(120, key, 0.3, allOn, dyn(low)).density).toBeCloseTo(0.25 + low * 0.5, 5);
+    // same auto, manual 1 -> effective 0.96 -> a busier band
+    const high = effectiveIntensity(0.6, 1);
+    expect(configFor(120, key, 0.3, allOn, dyn(high)).density).toBeCloseTo(0.25 + high * 0.5, 5);
+    expect(high).toBeGreaterThan(low);
   });
 });

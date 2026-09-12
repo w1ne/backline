@@ -22,6 +22,8 @@ export interface LiveActions {
   setGenre(g: Genre): void;
   setEngine(e: 'lyria' | 'patterns' | 'acestep' | 'amt'): void;
   setCreativity(c: number): void;
+  /** manual INTENSITY knob — how much the band adds */
+  setIntensity?(i: number): void;
   setBpmOverride?(bpm: number | undefined): void;
   setKeyOverride?(key: { root: number; mode: 'major' | 'minor' } | undefined): void;
   setTempoMode?(m: 'locked' | 'follow'): void;
@@ -108,6 +110,15 @@ function skeleton(): string {
           </div>
           <span class="knob-val" id="creativity-val"></span>
           <input class="vh" type="range" id="creativity" min="0" max="1" step="0.05" aria-hidden="true" tabindex="-1" />
+        </div>
+        <div class="zone zone--pink knob-zone">
+          <span class="zone-label">Intensity</span>
+          <div class="knob" id="intensity-knob" role="slider" tabindex="0"
+               aria-label="Intensity" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0.5">
+            <span class="ptr"></span>
+          </div>
+          <span class="knob-val" id="intensity-val"></span>
+          <input class="vh" type="range" id="intensity" min="0" max="1" step="0.05" aria-hidden="true" tabindex="-1" />
         </div>
         <div class="zone zone--blue">
           <span class="zone-label">Genre</span>
@@ -245,7 +256,12 @@ function wireControls(screen: HTMLElement, store: Store): void {
   creativity.addEventListener('input', () => {
     actions().setCreativity(Number(creativity.value));
   });
-  wireKnob(screen, creativity);
+  wireKnob(screen, creativity, '#creativity-knob');
+  const intensity = screen.querySelector<HTMLInputElement>('#intensity')!;
+  intensity.addEventListener('input', () => {
+    actions().setIntensity?.(Number(intensity.value));
+  });
+  wireKnob(screen, intensity, '#intensity-knob');
   screen.querySelectorAll<HTMLButtonElement>('#inst-tiles button[data-inst]').forEach(btn => {
     btn.addEventListener('click', () => actions().toggle(btn.dataset.inst as Instrument));
   });
@@ -315,8 +331,8 @@ function wireControls(screen: HTMLElement, store: Store): void {
 }
 
 /** Rotary knob that drives the hidden range input (drag up/down, arrow keys). */
-function wireKnob(screen: HTMLElement, input: HTMLInputElement): void {
-  const knob = screen.querySelector<HTMLElement>('#creativity-knob')!;
+function wireKnob(screen: HTMLElement, input: HTMLInputElement, knobSel: string): void {
+  const knob = screen.querySelector<HTMLElement>(knobSel)!;
   const step = Number(input.step) || 0.05;
   const commit = (raw: number): void => {
     const snapped = Math.min(1, Math.max(0, Math.round(raw / step) * step));
@@ -515,6 +531,13 @@ function updateReadouts(screen: HTMLElement, s: AppState): void {
   knob.style.setProperty('--k', String(s.creativity));
   knob.setAttribute('aria-valuenow', s.creativity.toFixed(2));
 
+  const intensity = screen.querySelector<HTMLInputElement>('#intensity')!;
+  if (document.activeElement !== intensity) intensity.value = String(s.intensity);
+  screen.querySelector<HTMLElement>('#intensity-val')!.textContent = s.intensity.toFixed(2);
+  const iKnob = screen.querySelector<HTMLElement>('#intensity-knob')!;
+  iKnob.style.setProperty('--k', String(s.intensity));
+  iKnob.setAttribute('aria-valuenow', s.intensity.toFixed(2));
+
   const lyriaFollow = s.engine === 'lyria' || s.engine === 'acestep' || s.engine === 'amt';
   screen.querySelectorAll<HTMLButtonElement>('#tempoMode button').forEach(btn => {
     btn.classList.toggle('on', btn.dataset.mode === s.tempoMode);
@@ -569,7 +592,9 @@ function updateYouStrip(screen: HTMLElement, s: AppState): void {
 
   // Second, thinner bar: not how loud the player is, but how hard the band reads them as
   // working — it lags the level bar on the way down, which is the whole point.
-  const intensity = Math.max(0, Math.min(1, s.input.dynamics.intensity));
+  // The effective intensity the band actually plays at (auto activity × the manual knob),
+  // not the raw activity reading — so the bar tracks what you hear, while the knob shows your setting.
+  const intensity = Math.max(0, Math.min(1, s.effectiveIntensity));
   screen.querySelector<HTMLElement>('#you-intensity')!.style.width = `${Math.round(intensity * 100)}%`;
 
   screen.querySelector<HTMLElement>('#you-notes')!.textContent = s.input.notesNow.length
