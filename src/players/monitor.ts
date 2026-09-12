@@ -151,6 +151,9 @@ export class MidiMonitor {
     const lifecycle = this.lifecycle;
     await this.setSound(this.sound);
     if (lifecycle !== this.lifecycle) return;
+    // iOS Safari has no Web MIDI: the sound still loads for the on-screen keys,
+    // there is just no controller to listen to.
+    if (typeof navigator.requestMIDIAccess !== 'function') return;
     this.access = await navigator.requestMIDIAccess();
     if (lifecycle !== this.lifecycle) return;
     this.handler = e => {
