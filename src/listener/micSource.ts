@@ -22,6 +22,8 @@ export class MicSource implements Source {
   private lastRms = 0;
   /** chosen audioinput device, or null for the system default */
   private deviceId: string | null = null;
+  /** while true, no onsets/levels/pitch reach the Listener — MIDI is unaffected */
+  private muted = false;
   /** kept so a device change can restart the same pipeline without the Listener noticing */
   private cbs?: {
     onNote: (m: number, v: number, t: number) => void;
@@ -51,6 +53,20 @@ export class MicSource implements Source {
     return this.deviceId;
   }
 
+  /**
+   * Gates the mic's contribution to the listener without touching the MediaStream track,
+   * so unmuting is instant (no getUserMedia round trip). MIDI input is a separate Source
+   * and keeps working regardless.
+   */
+  setMuted(muted: boolean): void {
+    if (this.muted === muted) return;
+    this.muted = muted;
+    if (muted) {
+      this.cbs?.onLevel(0);
+      this.cbs?.onPitch?.(null);
+    }
+  }
+
   async start(
     onNote: (m: number, v: number, t: number) => void,
     onLevel: (l: number) => void,
@@ -78,9 +94,13 @@ export class MicSource implements Source {
     const tracker = new PitchTracker();
 
     // onsets now only drive tempo; note pitch comes from the continuous tracker below
-    const fire = (t: number) => onNote(-1, Math.min(1, this.lastRms * 8), t);
+    const fire = (t: number) => {
+      if (this.muted) return;
+      onNote(-1, Math.min(1, this.lastRms * 8), t);
+    };
 
     this.pitchTimer = window.setInterval(() => {
+      if (this.muted) return;
       if (this.lastRms <= PITCH_RMS_FLOOR) {
         onPitch?.(tracker.push(null));
         return;
@@ -99,7 +119,7 @@ export class MicSource implements Source {
       node.port.onmessage = e => {
         const { flux, rms, t } = e.data as { flux: number; rms: number; t: number };
         this.lastRms = rms;
-        if (n++ % LEVEL_EVERY === 0) onLevel(Math.min(1, rms * 20));
+        if (!this.muted && n++ % LEVEL_EVERY === 0) onLevel(Math.min(1, rms * 20));
         const at = onset.pushFlux(flux, t, rms);
         if (at !== null) fire(at);
       };
@@ -133,7 +153,7 @@ export class MicSource implements Source {
       for (let i = tail.length - HOP_SIZE; i < tail.length; i++) s += tail[i] * tail[i];
       const rms = Math.sqrt(s / HOP_SIZE);
       this.lastRms = rms;
-      if (n++ % LEVEL_EVERY === 0) onLevel(Math.min(1, rms * 20));
+      if (!this.muted && n++ % LEVEL_EVERY === 0) onLevel(Math.min(1, rms * 20));
       const t = ctx.currentTime - FFT_SIZE / 2 / ctx.sampleRate;
       const frame = tail.slice(tail.length - FFT_SIZE);
       const at = onset.pushFlux(onset.flux(magnitudeSpectrum(frame)), t, rms);

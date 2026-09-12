@@ -69,15 +69,15 @@ body {
   font-size: 14px;
 }
 
-/* Above the phone/tablet breakpoint the panel fits one viewport with no page
-   scroll: a fixed grid of rows, the middle one (controls) doing the flexing. */
+/* Above the phone/tablet breakpoint the panel tries to fill one viewport, but
+   it is sized by its content: the controls row grows to its tallest zone and
+   the page scrolls on a short screen. Nothing is ever clipped. */
 @media (min-width: 901px) {
   .screen {
     display: grid;
-    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
-    height: calc(100vh - 32px);
-    max-height: 860px;
-    overflow: hidden;
+    grid-template-rows: auto minmax(max-content, 1fr) auto auto auto;
+    min-height: calc(100vh - 32px);
+    height: auto;
   }
 }
 
@@ -832,7 +832,6 @@ body {
 .row2 .zone {
   min-height: 0;
   height: 100%;
-  overflow: hidden;
 }
 
 .bottom {
@@ -1088,7 +1087,7 @@ body {
 
 .you {
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  grid-template-columns: auto 1fr auto auto auto;
   align-items: center;
   gap: 14px;
 }
@@ -1574,6 +1573,20 @@ body {
   box-shadow: inset 0 0 0 2px var(--pink);
 }
 
+/* mic mute lives inline in the YOU strip, not pinned to a pad corner like other morph keys */
+#mic-mute {
+  position: static;
+}
+
+/* mic mute: red, not pink — muted is a warning, not a routing choice */
+#mic-mute.on .morph-led {
+  background: var(--red);
+}
+
+#mic-mute.on {
+  box-shadow: inset 0 0 0 2px var(--red);
+}
+
 /* ---------- short desktop viewports ---------- */
 
 /* The panel is meant to sit in one viewport with no page scroll, and the timeline strip
@@ -1617,8 +1630,8 @@ body {
     height: 14px;
   }
 
-  .inst button {
-    min-height: 96px;
+  .inst .pad-btn {
+    min-height: 120px;
   }
 
   .row2 .zone {

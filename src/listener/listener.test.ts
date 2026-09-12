@@ -12,6 +12,11 @@ class Fake implements Source {
   stop() {}
 }
 
+class MutableFake extends Fake {
+  muted = false;
+  setMuted(m: boolean) { this.muted = m; }
+}
+
 class FailingFake implements Source {
   async start(): Promise<void> {
     throw new Error('boom');
@@ -31,6 +36,27 @@ describe('Listener live tempo estimate', () => {
     for (let i = 0; i < 3; i++) { a.note(-1, 0.8, t); t += 0.6; }
     expect(l.input.bpm).toBeNull();
     expect(l.input.pendingBpm).toBeCloseTo(100, 0);
+  });
+});
+
+describe('Listener.setMicMuted', () => {
+  it('gates only the mic source, leaving midi sources untouched', async () => {
+    const midi = new MutableFake();
+    const mic = new MutableFake();
+    const l = new Listener([midi, mic], ['midi', 'mic']);
+    await l.start();
+    l.setMicMuted(true);
+    expect(mic.muted).toBe(true);
+    expect(midi.muted).toBe(false);
+    l.setMicMuted(false);
+    expect(mic.muted).toBe(false);
+  });
+
+  it('is a no-op for sources without setMuted (e.g. midi-only rigs)', async () => {
+    const midi = new Fake();
+    const l = new Listener([midi], ['midi']);
+    await l.start();
+    expect(() => l.setMicMuted(true)).not.toThrow();
   });
 });
 

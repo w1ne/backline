@@ -7,6 +7,7 @@ export interface DeviceOption {
 export const MORPH_SINK_KEY = 'backline.morph.sink';
 export const MIC_DEVICE_KEY = 'backline.mic.device';
 export const MIDI_INPUT_KEY = 'backline.midi.input';
+export const MIC_MUTE_KEY = 'backline.mic.muted';
 
 /**
  * enumerateDevices() output → picker options.
@@ -51,6 +52,23 @@ export function loadDeviceId(key: string): string | null {
 export function saveDeviceId(key: string, id: string | null): void {
   try {
     if (id) localStorage.setItem(key, id);
+    else localStorage.removeItem(key);
+  } catch {
+    // nothing to do: the choice just will not survive a reload
+  }
+}
+
+export function loadBool(key: string): boolean {
+  try {
+    return localStorage.getItem(key) === '1';
+  } catch {
+    return false; // private mode / storage blocked
+  }
+}
+
+export function saveBool(key: string, value: boolean): void {
+  try {
+    if (value) localStorage.setItem(key, '1');
     else localStorage.removeItem(key);
   } catch {
     // nothing to do: the choice just will not survive a reload
