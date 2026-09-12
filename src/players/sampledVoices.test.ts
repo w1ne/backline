@@ -75,3 +75,61 @@ describe('sampled drums fallback', () => {
     expect(starts.electronic).toEqual(expect.arrayContaining([expect.objectContaining({ note: 'hihat-close' }), expect.objectContaining({ note: 'cymbal' })]));
   });
 });
+
+describe('sampled melodic voices (bass/keys/lead) fallback', () => {
+  async function withMockedSmplr<T>(run: (mod: typeof import('./sampledVoices'), starts: Record<string, unknown[]>) => Promise<T>) {
+    vi.resetModules();
+    const starts: Record<string, unknown[]> = { bass: [], keys: [], lead: [] };
+    vi.doMock('smplr', () => ({
+      DrumMachine: () => ({ ready: Promise.resolve(), start: () => () => undefined }),
+      ElectricPiano: () => ({ ready: Promise.resolve(), start: (e: unknown) => { starts.keys.push(e); return () => undefined; } }),
+      Soundfont: (_ctx: unknown, opts: { instrument: string }) => ({
+        ready: Promise.resolve(),
+        start: (e: unknown) => { starts[opts.instrument.includes('bass') ? 'bass' : 'lead'].push(e); return () => undefined; },
+      }),
+    }));
+    const mod = await import('./sampledVoices');
+    return run(mod, starts);
+  }
+
+  it('bass converts the frequency Players hands it back to a MIDI note, and honours velocity', async () => {
+    await withMockedSmplr(async ({ makeSampledBass }, starts) => {
+      const fallback = fakeVoice();
+      const bass = makeSampledBass({} as AudioContext, {} as AudioNode, fallback);
+      await Promise.resolve();
+      const Tone = await import('tone');
+      const freq = Tone.Frequency(40, 'midi').toFrequency(); // matches Players.schedule()'s call shape
+      bass.triggerAttackRelease(freq, 0.5, 1.5, 0.7);
+
+      expect(fallback.calls.length).toBe(0);
+      expect(starts.bass).toEqual([expect.objectContaining({ note: 40, time: 1.5, duration: 0.5, velocity: 89 })]);
+    });
+  });
+
+  it('keys and lead fall back to their synth until the soundfont is ready', async () => {
+    vi.resetModules();
+    let resolveReady!: () => void;
+    const ready = new Promise<void>(res => { resolveReady = res; });
+    const starts: unknown[] = [];
+    vi.doMock('smplr', () => ({
+      DrumMachine: () => ({ ready: Promise.resolve(), start: () => () => undefined }),
+      ElectricPiano: () => ({ ready, start: (e: unknown) => { starts.push(e); return () => undefined; } }),
+      Soundfont: () => ({ ready: Promise.resolve(), start: () => () => undefined }),
+    }));
+    const { makeSampledKeys } = await import('./sampledVoices');
+    const fallback = fakeVoice();
+    const keys = makeSampledKeys({} as AudioContext, {} as AudioNode, fallback);
+
+    keys.triggerAttackRelease(261.6, 1, 1, 0.5);
+    expect(fallback.calls.length).toBe(1);
+    expect(starts.length).toBe(0);
+
+    resolveReady();
+    await ready;
+    await Promise.resolve();
+
+    keys.triggerAttackRelease(261.6, 1, 2, 0.5);
+    expect(fallback.calls.length).toBe(1);
+    expect(starts.length).toBe(1);
+  });
+});
