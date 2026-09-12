@@ -76,7 +76,7 @@ body {
     display: grid;
     grid-template-rows: auto auto auto minmax(0, 1fr) auto;
     height: calc(100vh - 32px);
-    max-height: 820px;
+    max-height: 860px;
     overflow: hidden;
   }
 }
@@ -960,11 +960,53 @@ body {
 
 .manual {
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
 }
 
-.manual .field {
-  justify-content: space-between;
+/* Eight controls have to fit the fixed-height panel: tight single-column rows,
+   and the zone gets a wider track in the controls row. */
+@media (min-width: 901px) {
+  .row2 {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 0.9fr) minmax(0, 1fr) minmax(0, 1.2fr);
+  }
+  .manual {
+    gap: 4px;
+    justify-content: start;
+  }
+  .manual .field {
+    min-height: 25px;
+  }
+  .manual .field label,
+  .manual .field .fl {
+    white-space: nowrap;
+    font-size: 10px;
+  }
+  .manual input[type='number'],
+  .manual select {
+    padding: 2px 4px;
+    font-size: 11px;
+    line-height: 1.3;
+    border-width: 2px;
+    border-radius: 7px;
+    width: 118px;
+    height: auto;
+  }
+  .manual #tempoMode {
+    border-width: 2px;
+    border-radius: 9px;
+  }
+  .manual #tempoMode button {
+    padding: 3px 7px;
+    font-size: 9px;
+  }
+  .manual .morph-key.wide {
+    padding: 2px 8px;
+    font-size: 10px;
+    min-height: 22px;
+  }
+  .manual .hint {
+    display: none;
+  }
 }
 
 .field {
@@ -989,7 +1031,7 @@ body {
   background: var(--panel);
   border: 3px solid var(--ink);
   border-radius: 9px;
-  padding: 6px 8px;
+  padding: 5px 6px;
   width: 92px;
   min-width: 0;
 }
