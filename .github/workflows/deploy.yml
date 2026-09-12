@@ -27,6 +27,8 @@ jobs:
         with: { node-version: 20, cache: npm }
       - run: npm ci
       - run: npm --prefix relay ci && npm --prefix relay run typecheck
+      - run: python3 -m pip install pytest
+      - run: python3 -m pytest services/amt -q
       - run: npm test
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
