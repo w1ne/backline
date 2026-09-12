@@ -24,9 +24,31 @@ const centsBetween = (a: number, b: number) => 1200 * Math.log2(a / b);
  * agreed value has actually left it by more than the agreement band, which is
  * the hysteresis that keeps semitone-boundary jitter from flickering.
  */
+export interface PitchTrackerOptions {
+  /** frames that must be in the window before a reading can be called stable */
+  holdFrames: number;
+  /** McLeod clarity the newest frame has to clear */
+  minClarity: number;
+  /** frames (post octave correction) that must agree with the median within ±50 cents */
+  minAgree: number;
+}
+
+/** Instrument default: 250 ms of agreement and a clean periodicity before a note is trusted. */
+export const INSTRUMENT_PROFILE: PitchTrackerOptions = { holdFrames: 5, minClarity: 0.85, minAgree: 3 };
+/**
+ * Voice profile: humming and singing are breathier (lower clarity) and phrases move
+ * faster than a plucked note holds, so 150 ms and two agreeing frames is enough.
+ */
+export const VOICE_PROFILE: PitchTrackerOptions = { holdFrames: 3, minClarity: 0.7, minAgree: 2 };
+
 export class PitchTracker {
   private window: PitchFrame[] = [];
   private stableHz: number | null = null;
+  private opts: PitchTrackerOptions;
+
+  constructor(opts: PitchTrackerOptions = INSTRUMENT_PROFILE) {
+    this.opts = opts;
+  }
 
   /** Feed one frame (or null for silence/below-floor). Returns the current reading. */
   push(frame: PitchFrame | null): StablePitch | null {
@@ -37,7 +59,7 @@ export class PitchTracker {
     }
 
     this.window.push(frame);
-    if (this.window.length > 5) this.window.shift();
+    if (this.window.length > this.opts.holdFrames) this.window.shift();
 
     const octaveCorrect = (hz: number): number => {
       if (this.stableHz === null) return hz;
@@ -50,8 +72,8 @@ export class PitchTracker {
     const sorted = [...hzs].sort((a, b) => a - b);
     const median = sorted[Math.floor(sorted.length / 2)];
     const agree = hzs.filter(h => Math.abs(centsBetween(h, median)) <= 50).length;
-    const clarityOk = frame.clarity >= 0.85;
-    const stable = this.window.length >= 5 && agree >= 3 && clarityOk;
+    const clarityOk = frame.clarity >= this.opts.minClarity;
+    const stable = this.window.length >= this.opts.holdFrames && agree >= this.opts.minAgree && clarityOk;
 
     if (stable && (this.stableHz === null || Math.abs(centsBetween(median, this.stableHz)) > 50)) {
       this.stableHz = median;

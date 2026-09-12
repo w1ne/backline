@@ -296,3 +296,29 @@ describe('independent source readiness', () => {
     await started;
   });
 });
+
+describe('Listener key snap for voice', () => {
+  it('moves an out-of-key sung pitch to the nearest scale tone once a key is known', async () => {
+    const a = new Fake();
+    const l = new Listener([a]);
+    await l.start();
+    const heard: number[] = [];
+    l.onNote(n => heard.push(n.midi));
+    // establish C major from MIDI-style notes
+    for (const n of [60, 62, 64, 65, 67, 69, 71, 72, 64, 67, 60]) a.note(n, 0.8, 1);
+    expect(l.input.key).toEqual({ root: 0, mode: 'major' });
+    heard.length = 0;
+    a.pitch!({ midi: 61, cents: 0, stable: true }); // C#4 glide → C4 or D4, never C#
+    expect(heard).toHaveLength(1);
+    expect([60, 62]).toContain(heard[0]);
+  });
+  it('passes sung pitches through untouched while no key is known', async () => {
+    const a = new Fake();
+    const l = new Listener([a]);
+    await l.start();
+    const heard: number[] = [];
+    l.onNote(n => heard.push(n.midi));
+    a.pitch!({ midi: 61, cents: 0, stable: true });
+    expect(heard).toEqual([61]);
+  });
+});

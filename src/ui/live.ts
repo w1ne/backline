@@ -195,6 +195,13 @@ function skeleton(): string {
   `;
 }
 
+/** what the mic hears right now, so a singer sees the app react before the band does */
+function hearingLabel(s: AppState): string {
+  const p = s.input.pitch;
+  if (!p || s.micMuted) return '';
+  return ` · HEARING ${KEY_NAMES[((p.midi % 12) + 12) % 12]}${Math.floor(p.midi / 12) - 1}`;
+}
+
 function wireControls(screen: HTMLElement, store: Store): void {
   // ?debug=1: how many times this element had listeners attached. Anything but
   // "1" means a re-render re-wired it and every click fires N handlers.
@@ -325,7 +332,7 @@ function update(screen: HTMLElement, s: AppState, changeLatencyMs: number): void
   updateTiles(screen, s, changeLatencyMs);
   const audio = screen.querySelector<HTMLButtonElement>('#enable-audio')!;
   audio.hidden = !s.audioSuspended && s.power === 'on';
-  screen.querySelector<HTMLElement>('#input-status')!.textContent = `${midiLabel(s)}${s.audioSuspended ? ' · TAP TO ENABLE SOUND' : ''}`;
+  screen.querySelector<HTMLElement>('#input-status')!.textContent = `${midiLabel(s)}${hearingLabel(s)}${s.audioSuspended ? ' · TAP TO ENABLE SOUND' : ''}`;
   screen.querySelector<HTMLElement>('#band-status')!.textContent = s.accompanimentStatus;
   screen.querySelector<HTMLElement>('#model-latency')!.textContent = s.modelLatencyMs == null ? '' : `${Math.round(s.modelLatencyMs)} ms`;
   screen.querySelector<HTMLElement>('#engine-status')!.textContent = s.engineConnecting ? `${ENGINE_NAMES[s.engine]} · connecting…` : s.offlineEngines.includes(s.engine) ? `${ENGINE_NAMES[s.engine]} · offline` : '';
