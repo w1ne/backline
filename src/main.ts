@@ -10,6 +10,7 @@ import { Listener } from './listener/listener';
 import { MidiSource } from './listener/midiSource';
 import { TapTempo } from './listener/tapTempo';
 import { countInClicks } from './band/countIn';
+import { SongForm, type Section } from './band/form';
 import { outputLatencyMs } from './audio/outputLatency';
 import { Drone } from './players/drone';
 import { WhiteNoise } from './players/whiteNoise';
@@ -86,6 +87,19 @@ let halfBarTimer: ReturnType<typeof setTimeout> | undefined;
 let beatTimers: ReturnType<typeof setTimeout>[] = [];
 let countInSynth: Tone.Synth | undefined;
 let countInTimers: ReturnType<typeof setTimeout>[] = [];
+/** Mirrors the Bandleader's own SongForm one-for-one, driven by the same per-bar dynamics,
+ *  purely so the app can show the section name and know when to stop and re-arm the band —
+ *  see src/band/form.ts for why running a second instance in lockstep is safe. */
+const songForm = new SongForm();
+
+const SECTION_LABEL: Record<Section, string> = {
+  intro: 'Intro',
+  groove: 'Groove',
+  lift: 'Lift',
+  breakdown: 'Breakdown',
+  ending: 'Ending',
+  ended: 'Ended · sing to start again',
+};
 
 /** Re-reads the player's activity for one beat and hands the result to the band. Engines only
  *  call back on the bar, so beats 1..3 come off timers re-armed from every downbeat — they
@@ -98,6 +112,19 @@ function tickBeat(beat: number): void {
   const eff = effectiveDynamics(listener.tickBeat(beat), store.state.intensity, beat);
   band?.set({ dynamics: eff });
   store.update({ effectiveIntensity: eff.intensity });
+  // The form only moves on bar boundaries; tickBeat also runs on beats 1-3 off timers.
+  if (beat % BEATS_PER_BAR !== 0) return;
+  const result = songForm.tick({ bar: beat / BEATS_PER_BAR, dynamics: eff, silenceBeats: eff.silenceBeats, playerStopped: false });
+  if (result.shouldStop) {
+    // The Bandleader has already scheduled and will stop itself after the ending bar; every
+    // engine (including the ones with no form of their own) stops here regardless, and the
+    // app goes quiet until the singer's next onset re-arms it through the existing
+    // first-lock path (see the `!store.state.locked` branch in listener.onChange below).
+    band?.stop();
+    store.update({ locked: false, accompanimentStatus: SECTION_LABEL.ended });
+  } else {
+    store.update({ accompanimentStatus: SECTION_LABEL[result.section] });
+  }
 }
 
 function clearBeatTimers(): void {
@@ -310,6 +337,7 @@ fetch(RELAY_URL + '/health')
 
 async function power() {
   store.update({ error: null });
+  songForm.reset();
   await players.init();
   audioReady = true;
   whiteNoise.setEnabled(true);
@@ -384,6 +412,7 @@ async function power() {
         first += 2 * barLen;
         scheduleCountIn(input.bpm, first);
       }
+      songForm.reset(); // this onset may be the singer re-starting the band after an ending
       store.update({ locked: true });
       lastFollowedBpm = input.bpm;
       disarmFallback?.();
@@ -421,6 +450,7 @@ function powerOff() {
   clearBeatTimers();
   clearCountIn();
   band?.stop();
+  songForm.reset();
   playbackActivity.clear();
   listener?.stop();
   listener = undefined;
