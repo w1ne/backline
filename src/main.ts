@@ -23,6 +23,8 @@ import { LyriaEngine } from './engines/lyriaEngine';
 import { AceStepEngine } from './engines/acestepEngine';
 import { AmtEngine } from './engines/amtEngine';
 import { forwardBpm } from './band/bpmForward';
+import { MidiRecorder } from './export/midiRecorder';
+import { downloadMidi } from './export/download';
 import { DEBUG, installDebug, recordToggle } from './debug';
 import { chooseFallback } from './engines/fallback';
 import { RELAY_URL } from './config';
@@ -58,6 +60,7 @@ let band: BandEngine | undefined;
 let monitor: MidiMonitor | undefined;
 const players = new Players();
 const playbackActivity = new PlaybackActivity();
+const midiRecorder = new MidiRecorder();
 const whiteNoise = new WhiteNoise();
 const drone = new Drone();
 let morph: MorphBus | undefined;
@@ -285,7 +288,11 @@ async function power() {
 
   // The listener timestamps notes on the performance.now clock; the strip draws on the
   // AudioContext one, which is what every scheduled band note is already in.
-  listener.onNote(n => viz?.addNote('you', n.midi, n.timeSec + perfOffset(), YOU_NOTE_SEC, n.velocity));
+  listener.onNote(n => {
+    const t = n.timeSec + perfOffset();
+    viz?.addNote('you', n.midi, t, YOU_NOTE_SEC, n.velocity);
+    midiRecorder.addYou(n.midi, n.velocity, t);
+  });
 
   listener.onChange(input => {
     store.update({ input });
@@ -356,6 +363,15 @@ function powerOff() {
 
 store.subscribe(s => {
   liveActions = {
+    exportMidi: () => {
+      if (midiRecorder.empty) {
+        store.update({ error: 'Nothing recorded yet: sing or play a few bars first' });
+        return;
+      }
+      const bpm = lastFollowedBpm ?? store.state.input.bpm ?? undefined;
+      downloadMidi(midiRecorder.toMidi(bpm), `duetai-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}.mid`);
+      midiRecorder.reset();
+    },
     wake: () => {
       if (store.state.audioSuspended) {
         Tone.start()
@@ -521,6 +537,7 @@ viz = createViz(
 // the visualiser and, in ?debug=1, also records the schedule for chord-following checks.
 players.onSchedule = (inst, events, barStart, bpm) => {
   playbackActivity.add(inst, events, barStart, bpm);
+  midiRecorder.addBand(inst, events, barStart, bpm);
   const spb = 60 / bpm;
   for (const e of events) viz?.addNote(inst, e.note, barStart + e.time * spb, e.duration * spb, e.velocity);
   if (DEBUG) {
