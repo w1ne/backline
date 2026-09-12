@@ -1,0 +1,3143 @@
+{
+  "gpu": "NVIDIA L4",
+  "torch": "2.6.0+cu124",
+  "dtype": "float32",
+  "top_p": 0.85,
+  "rows": [
+    {
+      "model": "small",
+      "sampler": "original",
+      "bpm": 100,
+      "seed": 0,
+      "bar": 2,
+      "latency_ms": 150.0970833003521,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 2,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.325,
+      "diatonic_count": 2,
+      "tonic_triad_count": 2,
+      "events": [
+        [
+          8.7,
+          0.48,
+          67
+        ],
+        [
+          9.3,
+          0.48,
+          67
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original",
+      "bpm": 100,
+      "seed": 0,
+      "bar": 4,
+      "latency_ms": 347.72009775042534,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 0,
+      "events": [
+        [
+          12.0,
+          0.48,
+          74
+        ],
+        [
+          12.6,
+          0.48,
+          77
+        ],
+        [
+          13.2,
+          0.48,
+          81
+        ],
+        [
+          13.8,
+          0.48,
+          77
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original",
+      "bpm": 100,
+      "seed": 0,
+      "bar": 6,
+      "latency_ms": 119.61833760142326,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 0,
+      "nonempty": false,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.0,
+      "diatonic_count": 0,
+      "tonic_triad_count": 0,
+      "events": []
+    },
+    {
+      "model": "small",
+      "sampler": "original",
+      "bpm": 100,
+      "seed": 0,
+      "bar": 8,
+      "latency_ms": 119.40916627645493,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 0,
+      "nonempty": false,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.0,
+      "diatonic_count": 0,
+      "tonic_triad_count": 0,
+      "events": []
+    },
+    {
+      "model": "small",
+      "sampler": "original",
+      "bpm": 100,
+      "seed": 1,
+      "bar": 2,
+      "latency_ms": 116.58963933587074,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 0,
+      "nonempty": false,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.0,
+      "diatonic_count": 0,
+      "tonic_triad_count": 0,
+      "events": []
+    },
+    {
+      "model": "small",
+      "sampler": "original",
+      "bpm": 100,
+      "seed": 1,
+      "bar": 4,
+      "latency_ms": 117.47115477919579,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 0,
+      "nonempty": false,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.0,
+      "diatonic_count": 0,
+      "tonic_triad_count": 0,
+      "events": []
+    },
+    {
+      "model": "small",
+      "sampler": "original",
+      "bpm": 100,
+      "seed": 1,
+      "bar": 6,
+      "latency_ms": 122.91743233799934,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 0,
+      "nonempty": false,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.0,
+      "diatonic_count": 0,
+      "tonic_triad_count": 0,
+      "events": []
+    },
+    {
+      "model": "small",
+      "sampler": "original",
+      "bpm": 100,
+      "seed": 1,
+      "bar": 8,
+      "latency_ms": 190.88775664567947,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.7333333333333333,
+      "diatonic_count": 4,
+      "tonic_triad_count": 3,
+      "events": [
+        [
+          22.0,
+          0.72,
+          72
+        ],
+        [
+          22.6,
+          0.48,
+          72
+        ],
+        [
+          23.2,
+          0.48,
+          74
+        ],
+        [
+          23.8,
+          0.48,
+          72
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original",
+      "bpm": 100,
+      "seed": 2,
+      "bar": 2,
+      "latency_ms": 147.31688052415848,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 2,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.4,
+      "diatonic_count": 2,
+      "tonic_triad_count": 0,
+      "events": [
+        [
+          8.4,
+          0.48,
+          69
+        ],
+        [
+          9.0,
+          0.48,
+          71
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original",
+      "bpm": 100,
+      "seed": 2,
+      "bar": 4,
+      "latency_ms": 116.0854771733284,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 0,
+      "nonempty": false,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.0,
+      "diatonic_count": 0,
+      "tonic_triad_count": 0,
+      "events": []
+    },
+    {
+      "model": "small",
+      "sampler": "original",
+      "bpm": 100,
+      "seed": 2,
+      "bar": 6,
+      "latency_ms": 117.27147176861763,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 0,
+      "nonempty": false,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.0,
+      "diatonic_count": 0,
+      "tonic_triad_count": 0,
+      "events": []
+    },
+    {
+      "model": "small",
+      "sampler": "original",
+      "bpm": 100,
+      "seed": 2,
+      "bar": 8,
+      "latency_ms": 116.94658547639847,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 0,
+      "nonempty": false,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.0,
+      "diatonic_count": 0,
+      "tonic_triad_count": 0,
+      "events": []
+    },
+    {
+      "model": "small",
+      "sampler": "original",
+      "bpm": 150,
+      "seed": 0,
+      "bar": 2,
+      "latency_ms": 116.3431815803051,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 1,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.75,
+      "diatonic_count": 1,
+      "tonic_triad_count": 0,
+      "events": [
+        [
+          5.2,
+          1.28,
+          74
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original",
+      "bpm": 150,
+      "seed": 0,
+      "bar": 4,
+      "latency_ms": 116.25536531209946,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 3,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 3,
+      "tonic_triad_count": 0,
+      "events": [
+        [
+          8.0,
+          0.64,
+          74
+        ],
+        [
+          8.8,
+          0.32,
+          77
+        ],
+        [
+          9.2,
+          0.32,
+          81
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original",
+      "bpm": 150,
+      "seed": 0,
+      "bar": 6,
+      "latency_ms": 115.21194875240326,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 1,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.125,
+      "diatonic_count": 1,
+      "tonic_triad_count": 1,
+      "events": [
+        [
+          12.6,
+          0.32,
+          72
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original",
+      "bpm": 150,
+      "seed": 0,
+      "bar": 8,
+      "latency_ms": 115.80291762948036,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 1,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.125,
+      "diatonic_count": 1,
+      "tonic_triad_count": 0,
+      "events": [
+        [
+          15.8,
+          0.32,
+          69
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original",
+      "bpm": 150,
+      "seed": 1,
+      "bar": 2,
+      "latency_ms": 182.8334406018257,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.6,
+      "diatonic_count": 4,
+      "tonic_triad_count": 3,
+      "events": [
+        [
+          5.2,
+          0.16,
+          72
+        ],
+        [
+          5.4,
+          0.16,
+          72
+        ],
+        [
+          5.6,
+          0.32,
+          72
+        ],
+        [
+          6.0,
+          0.32,
+          71
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original",
+      "bpm": 150,
+      "seed": 1,
+      "bar": 4,
+      "latency_ms": 113.3170798420906,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 1,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.125,
+      "diatonic_count": 1,
+      "tonic_triad_count": 1,
+      "events": [
+        [
+          9.4,
+          0.32,
+          60
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original",
+      "bpm": 150,
+      "seed": 1,
+      "bar": 6,
+      "latency_ms": 94.56053003668785,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 0,
+      "nonempty": false,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.0,
+      "diatonic_count": 0,
+      "tonic_triad_count": 0,
+      "events": []
+    },
+    {
+      "model": "small",
+      "sampler": "original",
+      "bpm": 150,
+      "seed": 1,
+      "bar": 8,
+      "latency_ms": 94.70422193408012,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 0,
+      "nonempty": false,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.0,
+      "diatonic_count": 0,
+      "tonic_triad_count": 0,
+      "events": []
+    },
+    {
+      "model": "small",
+      "sampler": "original",
+      "bpm": 150,
+      "seed": 2,
+      "bar": 2,
+      "latency_ms": 146.58357203006744,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 3,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.6,
+      "diatonic_count": 3,
+      "tonic_triad_count": 0,
+      "events": [
+        [
+          5.2,
+          0.32,
+          74
+        ],
+        [
+          5.6,
+          0.32,
+          77
+        ],
+        [
+          6.0,
+          0.32,
+          81
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original",
+      "bpm": 150,
+      "seed": 2,
+      "bar": 4,
+      "latency_ms": 88.28937634825706,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 0,
+      "nonempty": false,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.0,
+      "diatonic_count": 0,
+      "tonic_triad_count": 0,
+      "events": []
+    },
+    {
+      "model": "small",
+      "sampler": "original",
+      "bpm": 150,
+      "seed": 2,
+      "bar": 6,
+      "latency_ms": 117.31146648526192,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 2,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.5,
+      "diatonic_count": 2,
+      "tonic_triad_count": 2,
+      "events": [
+        [
+          12.0,
+          1.92,
+          84
+        ],
+        [
+          12.4,
+          0.32,
+          76
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original",
+      "bpm": 150,
+      "seed": 2,
+      "bar": 8,
+      "latency_ms": 117.96670034527779,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 1,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.125,
+      "diatonic_count": 1,
+      "tonic_triad_count": 1,
+      "events": [
+        [
+          15.8,
+          0.32,
+          72
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "cached_gpu",
+      "bpm": 100,
+      "seed": 0,
+      "bar": 2,
+      "latency_ms": 114.09099027514458,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 2,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.325,
+      "diatonic_count": 2,
+      "tonic_triad_count": 2,
+      "events": [
+        [
+          8.7,
+          0.48,
+          67
+        ],
+        [
+          9.3,
+          0.48,
+          67
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "cached_gpu",
+      "bpm": 100,
+      "seed": 0,
+      "bar": 4,
+      "latency_ms": 119.91250514984131,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 0,
+      "events": [
+        [
+          12.0,
+          0.48,
+          74
+        ],
+        [
+          12.6,
+          0.48,
+          77
+        ],
+        [
+          13.2,
+          0.48,
+          81
+        ],
+        [
+          13.8,
+          0.48,
+          77
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "cached_gpu",
+      "bpm": 100,
+      "seed": 0,
+      "bar": 6,
+      "latency_ms": 182.250514626503,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 7,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 7,
+      "tonic_triad_count": 6,
+      "events": [
+        [
+          16.8,
+          0.48,
+          69
+        ],
+        [
+          17.4,
+          0.24,
+          72
+        ],
+        [
+          17.7,
+          0.24,
+          72
+        ],
+        [
+          18.0,
+          0.24,
+          72
+        ],
+        [
+          18.3,
+          0.24,
+          72
+        ],
+        [
+          18.6,
+          0.24,
+          72
+        ],
+        [
+          18.9,
+          0.24,
+          72
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "cached_gpu",
+      "bpm": 100,
+      "seed": 0,
+      "bar": 8,
+      "latency_ms": 97.46424853801727,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 3,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 3,
+      "tonic_triad_count": 2,
+      "events": [
+        [
+          21.6,
+          0.96,
+          67
+        ],
+        [
+          22.8,
+          0.48,
+          69
+        ],
+        [
+          23.4,
+          0.48,
+          67
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "cached_gpu",
+      "bpm": 100,
+      "seed": 1,
+      "bar": 2,
+      "latency_ms": 74.39718022942543,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 0,
+      "nonempty": false,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.0,
+      "diatonic_count": 0,
+      "tonic_triad_count": 0,
+      "events": []
+    },
+    {
+      "model": "small",
+      "sampler": "cached_gpu",
+      "bpm": 100,
+      "seed": 1,
+      "bar": 4,
+      "latency_ms": 98.32346066832542,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 3,
+      "tonic_triad_count": 1,
+      "events": [
+        [
+          12.0,
+          0.48,
+          69
+        ],
+        [
+          12.6,
+          0.48,
+          70
+        ],
+        [
+          13.2,
+          0.48,
+          71
+        ],
+        [
+          13.8,
+          0.48,
+          72
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "cached_gpu",
+      "bpm": 100,
+      "seed": 1,
+      "bar": 6,
+      "latency_ms": 77.38833874464035,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 1,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.2,
+      "diatonic_count": 1,
+      "tonic_triad_count": 1,
+      "events": [
+        [
+          18.6,
+          0.48,
+          64
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "cached_gpu",
+      "bpm": 100,
+      "seed": 1,
+      "bar": 8,
+      "latency_ms": 100.7051020860672,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 4,
+      "events": [
+        [
+          21.6,
+          0.48,
+          60
+        ],
+        [
+          22.2,
+          0.48,
+          64
+        ],
+        [
+          22.8,
+          0.48,
+          67
+        ],
+        [
+          23.4,
+          0.48,
+          72
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "cached_gpu",
+      "bpm": 100,
+      "seed": 2,
+      "bar": 2,
+      "latency_ms": 101.10783204436302,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 2,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.4,
+      "diatonic_count": 2,
+      "tonic_triad_count": 0,
+      "events": [
+        [
+          8.4,
+          0.48,
+          69
+        ],
+        [
+          9.0,
+          0.48,
+          71
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "cached_gpu",
+      "bpm": 100,
+      "seed": 2,
+      "bar": 4,
+      "latency_ms": 124.97713416814804,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 5,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 5,
+      "tonic_triad_count": 4,
+      "events": [
+        [
+          12.0,
+          0.24,
+          60
+        ],
+        [
+          12.3,
+          0.24,
+          62
+        ],
+        [
+          12.6,
+          0.48,
+          64
+        ],
+        [
+          13.2,
+          0.48,
+          67
+        ],
+        [
+          13.8,
+          0.48,
+          64
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "cached_gpu",
+      "bpm": 100,
+      "seed": 2,
+      "bar": 6,
+      "latency_ms": 99.32918101549149,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 4,
+      "events": [
+        [
+          16.8,
+          0.48,
+          67
+        ],
+        [
+          17.4,
+          0.48,
+          64
+        ],
+        [
+          18.0,
+          0.48,
+          60
+        ],
+        [
+          18.6,
+          0.48,
+          55
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "cached_gpu",
+      "bpm": 100,
+      "seed": 2,
+      "bar": 8,
+      "latency_ms": 100.43647140264511,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 2,
+      "events": [
+        [
+          21.6,
+          0.48,
+          60
+        ],
+        [
+          22.2,
+          0.48,
+          65
+        ],
+        [
+          22.8,
+          0.48,
+          69
+        ],
+        [
+          23.4,
+          0.48,
+          72
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "cached_gpu",
+      "bpm": 150,
+      "seed": 0,
+      "bar": 2,
+      "latency_ms": 78.27656716108322,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 1,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.75,
+      "diatonic_count": 1,
+      "tonic_triad_count": 0,
+      "events": [
+        [
+          5.2,
+          1.28,
+          74
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "cached_gpu",
+      "bpm": 150,
+      "seed": 0,
+      "bar": 4,
+      "latency_ms": 100.77571868896484,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.85,
+      "diatonic_count": 4,
+      "tonic_triad_count": 0,
+      "events": [
+        [
+          8.0,
+          0.64,
+          74
+        ],
+        [
+          8.4,
+          0.32,
+          77
+        ],
+        [
+          8.8,
+          0.32,
+          81
+        ],
+        [
+          9.2,
+          0.32,
+          77
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "cached_gpu",
+      "bpm": 150,
+      "seed": 0,
+      "bar": 6,
+      "latency_ms": 55.12291193008423,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 2,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 2,
+      "tonic_triad_count": 1,
+      "events": [
+        [
+          11.2,
+          0.64,
+          69
+        ],
+        [
+          12.0,
+          0.64,
+          72
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "cached_gpu",
+      "bpm": 150,
+      "seed": 0,
+      "bar": 8,
+      "latency_ms": 100.04954785108566,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 4,
+      "events": [
+        [
+          14.4,
+          0.32,
+          67
+        ],
+        [
+          14.8,
+          0.32,
+          67
+        ],
+        [
+          15.2,
+          0.32,
+          67
+        ],
+        [
+          15.6,
+          0.32,
+          67
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "cached_gpu",
+      "bpm": 150,
+      "seed": 1,
+      "bar": 2,
+      "latency_ms": 123.56384843587875,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.6,
+      "diatonic_count": 4,
+      "tonic_triad_count": 3,
+      "events": [
+        [
+          5.2,
+          0.16,
+          72
+        ],
+        [
+          5.4,
+          0.16,
+          72
+        ],
+        [
+          5.6,
+          0.32,
+          72
+        ],
+        [
+          6.0,
+          0.32,
+          71
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "cached_gpu",
+      "bpm": 150,
+      "seed": 1,
+      "bar": 4,
+      "latency_ms": 101.33402049541473,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 3,
+      "tonic_triad_count": 1,
+      "events": [
+        [
+          8.0,
+          0.32,
+          69
+        ],
+        [
+          8.4,
+          0.32,
+          70
+        ],
+        [
+          8.8,
+          0.32,
+          71
+        ],
+        [
+          9.2,
+          0.32,
+          72
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "cached_gpu",
+      "bpm": 150,
+      "seed": 1,
+      "bar": 6,
+      "latency_ms": 55.05938455462456,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 0,
+      "nonempty": false,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.0,
+      "diatonic_count": 0,
+      "tonic_triad_count": 0,
+      "events": []
+    },
+    {
+      "model": "small",
+      "sampler": "cached_gpu",
+      "bpm": 150,
+      "seed": 1,
+      "bar": 8,
+      "latency_ms": 100.62490031123161,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 4,
+      "events": [
+        [
+          14.4,
+          0.32,
+          60
+        ],
+        [
+          14.8,
+          0.32,
+          64
+        ],
+        [
+          15.2,
+          0.32,
+          67
+        ],
+        [
+          15.6,
+          0.32,
+          72
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "cached_gpu",
+      "bpm": 150,
+      "seed": 2,
+      "bar": 2,
+      "latency_ms": 101.6003005206585,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 3,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.6,
+      "diatonic_count": 3,
+      "tonic_triad_count": 0,
+      "events": [
+        [
+          5.2,
+          0.32,
+          74
+        ],
+        [
+          5.6,
+          0.32,
+          77
+        ],
+        [
+          6.0,
+          0.32,
+          81
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "cached_gpu",
+      "bpm": 150,
+      "seed": 2,
+      "bar": 4,
+      "latency_ms": 100.61770305037498,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 3,
+      "events": [
+        [
+          8.0,
+          0.32,
+          60
+        ],
+        [
+          8.4,
+          0.32,
+          64
+        ],
+        [
+          8.8,
+          0.32,
+          67
+        ],
+        [
+          9.2,
+          0.32,
+          71
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "cached_gpu",
+      "bpm": 150,
+      "seed": 2,
+      "bar": 6,
+      "latency_ms": 77.86858081817627,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 3,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 3,
+      "tonic_triad_count": 2,
+      "events": [
+        [
+          11.2,
+          0.32,
+          67
+        ],
+        [
+          11.6,
+          0.32,
+          65
+        ],
+        [
+          12.0,
+          0.64,
+          64
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "cached_gpu",
+      "bpm": 150,
+      "seed": 2,
+      "bar": 8,
+      "latency_ms": 96.90074995160103,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 2,
+      "events": [
+        [
+          14.4,
+          0.32,
+          60
+        ],
+        [
+          14.8,
+          0.32,
+          62
+        ],
+        [
+          15.2,
+          0.32,
+          64
+        ],
+        [
+          15.6,
+          0.32,
+          65
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "original",
+      "bpm": 100,
+      "seed": 0,
+      "bar": 2,
+      "latency_ms": 212.2107483446598,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 0,
+      "nonempty": false,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.0,
+      "diatonic_count": 0,
+      "tonic_triad_count": 0,
+      "events": []
+    },
+    {
+      "model": "medium",
+      "sampler": "original",
+      "bpm": 100,
+      "seed": 0,
+      "bar": 4,
+      "latency_ms": 268.6550244688988,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 0,
+      "events": [
+        [
+          12.0,
+          0.48,
+          74
+        ],
+        [
+          12.6,
+          0.48,
+          77
+        ],
+        [
+          13.2,
+          0.48,
+          81
+        ],
+        [
+          13.8,
+          0.48,
+          77
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "original",
+      "bpm": 100,
+      "seed": 0,
+      "bar": 6,
+      "latency_ms": 433.79896506667137,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 7,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 7,
+      "tonic_triad_count": 6,
+      "events": [
+        [
+          16.8,
+          0.48,
+          69
+        ],
+        [
+          17.4,
+          0.24,
+          72
+        ],
+        [
+          17.7,
+          0.24,
+          72
+        ],
+        [
+          18.0,
+          0.24,
+          72
+        ],
+        [
+          18.3,
+          0.24,
+          72
+        ],
+        [
+          18.6,
+          0.24,
+          72
+        ],
+        [
+          18.9,
+          0.24,
+          72
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "original",
+      "bpm": 100,
+      "seed": 0,
+      "bar": 8,
+      "latency_ms": 261.0871121287346,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 3,
+      "events": [
+        [
+          21.6,
+          0.48,
+          67
+        ],
+        [
+          22.2,
+          0.48,
+          72
+        ],
+        [
+          22.8,
+          0.48,
+          76
+        ],
+        [
+          23.4,
+          0.48,
+          74
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "original",
+      "bpm": 100,
+      "seed": 1,
+      "bar": 2,
+      "latency_ms": 216.33881330490112,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 0,
+      "nonempty": false,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.0,
+      "diatonic_count": 0,
+      "tonic_triad_count": 0,
+      "events": []
+    },
+    {
+      "model": "medium",
+      "sampler": "original",
+      "bpm": 100,
+      "seed": 1,
+      "bar": 4,
+      "latency_ms": 265.9089267253876,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 1,
+      "events": [
+        [
+          12.0,
+          0.48,
+          69
+        ],
+        [
+          12.6,
+          0.48,
+          74
+        ],
+        [
+          13.2,
+          0.48,
+          74
+        ],
+        [
+          13.8,
+          0.48,
+          72
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "original",
+      "bpm": 100,
+      "seed": 1,
+      "bar": 6,
+      "latency_ms": 213.1154052913189,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 0,
+      "nonempty": false,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.0,
+      "diatonic_count": 0,
+      "tonic_triad_count": 0,
+      "events": []
+    },
+    {
+      "model": "medium",
+      "sampler": "original",
+      "bpm": 100,
+      "seed": 1,
+      "bar": 8,
+      "latency_ms": 264.08252865076065,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 0,
+      "events": [
+        [
+          21.6,
+          0.48,
+          69
+        ],
+        [
+          22.2,
+          0.48,
+          74
+        ],
+        [
+          22.8,
+          0.48,
+          77
+        ],
+        [
+          23.4,
+          0.48,
+          74
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "original",
+      "bpm": 100,
+      "seed": 2,
+      "bar": 2,
+      "latency_ms": 267.9167054593563,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 2,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.45,
+      "diatonic_count": 2,
+      "tonic_triad_count": 0,
+      "events": [
+        [
+          8.4,
+          0.48,
+          69
+        ],
+        [
+          9.0,
+          1.44,
+          69
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "original",
+      "bpm": 100,
+      "seed": 2,
+      "bar": 4,
+      "latency_ms": 215.1181772351265,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 0,
+      "nonempty": false,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.0,
+      "diatonic_count": 0,
+      "tonic_triad_count": 0,
+      "events": []
+    },
+    {
+      "model": "medium",
+      "sampler": "original",
+      "bpm": 100,
+      "seed": 2,
+      "bar": 6,
+      "latency_ms": 266.0631723701954,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 4,
+      "events": [
+        [
+          16.8,
+          0.48,
+          67
+        ],
+        [
+          17.4,
+          0.48,
+          72
+        ],
+        [
+          18.0,
+          0.48,
+          76
+        ],
+        [
+          18.6,
+          0.48,
+          79
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "original",
+      "bpm": 100,
+      "seed": 2,
+      "bar": 8,
+      "latency_ms": 261.8536576628685,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 3,
+      "tonic_triad_count": 0,
+      "events": [
+        [
+          21.6,
+          0.48,
+          70
+        ],
+        [
+          22.2,
+          0.48,
+          74
+        ],
+        [
+          22.8,
+          0.48,
+          77
+        ],
+        [
+          23.4,
+          0.48,
+          74
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "original",
+      "bpm": 150,
+      "seed": 0,
+      "bar": 2,
+      "latency_ms": 272.9128710925579,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 3,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.6,
+      "diatonic_count": 3,
+      "tonic_triad_count": 1,
+      "events": [
+        [
+          5.2,
+          0.32,
+          74
+        ],
+        [
+          5.6,
+          0.32,
+          76
+        ],
+        [
+          6.0,
+          0.32,
+          77
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "original",
+      "bpm": 150,
+      "seed": 0,
+      "bar": 4,
+      "latency_ms": 266.8642997741699,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 0,
+      "events": [
+        [
+          8.0,
+          0.32,
+          74
+        ],
+        [
+          8.4,
+          0.32,
+          77
+        ],
+        [
+          8.8,
+          0.32,
+          81
+        ],
+        [
+          9.2,
+          0.32,
+          77
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "original",
+      "bpm": 150,
+      "seed": 0,
+      "bar": 6,
+      "latency_ms": 158.70702266693115,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 0,
+      "nonempty": false,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.0,
+      "diatonic_count": 0,
+      "tonic_triad_count": 0,
+      "events": []
+    },
+    {
+      "model": "medium",
+      "sampler": "original",
+      "bpm": 150,
+      "seed": 0,
+      "bar": 8,
+      "latency_ms": 275.93769133090973,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 4,
+      "events": [
+        [
+          14.4,
+          0.32,
+          67
+        ],
+        [
+          14.8,
+          0.32,
+          67
+        ],
+        [
+          15.2,
+          0.32,
+          67
+        ],
+        [
+          15.6,
+          0.32,
+          67
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "original",
+      "bpm": 150,
+      "seed": 1,
+      "bar": 2,
+      "latency_ms": 275.79474076628685,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 3,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.4,
+      "diatonic_count": 3,
+      "tonic_triad_count": 1,
+      "events": [
+        [
+          5.6,
+          0.16,
+          69
+        ],
+        [
+          5.8,
+          0.16,
+          67
+        ],
+        [
+          6.0,
+          0.32,
+          65
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "original",
+      "bpm": 150,
+      "seed": 1,
+      "bar": 4,
+      "latency_ms": 284.7367860376835,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 1,
+      "events": [
+        [
+          8.0,
+          0.32,
+          69
+        ],
+        [
+          8.4,
+          0.32,
+          74
+        ],
+        [
+          8.8,
+          0.32,
+          74
+        ],
+        [
+          9.2,
+          0.32,
+          72
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "original",
+      "bpm": 150,
+      "seed": 1,
+      "bar": 6,
+      "latency_ms": 162.6642346382141,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 0,
+      "nonempty": false,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.0,
+      "diatonic_count": 0,
+      "tonic_triad_count": 0,
+      "events": []
+    },
+    {
+      "model": "medium",
+      "sampler": "original",
+      "bpm": 150,
+      "seed": 1,
+      "bar": 8,
+      "latency_ms": 271.52515575289726,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 0,
+      "events": [
+        [
+          14.4,
+          0.32,
+          69
+        ],
+        [
+          14.8,
+          0.32,
+          74
+        ],
+        [
+          15.2,
+          0.32,
+          77
+        ],
+        [
+          15.6,
+          0.32,
+          74
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "original",
+      "bpm": 150,
+      "seed": 2,
+      "bar": 2,
+      "latency_ms": 267.5795890390873,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 3,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.6,
+      "diatonic_count": 3,
+      "tonic_triad_count": 0,
+      "events": [
+        [
+          5.2,
+          0.32,
+          74
+        ],
+        [
+          5.6,
+          0.32,
+          77
+        ],
+        [
+          6.0,
+          0.32,
+          81
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "original",
+      "bpm": 150,
+      "seed": 2,
+      "bar": 4,
+      "latency_ms": 264.6823488175869,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 2,
+      "events": [
+        [
+          8.0,
+          0.32,
+          60
+        ],
+        [
+          8.4,
+          0.32,
+          65
+        ],
+        [
+          8.8,
+          0.32,
+          69
+        ],
+        [
+          9.2,
+          0.32,
+          67
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "original",
+      "bpm": 150,
+      "seed": 2,
+      "bar": 6,
+      "latency_ms": 266.0202942788601,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.85,
+      "diatonic_count": 4,
+      "tonic_triad_count": 4,
+      "events": [
+        [
+          11.2,
+          0.32,
+          67
+        ],
+        [
+          11.6,
+          0.48,
+          67
+        ],
+        [
+          12.2,
+          0.16,
+          67
+        ],
+        [
+          12.4,
+          0.48,
+          72
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "original",
+      "bpm": 150,
+      "seed": 2,
+      "bar": 8,
+      "latency_ms": 271.1721621453762,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 2,
+      "events": [
+        [
+          14.4,
+          0.32,
+          74
+        ],
+        [
+          14.8,
+          0.32,
+          74
+        ],
+        [
+          15.2,
+          0.32,
+          72
+        ],
+        [
+          15.6,
+          0.32,
+          72
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "cached_gpu",
+      "bpm": 100,
+      "seed": 0,
+      "bar": 2,
+      "latency_ms": 149.9795727431774,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 0,
+      "nonempty": false,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.0,
+      "diatonic_count": 0,
+      "tonic_triad_count": 0,
+      "events": []
+    },
+    {
+      "model": "medium",
+      "sampler": "cached_gpu",
+      "bpm": 100,
+      "seed": 0,
+      "bar": 4,
+      "latency_ms": 190.4524341225624,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 0,
+      "events": [
+        [
+          12.0,
+          0.48,
+          74
+        ],
+        [
+          12.6,
+          0.48,
+          77
+        ],
+        [
+          13.2,
+          0.48,
+          81
+        ],
+        [
+          13.8,
+          0.48,
+          77
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "cached_gpu",
+      "bpm": 100,
+      "seed": 0,
+      "bar": 6,
+      "latency_ms": 279.61787953972816,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 6,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 5,
+      "tonic_triad_count": 4,
+      "events": [
+        [
+          16.8,
+          0.48,
+          69
+        ],
+        [
+          17.4,
+          0.24,
+          72
+        ],
+        [
+          17.7,
+          0.24,
+          72
+        ],
+        [
+          18.0,
+          0.24,
+          72
+        ],
+        [
+          18.3,
+          0.24,
+          72
+        ],
+        [
+          18.6,
+          0.48,
+          70
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "cached_gpu",
+      "bpm": 100,
+      "seed": 0,
+      "bar": 8,
+      "latency_ms": 193.46966966986656,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 3,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 3,
+      "tonic_triad_count": 2,
+      "events": [
+        [
+          21.6,
+          0.96,
+          67
+        ],
+        [
+          22.8,
+          0.48,
+          69
+        ],
+        [
+          23.4,
+          0.48,
+          67
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "cached_gpu",
+      "bpm": 100,
+      "seed": 1,
+      "bar": 2,
+      "latency_ms": 146.60946279764175,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 0,
+      "nonempty": false,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.0,
+      "diatonic_count": 0,
+      "tonic_triad_count": 0,
+      "events": []
+    },
+    {
+      "model": "medium",
+      "sampler": "cached_gpu",
+      "bpm": 100,
+      "seed": 1,
+      "bar": 4,
+      "latency_ms": 191.87675416469574,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 1,
+      "events": [
+        [
+          12.0,
+          0.48,
+          69
+        ],
+        [
+          12.6,
+          0.48,
+          74
+        ],
+        [
+          13.2,
+          0.48,
+          74
+        ],
+        [
+          13.8,
+          0.48,
+          72
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "cached_gpu",
+      "bpm": 100,
+      "seed": 1,
+      "bar": 6,
+      "latency_ms": 146.90211415290833,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 1,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.2,
+      "diatonic_count": 1,
+      "tonic_triad_count": 1,
+      "events": [
+        [
+          18.6,
+          0.48,
+          64
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "cached_gpu",
+      "bpm": 100,
+      "seed": 1,
+      "bar": 8,
+      "latency_ms": 193.66544112563133,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 2,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.55,
+      "diatonic_count": 2,
+      "tonic_triad_count": 1,
+      "events": [
+        [
+          22.2,
+          0.72,
+          72
+        ],
+        [
+          23.4,
+          1.44,
+          77
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "cached_gpu",
+      "bpm": 100,
+      "seed": 2,
+      "bar": 2,
+      "latency_ms": 190.5253753066063,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 2,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.45,
+      "diatonic_count": 2,
+      "tonic_triad_count": 0,
+      "events": [
+        [
+          8.4,
+          0.48,
+          69
+        ],
+        [
+          9.0,
+          1.44,
+          69
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "cached_gpu",
+      "bpm": 100,
+      "seed": 2,
+      "bar": 4,
+      "latency_ms": 150.75475722551346,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 0,
+      "nonempty": false,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.0,
+      "diatonic_count": 0,
+      "tonic_triad_count": 0,
+      "events": []
+    },
+    {
+      "model": "medium",
+      "sampler": "cached_gpu",
+      "bpm": 100,
+      "seed": 2,
+      "bar": 6,
+      "latency_ms": 191.2139095366001,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 4,
+      "events": [
+        [
+          16.8,
+          0.48,
+          67
+        ],
+        [
+          17.4,
+          0.48,
+          72
+        ],
+        [
+          18.0,
+          0.48,
+          76
+        ],
+        [
+          18.6,
+          0.48,
+          79
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "cached_gpu",
+      "bpm": 100,
+      "seed": 2,
+      "bar": 8,
+      "latency_ms": 190.82902371883392,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 4,
+      "events": [
+        [
+          21.6,
+          0.48,
+          60
+        ],
+        [
+          22.2,
+          0.48,
+          64
+        ],
+        [
+          22.8,
+          0.48,
+          67
+        ],
+        [
+          23.4,
+          0.48,
+          72
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "cached_gpu",
+      "bpm": 150,
+      "seed": 0,
+      "bar": 2,
+      "latency_ms": 190.71506336331367,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 3,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.6,
+      "diatonic_count": 3,
+      "tonic_triad_count": 1,
+      "events": [
+        [
+          5.2,
+          0.32,
+          74
+        ],
+        [
+          5.6,
+          0.32,
+          76
+        ],
+        [
+          6.0,
+          0.32,
+          77
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "cached_gpu",
+      "bpm": 150,
+      "seed": 0,
+      "bar": 4,
+      "latency_ms": 102.09934413433075,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 2,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 2,
+      "tonic_triad_count": 0,
+      "events": [
+        [
+          8.0,
+          0.64,
+          74
+        ],
+        [
+          8.8,
+          0.64,
+          74
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "cached_gpu",
+      "bpm": 150,
+      "seed": 0,
+      "bar": 6,
+      "latency_ms": 104.24616187810898,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 2,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 2,
+      "tonic_triad_count": 1,
+      "events": [
+        [
+          11.2,
+          0.64,
+          69
+        ],
+        [
+          12.0,
+          0.64,
+          72
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "cached_gpu",
+      "bpm": 150,
+      "seed": 0,
+      "bar": 8,
+      "latency_ms": 194.14294138550758,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 3,
+      "events": [
+        [
+          14.4,
+          0.32,
+          64
+        ],
+        [
+          14.8,
+          0.32,
+          67
+        ],
+        [
+          15.2,
+          0.32,
+          72
+        ],
+        [
+          15.6,
+          0.32,
+          74
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "cached_gpu",
+      "bpm": 150,
+      "seed": 1,
+      "bar": 2,
+      "latency_ms": 186.17260456085205,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 3,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.4,
+      "diatonic_count": 3,
+      "tonic_triad_count": 1,
+      "events": [
+        [
+          5.6,
+          0.16,
+          69
+        ],
+        [
+          5.8,
+          0.16,
+          67
+        ],
+        [
+          6.0,
+          0.32,
+          65
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "cached_gpu",
+      "bpm": 150,
+      "seed": 1,
+      "bar": 4,
+      "latency_ms": 183.86723846197128,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 1,
+      "events": [
+        [
+          8.0,
+          0.32,
+          69
+        ],
+        [
+          8.4,
+          0.32,
+          71
+        ],
+        [
+          8.8,
+          0.32,
+          72
+        ],
+        [
+          9.2,
+          0.32,
+          71
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "cached_gpu",
+      "bpm": 150,
+      "seed": 1,
+      "bar": 6,
+      "latency_ms": 101.43767297267914,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 0,
+      "nonempty": false,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.0,
+      "diatonic_count": 0,
+      "tonic_triad_count": 0,
+      "events": []
+    },
+    {
+      "model": "medium",
+      "sampler": "cached_gpu",
+      "bpm": 150,
+      "seed": 1,
+      "bar": 8,
+      "latency_ms": 195.7658976316452,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 4,
+      "events": [
+        [
+          14.4,
+          0.32,
+          60
+        ],
+        [
+          14.8,
+          0.32,
+          64
+        ],
+        [
+          15.2,
+          0.32,
+          67
+        ],
+        [
+          15.6,
+          0.32,
+          72
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "cached_gpu",
+      "bpm": 150,
+      "seed": 2,
+      "bar": 2,
+      "latency_ms": 180.49700558185577,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 3,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.6,
+      "diatonic_count": 3,
+      "tonic_triad_count": 0,
+      "events": [
+        [
+          5.2,
+          0.32,
+          74
+        ],
+        [
+          5.6,
+          0.32,
+          77
+        ],
+        [
+          6.0,
+          0.32,
+          81
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "cached_gpu",
+      "bpm": 150,
+      "seed": 2,
+      "bar": 4,
+      "latency_ms": 98.18416088819504,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 1,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 1.0,
+      "diatonic_count": 1,
+      "tonic_triad_count": 1,
+      "events": [
+        [
+          8.0,
+          2.56,
+          72
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "cached_gpu",
+      "bpm": 150,
+      "seed": 2,
+      "bar": 6,
+      "latency_ms": 185.7200562953949,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.85,
+      "diatonic_count": 4,
+      "tonic_triad_count": 4,
+      "events": [
+        [
+          11.2,
+          0.32,
+          67
+        ],
+        [
+          11.6,
+          0.48,
+          67
+        ],
+        [
+          12.2,
+          0.16,
+          67
+        ],
+        [
+          12.4,
+          0.64,
+          72
+        ]
+      ]
+    },
+    {
+      "model": "medium",
+      "sampler": "cached_gpu",
+      "bpm": 150,
+      "seed": 2,
+      "bar": 8,
+      "latency_ms": 187.60832026600838,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 2,
+      "events": [
+        [
+          14.4,
+          0.32,
+          60
+        ],
+        [
+          14.8,
+          0.32,
+          62
+        ],
+        [
+          15.2,
+          0.32,
+          64
+        ],
+        [
+          15.6,
+          0.32,
+          65
+        ]
+      ]
+    }
+  ],
+  "models": {
+    "small": {
+      "load_s": 3.929758880287409,
+      "parameters": 128103936,
+      "revision": "fa800530aa1126dd6b58b38f3bdb8fcec9c9d4f5"
+    },
+    "medium": {
+      "load_s": 28.32805509865284,
+      "parameters": 359708672,
+      "revision": "93b6eb7e09bad33be6cb2ebd50ce5279cbfde7f6"
+    }
+  },
+  "summaries": [
+    {
+      "model": "small",
+      "sampler": "original",
+      "bpm": 100,
+      "trials": 12,
+      "nonempty": 4,
+      "deadline_met": 12,
+      "budget_met": 12,
+      "median_ms": 119.5137519389391,
+      "max_ms": 347.72009775042534,
+      "mean_notes": 1.0,
+      "mean_occupied_fraction": 0.18819444444444444,
+      "diatonic_fraction": 1.0,
+      "tonic_triad_fraction": 0.4166666666666667
+    },
+    {
+      "model": "small",
+      "sampler": "original",
+      "bpm": 150,
+      "trials": 12,
+      "nonempty": 9,
+      "deadline_met": 12,
+      "budget_met": 12,
+      "median_ms": 116.02914147078991,
+      "max_ms": 182.8334406018257,
+      "mean_notes": 1.4166666666666667,
+      "mean_occupied_fraction": 0.3125,
+      "diatonic_fraction": 1.0,
+      "tonic_triad_fraction": 0.47058823529411764
+    },
+    {
+      "model": "small",
+      "sampler": "cached_gpu",
+      "bpm": 100,
+      "trials": 12,
+      "nonempty": 11,
+      "deadline_met": 12,
+      "budget_met": 12,
+      "median_ms": 100.57078674435616,
+      "max_ms": 182.250514626503,
+      "mean_notes": 3.3333333333333335,
+      "mean_occupied_fraction": 0.6104166666666667,
+      "diatonic_fraction": 0.975,
+      "tonic_triad_fraction": 0.65
+    },
+    {
+      "model": "small",
+      "sampler": "cached_gpu",
+      "bpm": 150,
+      "trials": 12,
+      "nonempty": 11,
+      "deadline_met": 12,
+      "budget_met": 12,
+      "median_ms": 100.33362545073032,
+      "max_ms": 123.56384843587875,
+      "mean_notes": 3.0833333333333335,
+      "mean_occupied_fraction": 0.7000000000000001,
+      "diatonic_fraction": 0.972972972972973,
+      "tonic_triad_fraction": 0.5405405405405406
+    },
+    {
+      "model": "medium",
+      "sampler": "original",
+      "bpm": 100,
+      "trials": 12,
+      "nonempty": 8,
+      "deadline_met": 12,
+      "budget_met": 12,
+      "median_ms": 262.9680931568146,
+      "max_ms": 433.79896506667137,
+      "mean_notes": 2.75,
+      "mean_occupied_fraction": 0.5041666666666667,
+      "diatonic_fraction": 0.9696969696969697,
+      "tonic_triad_fraction": 0.42424242424242425
+    },
+    {
+      "model": "medium",
+      "sampler": "original",
+      "bpm": 150,
+      "trials": 12,
+      "nonempty": 10,
+      "deadline_met": 12,
+      "budget_met": 12,
+      "median_ms": 269.37587559223175,
+      "max_ms": 284.7367860376835,
+      "mean_notes": 3.0833333333333335,
+      "mean_occupied_fraction": 0.6041666666666667,
+      "diatonic_fraction": 1.0,
+      "tonic_triad_fraction": 0.40540540540540543
+    },
+    {
+      "model": "medium",
+      "sampler": "cached_gpu",
+      "bpm": 100,
+      "trials": 12,
+      "nonempty": 9,
+      "deadline_met": 12,
+      "budget_met": 12,
+      "median_ms": 190.6771995127201,
+      "max_ms": 279.61787953972816,
+      "mean_notes": 2.5,
+      "mean_occupied_fraction": 0.5,
+      "diatonic_fraction": 0.9666666666666667,
+      "tonic_triad_fraction": 0.5666666666666667
+    },
+    {
+      "model": "medium",
+      "sampler": "cached_gpu",
+      "bpm": 150,
+      "trials": 12,
+      "nonempty": 11,
+      "deadline_met": 12,
+      "budget_met": 12,
+      "median_ms": 184.7936473786831,
+      "max_ms": 195.7658976316452,
+      "mean_notes": 2.8333333333333335,
+      "mean_occupied_fraction": 0.6875,
+      "diatonic_fraction": 1.0,
+      "tonic_triad_fraction": 0.5294117647058824
+    }
+  ]
+}

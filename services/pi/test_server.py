@@ -13,6 +13,13 @@ class DeviceServerTest(unittest.TestCase):
         self.assertEqual(validate_command(dict(type='bpm', bpm=None)), dict(type='bpm', bpm=None))
         self.assertEqual(validate_command(dict(type='set', field='creativity', value=0.4))['value'], 0.4)
 
+    def test_cloud_and_performer_controls(self):
+        for field, value in [('engine','acestep'),('sound','grand'),('noiseVolume',.2),('droneVolume',0)]:
+            self.assertEqual(validate_command(dict(type='set',field=field,value=value))['value'], value)
+        for field, value in [('sound','arbitrary'),('noiseVolume',1.1),('droneVolume',float('nan'))]:
+            with self.assertRaises(ValueError):
+                validate_command(dict(type='set',field=field,value=value))
+
     def test_commands_survive_poll_retry_until_acknowledged(self):
         state = DeviceState()
         state.enqueue(dict(type='toggle', instrument='keys'))

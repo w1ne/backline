@@ -32,9 +32,10 @@ describe('tileLabel', () => {
   });
 
   describe('once locked', () => {
-    it('bar-accurate engines announce the join, then play', () => {
+    it('requires activity evidence before reporting playback', () => {
       expect(tileLabel(true, true, false, true)).toBe('joins next bar');
-      expect(tileLabel(true, true, false, false)).toBe('playing');
+      expect(tileLabel(true, true, false, false)).toBe('ready');
+      expect(tileLabel(true, true, false, false, true)).toBe('playing');
     });
 
     it('latency engines show the settle state in both directions', () => {
@@ -130,11 +131,11 @@ describe('engine and genre controls while power is off', () => {
     return root;
   }
 
-  it('clicking the Lyria engine switch updates store.state.engine while off', () => {
+  it('clicking the AMT engine switch updates store.state.engine while off', () => {
     const root = setup();
     expect(store.state.power).toBe('off');
-    root.querySelector<HTMLButtonElement>('#engine-lyria')!.click();
-    expect(store.state.engine).toBe('lyria');
+    root.querySelector<HTMLButtonElement>('#engine-amt')!.click();
+    expect(store.state.engine).toBe('amt');
   });
 
   it('clicking a genre chip updates store.state.genre while off', () => {
@@ -144,16 +145,16 @@ describe('engine and genre controls while power is off', () => {
     expect(store.state.genre).toBe('funk');
   });
 
-  it('flags ACE/Lyria as offline in the switch but keeps them clickable', () => {
+  it('flags ACE/AMT as offline in the switch but keeps them clickable', () => {
     const root = setup();
-    store.update({ offlineEngines: ['acestep', 'lyria'] });
+    store.update({ offlineEngines: ['acestep', 'amt'] });
     renderLive(root, store, actions);
 
     const ace = root.querySelector<HTMLButtonElement>('#engine-acestep')!;
-    const lyria = root.querySelector<HTMLButtonElement>('#engine-lyria')!;
+    const amt = root.querySelector<HTMLButtonElement>('#engine-amt')!;
     const patterns = root.querySelector<HTMLButtonElement>('#engine-patterns')!;
     expect(ace.title).toBe('OFFLINE');
-    expect(lyria.title).toBe('OFFLINE');
+    expect(amt.title).toBe('OFFLINE');
     expect(patterns.title).toBe('');
     expect(ace.querySelector('.engine-led')!.classList.contains('offline')).toBe(true);
 
@@ -232,4 +233,53 @@ describe('the listening line', () => {
     expect(root.querySelector('#lcd')!.textContent).toContain('MIDI ✓ Minilab3 MIDI');
   });
 
+});
+
+
+describe('instrument controls and model feedback', () => {
+  it('offers an explicit audio start button and forwards sound layers', () => {
+    const store = new Store();
+    store.update({ power: 'on', audioSuspended: true });
+    const root = document.createElement('div');
+    const calls: unknown[] = [];
+    renderLive(root, store, { wake: () => calls.push('wake'), toggle: () => {}, setGenre: () => {}, setEngine: () => {}, setCreativity: () => {}, setNoiseVolume: v => calls.push(v), setDroneVolume: v => calls.push(v) });
+    root.querySelector<HTMLButtonElement>('#enable-audio')!.click();
+    for (const id of ['noise-volume', 'drone-volume']) {
+      const input = root.querySelector<HTMLInputElement>('#' + id)!;
+      input.value = '0.3';
+      input.dispatchEvent(new Event('input'));
+    }
+    expect(calls).toEqual(['wake', 0.3, 0.3]);
+  });
+
+  it('shows model status and latency without inventing activity', () => {
+    const store = new Store();
+    store.update({ power: 'on', locked: true, accompanimentStatus: 'Waiting for a model phrase', modelLatencyMs: 1234, activeParts: {} });
+    const root = document.createElement('div');
+    const actions = { wake: () => {}, toggle: () => {}, setGenre: () => {}, setEngine: () => {}, setCreativity: () => {} };
+    renderLive(root, store, actions);
+    store.update({ bar: 2 });
+    renderLive(root, store, actions);
+    expect(root.querySelector('#band-status')!.textContent).toContain('Waiting for a model phrase');
+    expect(root.querySelector('#model-latency')!.textContent).toContain('1.2 s');
+    expect(root.querySelector('[data-inst="drums"] .st-text')!.textContent).toBe('ready');
+    expect(root.querySelector('[data-inst="drums"] .meter')).toBeNull();
+  });
+});
+
+
+it('does not show an unavailable selected model as connected', () => {
+  const store = new Store();
+  store.update({ power: 'on', engine: 'amt', offlineEngines: ['amt'], engineConnecting: false });
+  const root = document.createElement('div');
+  renderLive(root, store, { wake: () => {}, toggle: () => {}, setGenre: () => {}, setEngine: () => {}, setCreativity: () => {} });
+  expect(root.querySelector('[data-engine-led="amt"]')!.classList.contains('online')).toBe(false);
+});
+
+
+it('only offers RunPod models and offline Patterns', () => {
+  const root = document.createElement('div');
+  renderLive(root, new Store(), { wake: () => {}, toggle: () => {}, setGenre: () => {}, setEngine: () => {}, setCreativity: () => {} });
+  expect(root.querySelector('#engine-lyria')).toBeNull();
+  expect(Array.from(root.querySelectorAll('[data-engine]')).map(button => button.getAttribute('data-engine')).sort()).toEqual(['acestep', 'amt', 'patterns']);
 });

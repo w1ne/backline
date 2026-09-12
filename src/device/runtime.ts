@@ -37,6 +37,9 @@ export function startDeviceRuntime(store: Store, actions: () => LiveActions,
         else if (c.type === 'mic') a.setMicMuted?.(c.muted === true);
         else if (c.type === 'bpm') a.setBpmOverride?.(c.bpm ?? undefined);
         else if (c.type === 'set') {
+          if (c.field === 'sound') a.setSound?.(c.value as string);
+          if (c.field === 'noiseVolume') a.setNoiseVolume?.(c.value as number);
+          if (c.field === 'droneVolume') a.setDroneVolume?.(c.value as number);
           if (c.field === 'genre') a.setGenre(c.value as Parameters<LiveActions['setGenre']>[0]);
           if (c.field === 'engine') a.setEngine(c.value as Parameters<LiveActions['setEngine']>[0]);
           if (c.field === 'creativity') a.setCreativity(c.value as number);
@@ -48,7 +51,7 @@ export function startDeviceRuntime(store: Store, actions: () => LiveActions,
       await fetch('/api/status', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         signal: AbortSignal.timeout(2000),
-        body: JSON.stringify({ noiseVolume: s.noiseVolume, droneVolume: s.droneVolume, sound: s.sound, soundLabel: soundDef(s.sound).label, power: s.power, engine: s.engine, genre: s.genre,
+        body: JSON.stringify({ accompanimentStatus: s.accompanimentStatus, modelLatencyMs: s.modelLatencyMs, activeParts: s.activeParts, noiseVolume: s.noiseVolume, droneVolume: s.droneVolume, sound: s.sound, soundLabel: soundDef(s.sound).label, power: s.power, engine: s.engine, genre: s.genre,
           bpm: s.input.bpm, key: s.input.key ? keyName(s.input.key) : null,
           chord: s.input.chord ? chordName(s.input.chord) : null,
           inputLevel: s.input.inputLevel, locked: s.locked, bar: s.bar,

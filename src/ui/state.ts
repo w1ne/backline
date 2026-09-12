@@ -9,6 +9,9 @@ export type EngineChoice = 'lyria' | 'patterns' | 'acestep' | 'amt';
 
 export interface AppState {
   power: 'off' | 'on';
+  accompanimentStatus: string;
+  modelLatencyMs: number | null;
+  activeParts: Partial<Record<Instrument, boolean>>;
   sources: SourceStatus;
   genre: Genre;
   engine: EngineChoice;
@@ -54,16 +57,19 @@ export interface AppState {
 
 const defaults: AppState = {
   power: 'off',
+  accompanimentStatus: 'Listening for your melody',
+  modelLatencyMs: null,
+  activeParts: {},
   sources: { mic: 'off', midi: 'off' },
   genre: 'lofi',
-  engine: 'acestep',
+  engine: 'amt',
   sound: 'grand',
   noiseVolume: 0,
   droneVolume: 0,
   creativity: 0.3,
   intensity: 0.5,
   effectiveIntensity: 0,
-  enabled: { drums: true, bass: false, keys: false, lead: false },
+  enabled: { drums: true, bass: true, keys: true, lead: false },
   input: { bpm: null, key: null, chord: null, notesNow: [], pitch: null, inputLevel: 0, onsets: 0, pendingBpm: null, dynamics: IDLE_DYNAMICS },
   locked: false,
   tempoMode: 'locked',

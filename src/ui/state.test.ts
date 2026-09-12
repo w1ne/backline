@@ -9,9 +9,9 @@ describe('Store', () => {
     expect((s.state as unknown as { screen?: unknown }).screen).toBeUndefined();
   });
 
-  it('defaults the engine to acestep', () => {
+  it('defaults to note-following cloud accompaniment', () => {
     const s = new Store();
-    expect(s.state.engine).toBe('acestep');
+    expect(s.state.engine).toBe('amt');
   });
 
   it('notifies subscribers with merged state', () => {
@@ -39,6 +39,7 @@ describe('Store', () => {
     // different instrument would "resurrect" the muted one in the UI while the
     // engine (correctly, per its own last setEnabled call) kept it muted.
     const store = new Store();
+    store.update({ enabled: { drums:true, bass:false, keys:false, lead:false } });
     const engineEnabled: Record<string, boolean> = { drums: true, bass: false, keys: false, lead: false };
     const setEnabledCalls: { i: string; on: boolean }[] = [];
     const fakeEngine = {

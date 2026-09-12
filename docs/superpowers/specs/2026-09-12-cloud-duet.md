@@ -2,7 +2,7 @@
 
 The performer supplies the melody; accompaniment supports the harmony and leaves space, answering in gaps. The user clarified that all model inference runs on RunPod. The Pi captures MIDI/audio and plays locally synthesized notes or streamed model audio. The public browser uses the same cloud service. Preserve Arturia controls and sampled keyboard sounds.
 
-Choose the default using measured RunPod inference latency, nonempty response coverage and musical constraints. Compare small and medium AMT with identical melodies; evaluate MRT2 runtime feasibility before promising it. ACE and Lyria remain optional texture engines, distinguished from note-following accompaniment. No automatic claim that larger means musically better.
+Choose the default using measured RunPod inference latency, nonempty response coverage and musical constraints. Compare small and medium AMT with identical melodies; evaluate MRT2 runtime feasibility before promising it. ACE remains an optional RunPod texture engine; Lyria is not offered because it requires Google inference, distinguished from note-following accompaniment. No automatic claim that larger means musically better.
 
 The UI foregrounds Your instrument and Your band, connection and actual accompaniment status, style and amount, tempo/key. Advanced controls contain model and routing information. Pi remote controller matches the visual language and exposes instrument, noise and drone controls. It must identify that playback is on the pedal.
 

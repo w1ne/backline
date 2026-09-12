@@ -72,6 +72,25 @@ function skeleton(): string {
         </div>
         <span class="lcd" id="lcd"></span>
       </div>
+      <section class="instrument-section" aria-labelledby="instrument-heading">
+        <div class="section-heading"><div><h2 id="instrument-heading">Your instrument</h2><p>Play a melody. Make room for the band.</p></div><button type="button" id="enable-audio" class="audio-start">Enable sound</button></div>
+        <p class="connection-line" id="input-status"></p>
+        <div class="instrument-controls">          <div class="field">
+            <label for="sound">Keyboard sound</label>
+            <select id="sound">
+              ${SOUND_GROUPS.map(
+                g =>
+                  `<optgroup label="${g}">${SOUNDS.filter(s => s.group === g)
+                    .map(s => `<option value="${s.id}">${s.label}</option>`)
+                    .join('')}</optgroup>`,
+              ).join('')}
+            </select>
+          </div>
+          <div class="field"><label for="noise-volume">White noise <output id="noise-value"></output></label><input id="noise-volume" type="range" min="0" max="1" step="0.01" /></div>
+          <div class="field"><label for="drone-volume">Drone <output id="drone-value"></output></label><input id="drone-volume" type="range" min="0" max="1" step="0.01" /></div>
+        </div>
+      </section>
+      <div class="section-heading band-heading"><div><h2>Your band</h2><p id="band-status" role="status"></p></div><span id="model-latency"></span></div>
       <div class="readout">
         <div class="ro-tempo"><small>Tempo</small><strong id="ro-tempo">&mdash;</strong></div>
         <div class="ro-side">
@@ -92,7 +111,7 @@ function skeleton(): string {
               <button type="button" class="pad-btn ${i}" data-inst="${i}">
                 <span class="dot"></span>
                 <span class="name">${displayLabel(i)}</span>
-                <span class="st"><span class="st-text"></span><span class="meter"><i style="width:0"></i></span></span>
+                <span class="st"><span class="st-text"></span></span>
               </button>
             </div>`,
         ).join('')}
@@ -108,7 +127,7 @@ function skeleton(): string {
           <input class="vh" type="range" id="creativity" min="0" max="1" step="0.05" aria-hidden="true" tabindex="-1" />
         </div>
         <div class="zone zone--pink knob-zone">
-          <span class="zone-label">Intensity</span>
+          <span class="zone-label">Band amount</span>
           <div class="knob" id="intensity-knob" role="slider" tabindex="0"
                aria-label="Intensity" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0.5">
             <span class="ptr"></span>
@@ -117,7 +136,7 @@ function skeleton(): string {
           <input class="vh" type="range" id="intensity" min="0" max="1" step="0.05" aria-hidden="true" tabindex="-1" />
         </div>
         <div class="zone zone--blue">
-          <span class="zone-label">Genre</span>
+          <span class="zone-label">Style</span>
           <div class="chips" id="genre-chips">
             ${GENRES.map(g => `<button type="button" class="chip" data-genre="${g}">${g}</button>`).join('')}
           </div>
@@ -125,37 +144,8 @@ function skeleton(): string {
             ${GENRES.map(g => `<option value="${g}">${cap(g)}</option>`).join('')}
           </select>
         </div>
-        <div class="zone zone--orange engine">
-          <span class="zone-label">Engine</span>
-          <div class="engine-keys" id="engine-choice">
-            <button type="button" class="engine-key" id="engine-patterns" data-engine="patterns">
-              <span class="engine-key-text">
-                <span class="engine-key-name">Patterns</span>
-              </span>
-              <span class="engine-led" data-engine-led="patterns"></span>
-            </button>
-            <button type="button" class="engine-key" id="engine-lyria" data-engine="lyria">
-              <span class="engine-key-text">
-                <span class="engine-key-name">Lyria</span>
-              </span>
-              <span class="engine-led" data-engine-led="lyria"></span>
-            </button>
-            <button type="button" class="engine-key" id="engine-acestep" data-engine="acestep">
-              <span class="engine-key-text">
-                <span class="engine-key-name">Ace</span>
-              </span>
-              <span class="engine-led" data-engine-led="acestep"></span>
-            </button>
-            <button type="button" class="engine-key" id="engine-amt" data-engine="amt">
-              <span class="engine-key-text">
-                <span class="engine-key-name">AMT</span>
-              </span>
-              <span class="engine-led" data-engine-led="amt"></span>
-            </button>
-          </div>
-        </div>
         <div class="zone zone--yellow manual">
-          <span class="zone-label">Manual</span>
+          <span class="zone-label">Tempo &amp; key</span>
           <div class="field">
             <label for="bpm">Bpm</label>
             <input type="number" id="bpm" min="40" max="240" placeholder="auto" />
@@ -170,19 +160,33 @@ function skeleton(): string {
               ).join('')}
             </select>
           </div>
-          <div class="field">
-            <label for="sound">Midi sound</label>
-            <select id="sound">
-              ${SOUND_GROUPS.map(
-                g =>
-                  `<optgroup label="${g}">${SOUNDS.filter(s => s.group === g)
-                    .map(s => `<option value="${s.id}">${s.label}</option>`)
-                    .join('')}</optgroup>`,
-              ).join('')}
-            </select>
-          </div>
+
         </div>
       </div>
+      <details class="model-details"><summary>Models &amp; connection</summary><p>AMT turns your MIDI melody into a band phrase. ACE-Step generates backing textures; Patterns works without a cloud connection.</p>        <div class="zone zone--orange engine">
+          <span class="zone-label">Accompaniment model</span>
+          <div class="engine-keys" id="engine-choice">
+            <button type="button" class="engine-key" id="engine-patterns" data-engine="patterns">
+              <span class="engine-key-text">
+                <span class="engine-key-name">Patterns</span><small>Offline · instant band</small>
+              </span>
+              <span class="engine-led" data-engine-led="patterns"></span>
+            </button>
+            <button type="button" class="engine-key" id="engine-acestep" data-engine="acestep">
+              <span class="engine-key-text">
+                <span class="engine-key-name">ACE-Step</span><small>Cloud · backing texture</small>
+              </span>
+              <span class="engine-led" data-engine-led="acestep"></span>
+            </button>
+            <button type="button" class="engine-key" id="engine-amt" data-engine="amt">
+              <span class="engine-key-text">
+                <span class="engine-key-name">AMT</span><small>Cloud · follows your notes</small>
+              </span>
+              <span class="engine-led" data-engine-led="amt"></span>
+            </button>
+          </div>
+        </div>
+<p id="engine-status" role="status"></p></details>
     </div>
   `;
 }
@@ -192,6 +196,11 @@ function wireControls(screen: HTMLElement, store: Store): void {
   // "1" means a re-render re-wired it and every click fires N handlers.
   if (DEBUG) screen.dataset.wired = String(Number(screen.dataset.wired ?? 0) + 1);
   const actions = (): LiveActions => actionsRef.get(screen)!;
+  screen.querySelector<HTMLButtonElement>('#enable-audio')!.addEventListener('click', () => actions().wake());
+  for (const [id, action] of [['noise-volume', 'setNoiseVolume'], ['drone-volume', 'setDroneVolume']] as const) {
+    const input = screen.querySelector<HTMLInputElement>(`#${id}`)!;
+    input.addEventListener('input', () => actions()[action]?.(Number(input.value)));
+  }
   const genreSelect = screen.querySelector<HTMLSelectElement>('#genre')!;
   genreSelect.addEventListener('change', e => {
     actions().setGenre((e.target as HTMLSelectElement).value as Genre);
@@ -310,7 +319,19 @@ function update(screen: HTMLElement, s: AppState, changeLatencyMs: number): void
   updateReadouts(screen, s);
   updateMicMute(screen, s);
   updateTiles(screen, s, changeLatencyMs);
-  updateFooter(screen, s);
+  const audio = screen.querySelector<HTMLButtonElement>('#enable-audio')!;
+  audio.hidden = !s.audioSuspended && s.power === 'on';
+  screen.querySelector<HTMLElement>('#input-status')!.textContent = `${midiLabel(s)} · ${s.audioSuspended ? 'Sound paused by browser' : s.power === 'on' ? 'Audio running' : 'Starting audio…'}`;
+  screen.querySelector<HTMLElement>('#band-status')!.textContent = s.accompanimentStatus || (s.locked ? 'Band ready' : 'Play a steady phrase to find the tempo');
+  screen.querySelector<HTMLElement>('#model-latency')!.textContent = s.modelLatencyMs == null ? '' : `Last model response ${(s.modelLatencyMs / 1000).toFixed(1)} s`;
+  screen.querySelector<HTMLElement>('#engine-status')!.textContent = s.engine === 'patterns' ? 'Patterns · runs on this device, no cloud needed' : s.engineConnecting ? `${ENGINE_NAMES[s.engine]} · connecting…` : s.offlineEngines.includes(s.engine) ? `${ENGINE_NAMES[s.engine]} · unavailable` : `${ENGINE_NAMES[s.engine]} · selected`;
+  for (const [id, value] of [['noise', s.noiseVolume], ['drone', s.droneVolume]] as const) {
+    const input = screen.querySelector<HTMLInputElement>(`#${id}-volume`)!;
+    if (document.activeElement !== input) input.value = String(value);
+    screen.querySelector<HTMLElement>(`#${id}-value`)!.textContent = `${Math.round(value * 100)}%`;
+  }
+  const sound = screen.querySelector<HTMLSelectElement>('#sound')!;
+  if (document.activeElement !== sound) sound.value = s.sound;
 }
 
 function mark(state: SourceState): string {
@@ -362,15 +383,14 @@ function updateEngine(screen: HTMLElement, s: AppState): void {
     const e = btn.dataset.engine as AppState['engine'];
     const selected = e === s.engine;
     btn.classList.toggle('on', selected);
+    btn.setAttribute('aria-pressed', String(selected));
     const offline = s.offlineEngines.includes(e);
     btn.title = offline ? 'OFFLINE' : '';
     const led = btn.querySelector<HTMLElement>('.engine-led')!;
     const live = selected && s.power === 'on';
     const connecting = live && s.engineConnecting;
-    // While this engine is the one actually running, its socket/session state wins over the
-    // boot-time /health probe: connected -> solid green, connecting -> blinking green.
-    const connected = live && !s.engineConnecting;
-    const online = connected || (!offline && !live);
+    // Selection alone is not evidence that a model service is available.
+    const online = !offline && !connecting;
     led.classList.toggle('offline', !online && !connecting);
     led.classList.toggle('online', online);
     led.classList.toggle('connecting', connecting);
@@ -519,11 +539,11 @@ const lastState = new WeakMap<HTMLElement, AppState>();
  * band was still listening, so toggling an instrument looked like it did
  * nothing, and the label contradicted the tile's own lit/unlit state.
  */
-export function tileLabel(on: boolean, locked: boolean, pending: boolean, justJoined: boolean): string {
+export function tileLabel(on: boolean, locked: boolean, pending: boolean, justJoined: boolean, active = false): string {
   if (!on) return locked && pending ? 'leaving…' : 'off';
   if (!locked) return 'ready';
   if (pending) return 'joining…';
-  return justJoined ? 'joins next bar' : 'playing';
+  return active ? 'playing' : justJoined ? 'joins next bar' : 'ready';
 }
 
 function updateTiles(screen: HTMLElement, s: AppState, changeLatencyMs: number): void {
@@ -560,20 +580,17 @@ function updateTiles(screen: HTMLElement, s: AppState, changeLatencyMs: number):
       justJoined = on && since[i] !== undefined && s.bar <= (since[i] as number);
     }
 
-    const text = tileLabel(on, s.locked, pending, justJoined);
+    const text = tileLabel(on, s.locked, pending, justJoined, !!s.activeParts?.[i]);
     btn.querySelector<HTMLElement>('.st-text')!.textContent = text;
     // blinking LED while the engine settles the change
     btn.classList.toggle('pending', text === 'joining…' || text === 'leaving…');
-    const meter = btn.querySelector<HTMLElement>('.meter i')!;
-    meter.style.width = text === 'playing' ? '60%' : '0';
+    btn.setAttribute('aria-pressed', String(on));
+    btn.classList.toggle('active', text === 'playing');
   }
 }
 
 
 
-function updateFooter(_screen: HTMLElement, _s: AppState): void {
-  // nothing to update here currently
-}
 
 function cap(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);

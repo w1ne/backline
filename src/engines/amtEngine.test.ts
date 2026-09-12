@@ -99,6 +99,56 @@ describe('AmtEngine', () => {
     return { players, notes, clock, engine };
   }
 
+  it('does not call an empty or stale plan ready', async () => {
+    const { engine } = mk();
+    const ready = vi.fn(); engine.onFirstBlock = ready;
+    engine.setEnabled('keys', true);
+    await engine.start(120, 0);
+    const ws = startedSocket(); ws.open();
+    ws.receiveJson({type:'plan', notes:[]});
+    ws.receiveJson({type:'plan', notes:[{beat:0,pitch:60,dur:1,vel:.5,voice:'keys'}]});
+    expect(ready).not.toHaveBeenCalled();
+    ws.receiveJson({type:'plan', notes:[{beat:4,pitch:60,dur:1,vel:.5,voice:'keys'}]});
+    expect(ready).toHaveBeenCalledTimes(1);
+    engine.stop();
+  });
+
+  it('plays the rhythm section with AMT and keeps lead out of busy phrases', async () => {
+    const { engine, clock, players } = mk();
+    engine.setEnabled('drums', true); engine.setEnabled('lead', true);
+    await engine.start(100, 0);
+    clock.tick(0, 1);
+    expect(players.calls.some(c => c.i === 'drums' && c.events.length)).toBe(true);
+    expect(players.calls.some(c => c.i === 'lead')).toBe(false);
+    engine.set({ dynamics: {intensity:.3,space:true,fillDue:true,silenceBeats:2} });
+    clock.tick(3, 8);
+    expect(players.calls.some(c => c.i === 'lead' && c.events.length)).toBe(true);
+    engine.stop();
+  });
+
+  it('applies band amount to model voices, with zero silent', async () => {
+    const {engine,players} = mk(); engine.setEnabled('keys',true);
+    await engine.start(120,0); startedSocket().open();
+    engine.setAmount(0);
+    startedSocket().receiveJson({type:'plan',notes:[{beat:4,pitch:60,dur:1,vel:.8,voice:'keys'}]});
+    expect(players.calls).toHaveLength(0);
+    engine.setAmount(.5);
+    startedSocket().receiveJson({type:'plan',notes:[{beat:8,pitch:64,dur:1,vel:.8,voice:'keys'}]});
+    expect(players.calls[0].events[0].velocity).toBeCloseTo(.4);
+    engine.stop();
+  });
+
+  it('reports a stalled model socket without mistaking empty replies for failure', async () => {
+    vi.useFakeTimers();
+    const {engine,clock} = mk(); const error=vi.fn();engine.onError=error;
+    await engine.start(120,0);startedSocket().open();clock.tick(1,2);
+    vi.advanceTimersByTime(7000);
+    startedSocket().receiveJson({type:'plan',notes:[]});
+    vi.advanceTimersByTime(2000); expect(error).not.toHaveBeenCalled();
+    clock.tick(2,4);vi.advanceTimersByTime(8100);expect(error).toHaveBeenCalled();
+    engine.stop();vi.useRealTimers();
+  });
+
   it('sends a start message with lookahead/commit/listen beats on open', async () => {
     const { engine } = mk();
     engine.set({ genre: 'jazz', key: { root: 9, mode: 'minor' }, creativity: 0.4 });

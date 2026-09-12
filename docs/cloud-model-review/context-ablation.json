@@ -1,0 +1,886 @@
+{
+  "gpu": "NVIDIA L4",
+  "torch": "2.6.0+cu124",
+  "dtype": "float32",
+  "top_p": 0.85,
+  "rows": [
+    {
+      "model": "small",
+      "sampler": "original_contextfixed",
+      "bpm": 100,
+      "seed": 0,
+      "bar": 2,
+      "latency_ms": 152.33615040779114,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 2,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.325,
+      "diatonic_count": 2,
+      "tonic_triad_count": 2,
+      "events": [
+        [
+          8.7,
+          0.48,
+          67
+        ],
+        [
+          9.3,
+          0.48,
+          67
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original_contextfixed",
+      "bpm": 100,
+      "seed": 0,
+      "bar": 4,
+      "latency_ms": 294.781181961298,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 0,
+      "events": [
+        [
+          12.0,
+          0.48,
+          74
+        ],
+        [
+          12.6,
+          0.48,
+          77
+        ],
+        [
+          13.2,
+          0.48,
+          81
+        ],
+        [
+          13.8,
+          0.48,
+          77
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original_contextfixed",
+      "bpm": 100,
+      "seed": 0,
+      "bar": 6,
+      "latency_ms": 231.0570329427719,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 7,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 7,
+      "tonic_triad_count": 6,
+      "events": [
+        [
+          16.8,
+          0.48,
+          69
+        ],
+        [
+          17.4,
+          0.24,
+          72
+        ],
+        [
+          17.7,
+          0.24,
+          72
+        ],
+        [
+          18.0,
+          0.24,
+          72
+        ],
+        [
+          18.3,
+          0.24,
+          72
+        ],
+        [
+          18.6,
+          0.24,
+          72
+        ],
+        [
+          18.9,
+          0.24,
+          72
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original_contextfixed",
+      "bpm": 100,
+      "seed": 0,
+      "bar": 8,
+      "latency_ms": 148.04713800549507,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 3,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 3,
+      "tonic_triad_count": 2,
+      "events": [
+        [
+          21.6,
+          0.96,
+          67
+        ],
+        [
+          22.8,
+          0.48,
+          69
+        ],
+        [
+          23.4,
+          0.48,
+          67
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original_contextfixed",
+      "bpm": 100,
+      "seed": 1,
+      "bar": 2,
+      "latency_ms": 116.9486902654171,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 0,
+      "nonempty": false,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.0,
+      "diatonic_count": 0,
+      "tonic_triad_count": 0,
+      "events": []
+    },
+    {
+      "model": "small",
+      "sampler": "original_contextfixed",
+      "bpm": 100,
+      "seed": 1,
+      "bar": 4,
+      "latency_ms": 146.70155569911003,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 3,
+      "tonic_triad_count": 1,
+      "events": [
+        [
+          12.0,
+          0.48,
+          69
+        ],
+        [
+          12.6,
+          0.48,
+          70
+        ],
+        [
+          13.2,
+          0.48,
+          71
+        ],
+        [
+          13.8,
+          0.48,
+          72
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original_contextfixed",
+      "bpm": 100,
+      "seed": 1,
+      "bar": 6,
+      "latency_ms": 123.93943965435028,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 1,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.2,
+      "diatonic_count": 1,
+      "tonic_triad_count": 1,
+      "events": [
+        [
+          18.6,
+          0.48,
+          64
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original_contextfixed",
+      "bpm": 100,
+      "seed": 1,
+      "bar": 8,
+      "latency_ms": 148.58513697981834,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 4,
+      "events": [
+        [
+          21.6,
+          0.48,
+          60
+        ],
+        [
+          22.2,
+          0.48,
+          64
+        ],
+        [
+          22.8,
+          0.48,
+          67
+        ],
+        [
+          23.4,
+          0.48,
+          72
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original_contextfixed",
+      "bpm": 100,
+      "seed": 2,
+      "bar": 2,
+      "latency_ms": 146.39616012573242,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 2,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.4,
+      "diatonic_count": 2,
+      "tonic_triad_count": 0,
+      "events": [
+        [
+          8.4,
+          0.48,
+          69
+        ],
+        [
+          9.0,
+          0.48,
+          71
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original_contextfixed",
+      "bpm": 100,
+      "seed": 2,
+      "bar": 4,
+      "latency_ms": 177.45810002088547,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 5,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 5,
+      "tonic_triad_count": 4,
+      "events": [
+        [
+          12.0,
+          0.24,
+          60
+        ],
+        [
+          12.3,
+          0.24,
+          62
+        ],
+        [
+          12.6,
+          0.48,
+          64
+        ],
+        [
+          13.2,
+          0.48,
+          67
+        ],
+        [
+          13.8,
+          0.48,
+          64
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original_contextfixed",
+      "bpm": 100,
+      "seed": 2,
+      "bar": 6,
+      "latency_ms": 146.7556282877922,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 4,
+      "events": [
+        [
+          16.8,
+          0.48,
+          67
+        ],
+        [
+          17.4,
+          0.48,
+          64
+        ],
+        [
+          18.0,
+          0.48,
+          60
+        ],
+        [
+          18.6,
+          0.48,
+          55
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original_contextfixed",
+      "bpm": 100,
+      "seed": 2,
+      "bar": 8,
+      "latency_ms": 149.09550920128822,
+      "budget_ms": 1920.0,
+      "lead_ms": 2400.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 2,
+      "events": [
+        [
+          21.6,
+          0.48,
+          60
+        ],
+        [
+          22.2,
+          0.48,
+          65
+        ],
+        [
+          22.8,
+          0.48,
+          69
+        ],
+        [
+          23.4,
+          0.48,
+          72
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original_contextfixed",
+      "bpm": 150,
+      "seed": 0,
+      "bar": 2,
+      "latency_ms": 118.3251179754734,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 1,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.75,
+      "diatonic_count": 1,
+      "tonic_triad_count": 0,
+      "events": [
+        [
+          5.2,
+          1.28,
+          74
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original_contextfixed",
+      "bpm": 150,
+      "seed": 0,
+      "bar": 4,
+      "latency_ms": 146.73521369695663,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.85,
+      "diatonic_count": 4,
+      "tonic_triad_count": 0,
+      "events": [
+        [
+          8.0,
+          0.64,
+          74
+        ],
+        [
+          8.4,
+          0.32,
+          77
+        ],
+        [
+          8.8,
+          0.32,
+          81
+        ],
+        [
+          9.2,
+          0.32,
+          77
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original_contextfixed",
+      "bpm": 150,
+      "seed": 0,
+      "bar": 6,
+      "latency_ms": 87.90603280067444,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 2,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 2,
+      "tonic_triad_count": 1,
+      "events": [
+        [
+          11.2,
+          0.64,
+          69
+        ],
+        [
+          12.0,
+          0.64,
+          72
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original_contextfixed",
+      "bpm": 150,
+      "seed": 0,
+      "bar": 8,
+      "latency_ms": 147.7762833237648,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 4,
+      "events": [
+        [
+          14.4,
+          0.32,
+          67
+        ],
+        [
+          14.8,
+          0.32,
+          67
+        ],
+        [
+          15.2,
+          0.32,
+          67
+        ],
+        [
+          15.6,
+          0.32,
+          67
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original_contextfixed",
+      "bpm": 150,
+      "seed": 1,
+      "bar": 2,
+      "latency_ms": 177.17430368065834,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.6,
+      "diatonic_count": 4,
+      "tonic_triad_count": 3,
+      "events": [
+        [
+          5.2,
+          0.16,
+          72
+        ],
+        [
+          5.4,
+          0.16,
+          72
+        ],
+        [
+          5.6,
+          0.32,
+          72
+        ],
+        [
+          6.0,
+          0.32,
+          71
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original_contextfixed",
+      "bpm": 150,
+      "seed": 1,
+      "bar": 4,
+      "latency_ms": 146.4737430214882,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 3,
+      "tonic_triad_count": 1,
+      "events": [
+        [
+          8.0,
+          0.32,
+          69
+        ],
+        [
+          8.4,
+          0.32,
+          70
+        ],
+        [
+          8.8,
+          0.32,
+          71
+        ],
+        [
+          9.2,
+          0.32,
+          72
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original_contextfixed",
+      "bpm": 150,
+      "seed": 1,
+      "bar": 6,
+      "latency_ms": 88.6627770960331,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 0,
+      "nonempty": false,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.0,
+      "diatonic_count": 0,
+      "tonic_triad_count": 0,
+      "events": []
+    },
+    {
+      "model": "small",
+      "sampler": "original_contextfixed",
+      "bpm": 150,
+      "seed": 1,
+      "bar": 8,
+      "latency_ms": 146.29191160202026,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 4,
+      "events": [
+        [
+          14.4,
+          0.32,
+          60
+        ],
+        [
+          14.8,
+          0.32,
+          64
+        ],
+        [
+          15.2,
+          0.32,
+          67
+        ],
+        [
+          15.6,
+          0.32,
+          72
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original_contextfixed",
+      "bpm": 150,
+      "seed": 2,
+      "bar": 2,
+      "latency_ms": 146.97540551424026,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 3,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.6,
+      "diatonic_count": 3,
+      "tonic_triad_count": 0,
+      "events": [
+        [
+          5.2,
+          0.32,
+          74
+        ],
+        [
+          5.6,
+          0.32,
+          77
+        ],
+        [
+          6.0,
+          0.32,
+          81
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original_contextfixed",
+      "bpm": 150,
+      "seed": 2,
+      "bar": 4,
+      "latency_ms": 147.72721752524376,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 3,
+      "events": [
+        [
+          8.0,
+          0.32,
+          60
+        ],
+        [
+          8.4,
+          0.32,
+          64
+        ],
+        [
+          8.8,
+          0.32,
+          67
+        ],
+        [
+          9.2,
+          0.32,
+          71
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original_contextfixed",
+      "bpm": 150,
+      "seed": 2,
+      "bar": 6,
+      "latency_ms": 117.34529212117195,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 3,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 3,
+      "tonic_triad_count": 2,
+      "events": [
+        [
+          11.2,
+          0.32,
+          67
+        ],
+        [
+          11.6,
+          0.32,
+          65
+        ],
+        [
+          12.0,
+          0.64,
+          64
+        ]
+      ]
+    },
+    {
+      "model": "small",
+      "sampler": "original_contextfixed",
+      "bpm": 150,
+      "seed": 2,
+      "bar": 8,
+      "latency_ms": 146.41447365283966,
+      "budget_ms": 1280.0000000000002,
+      "lead_ms": 1600.0,
+      "notes": 4,
+      "nonempty": true,
+      "deadline_met": true,
+      "budget_met": true,
+      "occupied_fraction": 0.8,
+      "diatonic_count": 4,
+      "tonic_triad_count": 2,
+      "events": [
+        [
+          14.4,
+          0.32,
+          60
+        ],
+        [
+          14.8,
+          0.32,
+          62
+        ],
+        [
+          15.2,
+          0.32,
+          64
+        ],
+        [
+          15.6,
+          0.32,
+          65
+        ]
+      ]
+    }
+  ],
+  "models": {
+    "small": {
+      "load_s": 4.198932234197855,
+      "parameters": 128103936,
+      "revision": "fa800530aa1126dd6b58b38f3bdb8fcec9c9d4f5"
+    }
+  },
+  "summaries": [
+    {
+      "model": "small",
+      "sampler": "original_contextfixed",
+      "bpm": 100,
+      "trials": 12,
+      "nonempty": 11,
+      "deadline_met": 12,
+      "budget_met": 12,
+      "median_ms": 148.3161374926567,
+      "max_ms": 294.781181961298,
+      "mean_notes": 3.3333333333333335,
+      "mean_occupied_fraction": 0.6104166666666667,
+      "diatonic_fraction": 0.975,
+      "tonic_triad_fraction": 0.65
+    },
+    {
+      "model": "small",
+      "sampler": "original_contextfixed",
+      "bpm": 150,
+      "trials": 12,
+      "nonempty": 11,
+      "deadline_met": 12,
+      "budget_met": 12,
+      "median_ms": 146.44410833716393,
+      "max_ms": 177.17430368065834,
+      "mean_notes": 3.0833333333333335,
+      "mean_occupied_fraction": 0.7000000000000001,
+      "diatonic_fraction": 0.972972972972973,
+      "tonic_triad_fraction": 0.5405405405405406
+    }
+  ]
+}

@@ -1631,3 +1631,73 @@ body {
     height: 80px;
   }
 }
+
+/* Clear performance hierarchy; content stays reachable on small screens. */
+.screen[data-live] { display: flex; max-width: 1100px; gap: 18px; min-height: 0; }
+.section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.section-heading h2 { font-family: var(--display); font-size: 24px; letter-spacing: -.04em; margin: 0; }
+.section-heading p, .model-details p { margin: 6px 0 0; font-size: 12px; line-height: 1.6; }
+.instrument-section { padding: 18px; border: 3px solid var(--ink); border-radius: 14px; background: #f7f3e9; }
+.audio-start { min-height: 48px; padding: 12px 20px; background: var(--yellow); color: var(--ink); border: 3px solid var(--ink); border-radius: 9px; box-shadow: 3px 3px var(--ink); font: 700 14px var(--mono); cursor: pointer; }
+.audio-start[hidden] { display: none; }
+.connection-line { font-size: 12px; line-height: 1.6; margin: 12px 0; overflow-wrap: anywhere; }
+.instrument-controls { display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 20px; align-items: end; }
+.instrument-controls .field { flex-direction: column; align-items: stretch; gap: 8px; }
+.instrument-controls select { width: 100%; min-width: 0; border: 2px solid var(--ink); border-radius: 8px; background: var(--panel); padding: 10px; font: 14px var(--mono); }
+.instrument-controls input[type=range] { accent-color: var(--ink); width: 100%; min-height: 36px; margin: 0; }
+.instrument-controls output { float: right; }
+.band-heading { padding: 0 4px; }
+#model-latency { font-size: 11px; line-height: 1.5; }
+.screen[data-live] .readout { flex: none; }
+.screen[data-live] .row2 { grid-auto-flow: row; grid-template-columns: .85fr .85fr 1.2fr 1.2fr; }
+.screen[data-live] .row2 .zone { height: auto; min-width: 0; }
+.screen[data-live] .manual { grid-template-columns: 1fr; overflow: visible; }
+.screen[data-live] .manual input, .screen[data-live] .manual select { min-height: 44px; width: 100%; }
+.screen[data-live]:not(.locked) .inst .pad-btn { opacity: 1; filter: none; }
+.screen[data-live] .inst .pad-btn { min-height: 108px; }
+.screen[data-live] .inst .st-text { opacity: 1; }
+.screen[data-live] .inst.run button.on { animation: none; }
+.screen[data-live] .inst .pad-btn.active .dot { background: var(--led); }
+.model-details { border-top: 2px solid var(--ink); padding: 14px 4px 0; }
+.model-details summary { cursor: pointer; font-weight: 700; min-height: 30px; }
+.model-details .engine { margin-top: 12px; padding: 16px; text-align: left; }
+.model-details .engine-keys { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.model-details .engine-key { min-height: 76px; }
+.model-details .engine-key small { font-size: 11px; line-height: 1.5; text-transform: none; letter-spacing: 0; }
+.model-details .engine-key-text { min-width: 0; }
+.model-details .engine-key-name { white-space: normal; }
+button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible { outline: 3px solid var(--orange); outline-offset: 4px; }
+@media (max-width: 900px) {
+  .screen[data-live] .row2 { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: auto; }
+  .screen[data-live] .knob-zone { flex-direction: column; }
+  .model-details .engine-keys { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 620px) {
+  .screen[data-live] { padding: 12px; gap: 16px; }
+  .section-heading { flex-wrap: wrap; gap: 10px; }
+  .section-heading h2 { font-size: 22px; }
+  .instrument-section { padding: 14px; }
+  .instrument-controls { grid-template-columns: 1fr 1fr; gap: 14px; }
+  .instrument-controls .field:first-child { grid-column: 1 / -1; }
+  .instrument-controls .field label { font-size: 10px; letter-spacing: .04em; }
+  .screen[data-live] .row2 .zone { padding: 12px; }
+  .screen[data-live] .knob { width: 88px; height: 88px; }
+  .screen[data-live] .lcd { white-space: normal; line-height: 1.6; }
+  .screen[data-live] .bar-top { gap: 10px; }
+  .screen[data-live] .pill { letter-spacing: .04em; line-height: 1.5; }
+}
+
+@media (max-width: 620px) {
+  .screen[data-live] #genre-chips {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    min-width: 0;
+  }
+  .screen[data-live] #genre-chips .chip {
+    min-width: 0;
+    padding: 12px 2px;
+    font-size: 12px;
+    border-width: 2px;
+    box-shadow: 3px 3px 0 var(--ink);
+  }
+}

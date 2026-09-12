@@ -7,6 +7,8 @@ import { ToneClock } from '../band/clock';
 import type { ClockLike } from '../band/clockTypes';
 import type { PlayersLike } from '../band/bandleader';
 import { RELAY_URL } from '../config';
+import { PATTERNS } from '../patterns';
+import { mulberry32 } from '../rng';
 
 const KEY_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const BEATS_PER_BAR = 4;
@@ -58,6 +60,12 @@ export class AmtEngine implements BandEngine {
   onBar?: (bar: number) => void;
   onError?: (msg: string) => void;
   onFirstBlock?: () => void;
+  onConnected?: () => void;
+  onStatus?: (message: string, latencyMs?: number) => void;
+  private amount = 1;
+  private responseTimer?: ReturnType<typeof setTimeout>;
+  setAmount(value: number): void { this.amount = Math.min(1, Math.max(0, value)); }
+  private rhythmRng = mulberry32(42);
 
   private state: BandState = {
     genre: 'lofi',
@@ -114,6 +122,7 @@ export class AmtEngine implements BandEngine {
 
   async start(bpm: number, firstBarAt: number): Promise<void> {
     this.stopping = false;
+    this.onStatus?.('Listening for your melody');
     this.bpm = bpm;
     this.bar = 0;
     this.gotFirstNotes = false;
@@ -140,6 +149,7 @@ export class AmtEngine implements BandEngine {
         listenBeats: LISTEN_BEATS,
       });
       this.flushSet();
+      this.onConnected?.();
     });
     ws.addEventListener('message', ev => { if (this.ws === ws && !this.stopping) this.onMessage(ev); });
     ws.addEventListener('error', () => {
@@ -151,11 +161,23 @@ export class AmtEngine implements BandEngine {
       this.onError?.(`AMT: closed${ev.reason ? ` (${ev.reason})` : ''}`);
     });
 
-    this.clock.onBar((bar) => {
+    this.clock.onBar((bar, time) => {
       this.bar = bar;
       this.flushNotes();
-      this.send({ type: 'bar', bar });
+      if (this.sendRaw(JSON.stringify({ type: 'bar', bar })) && this.responseTimer === undefined) {
+        this.responseTimer = setTimeout(() => {
+          this.responseTimer = undefined;
+          this.onError?.('AMT: model response timed out');
+        }, 8000);
+      }
       this.onBar?.(bar);
+      const ctx = {bar, key:this.state.key, chord:this.state.chord ?? undefined,
+        creativity:this.state.creativity, dynamics:this.state.dynamics, rng:this.rhythmRng};
+      for (const voice of ['drums', 'lead'] as const) {
+        if (!this.amount || !this.state.enabled[voice] || (voice === 'lead' && !this.state.dynamics.space)) continue;
+        const events = PATTERNS[this.state.genre][voice].nextBar(ctx);
+        if (events.length) this.players.schedule(voice, events.map(e => ({...e,velocity:e.velocity*this.amount})), time, this.bpm);
+      }
     });
     this.clock.start(bpm, firstBarAt);
 
@@ -175,6 +197,8 @@ export class AmtEngine implements BandEngine {
 
   stop(): void {
     this.stopping = true;
+    clearTimeout(this.responseTimer);
+    this.responseTimer = undefined;
     ++this.inputSession;
     this.detach?.();
     this.detach = undefined;
@@ -223,10 +247,7 @@ export class AmtEngine implements BandEngine {
       space: this.state.dynamics.space,
       creativity: this.state.creativity,
       instruments: { ...this.state.enabled },
-      // Density hint for the model. `services/amt/server.py` ignores it for now — the
-      // anticipation scheduler has no density control — but it rides along so the server can
-      // start using it without a client change, and it is coarse (one step per 0.2) so a
-      // moving intensity does not defeat the `set` de-duplication above.
+      // Dynamics hint; the manual amount also scales local playback directly.
       intensity: Math.round(this.state.dynamics.intensity * 5) / 5,
     });
     if (payload === this.lastSetPayload) {
@@ -317,6 +338,7 @@ export class AmtEngine implements BandEngine {
         this.tooLate++;
         continue;
       }
+      if (!this.amount) continue;
       if (!this.state.enabled[n.voice]) {
         keep.push(n);
         continue;
@@ -337,9 +359,14 @@ export class AmtEngine implements BandEngine {
         time: n.beat - barNum * BEATS_PER_BAR,
         note: n.pitch,
         duration: n.dur,
-        velocity: n.vel,
+        velocity: n.vel * this.amount,
       }));
       this.players.schedule(voice, events, barStart, this.bpm);
+      if (!this.gotFirstNotes) {
+        this.gotFirstNotes = true;
+        this.onFirstBlock?.();
+      }
+      this.onStatus?.('Band phrase ready');
       for (const n of list) this.scheduled.set(AmtEngine.noteKey(n), n.beat);
     }
   }
@@ -375,8 +402,18 @@ export class AmtEngine implements BandEngine {
       this.onError?.(`AMT: ${String(msg.message)}`);
       return;
     }
+    if (msg.type === 'plan' || msg.type === 'status') {
+      clearTimeout(this.responseTimer); this.responseTimer = undefined;
+    }
+    if (msg.type === 'status' && typeof msg.latencyMs === 'number') {
+      this.onStatus?.('', msg.latencyMs);
+    }
     if (msg.type === 'plan') {
-      const notes = (msg.notes as PlanNote[] | undefined) ?? [];
+      const notes = Array.isArray(msg.notes) ? (msg.notes as PlanNote[]).filter(n =>
+        n && ['keys','bass'].includes(n.voice) && Number.isFinite(n.beat) && n.beat >= 0 &&
+        Number.isInteger(n.pitch) && n.pitch >= 0 && n.pitch <= 127 &&
+        Number.isFinite(n.dur) && n.dur > 0 && Number.isFinite(n.vel) && n.vel >= 0 && n.vel <= 1) : [];
+      if (!notes.length) this.onStatus?.('Waiting for a model phrase');
       for (const n of notes) {
         // Already handed to Players (or already queued): Tone has no way to cancel a
         // triggered event, so the first scheduling of a note is the one that stands.
@@ -386,10 +423,6 @@ export class AmtEngine implements BandEngine {
         this.pending.push(n);
       }
       this.pruneScheduled();
-      if (!this.gotFirstNotes) {
-        this.gotFirstNotes = true;
-        this.onFirstBlock?.();
-      }
       this.scheduleDue();
     }
   }

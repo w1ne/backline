@@ -51,13 +51,18 @@ from amt import (  # noqa: E402
     generate_duet,
 )
 from live_duet import AccompanimentCommitter  # noqa: E402
-from arrangement import shape_notes, bass_pitch  # noqa: E402
+from arrangement import shape_notes, bass_pitch
+from cached import cached_generate  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("amt-server")
 
 PORT = int(os.environ.get("PORT", "8080"))
-MODEL_NAME = "stanford-crfm/music-small-800k"
+SAMPLER = os.environ.get("AMT_SAMPLER", "cached")
+if SAMPLER == "cached":
+    generate_duet = cached_generate
+
+MODEL_NAME = os.environ.get("AMT_MODEL", "stanford-crfm/music-small-800k")
 # Fraction of the committed window's own duration that generation may spend in wall time.
 GENERATION_BUDGET = 0.8
 # Beats of past music kept as context for the next window. generate_duet() prompts the model
@@ -68,13 +73,14 @@ GENERATION_BUDGET = 0.8
 CONTEXT_BEATS = 16.0
 
 app = FastAPI()
+inference_lock = asyncio.Lock()
 _model = None
 _device = None
 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok" if _model is not None else "loading", "model": MODEL_NAME, "device": _device, "sampler": SAMPLER}
 
 
 def load_model():
@@ -247,7 +253,7 @@ class Session:
         raw_notes = [
             (t, d, p) for (t, d, p) in accomp if start_tick <= round(t * TIME_RESOLUTION) < commit_end_tick
         ]
-        raw_notes = shape_notes(raw_notes, start_s, commit_end_s, self.beat_s, self.space, TIME_RESOLUTION)
+        raw_notes = shape_notes(raw_notes, start_s, commit_end_s, self.beat_s, self.space, TIME_RESOLUTION, key=self.key, chord=self.chord)
         committed = self.committer.commit(raw_notes)
         self.committed_horizon_beats = commit_end_beat
         self.last_accomp_notes = committed
@@ -290,7 +296,8 @@ class Session:
             ops.clip(history_before, 0, int(TIME_RESOLUTION * start_s), clip_duration=False, seconds=False),
             int(TIME_RESOLUTION * start_s),
         )
-        tokens_generated = max(0, len(result) - len(prior_clipped))
+        tokens_generated = (getattr(self.model, "amt_sampled_tokens", 0) if SAMPLER == "cached"
+                            else max(0, len(result) - len(prior_clipped)))
         tokens_per_sec = (tokens_generated / (latency_ms / 1000.0)) if latency_ms > 0 else 0.0
 
         return {
@@ -309,11 +316,9 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     model = load_model()
     session = Session(model)
-    # One generation at a time per connection, but off the event loop: the
-    # model call takes ~0.5-1.5 s and used to block the receive loop, so every
-    # `notes` message the player sent while a bar was being written arrived
-    # only *after* it and was missing from that generation's context.
-    gen_lock = asyncio.Lock()
+    # Offload inference so other sockets and health requests stay responsive.
+    # The global lock serializes GPU work; this connection consumes buffered
+    # incoming messages after its current plan completes.
     log.info("connection opened")
     try:
         while True:
@@ -344,7 +349,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 elif mtype == "bar":
                     bar = int(msg.get("bar", 0))
-                    async with gen_lock:
+                    async with inference_lock:
                         out = await asyncio.to_thread(session.generate_next_bar_plan, bar)
                     await websocket.send_text(json.dumps(out["plan"]))
                     await websocket.send_text(json.dumps(out["status"]))

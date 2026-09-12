@@ -1,3 +1,4 @@
+import { PlaybackActivity } from './players/activity';
 import './ui/styles.css';
 import * as Tone from 'tone';
 import { Store } from './ui/state';
@@ -56,6 +57,7 @@ let listener: Listener | undefined;
 let band: BandEngine | undefined;
 let monitor: MidiMonitor | undefined;
 const players = new Players();
+const playbackActivity = new PlaybackActivity();
 const whiteNoise = new WhiteNoise();
 const drone = new Drone();
 let morph: MorphBus | undefined;
@@ -152,6 +154,8 @@ function setBandBpm(b: BandEngine, bpm: number): void {
 }
 
 function makeBand(engine: EngineChoice): BandEngine {
+  playbackActivity.clear();
+  store.update({activeParts: {}, modelLatencyMs:null, accompanimentStatus: engine === 'amt' ? 'Listening for your melody' : 'Ready to accompany'});
   if (engine === 'lyria') return new LyriaEngine(players.rawContext());
   if (engine === 'acestep') return new AceStepEngine(players.rawContext());
   if (engine === 'amt') return new AmtEngine(players, listener!);
@@ -159,6 +163,7 @@ function makeBand(engine: EngineChoice): BandEngine {
 }
 
 function wireBand(b: BandEngine): void {
+  b.setAmount?.(store.state.intensity);
   INSTRUMENTS.forEach(i => b.setEnabled(i, store.state.enabled[i]));
   b.routeBand?.(store.state.routing.band, morph?.input);
   b.onBar = bar => {
@@ -176,7 +181,12 @@ function wireBand(b: BandEngine): void {
       for (let b = 1; b < BEATS_PER_BAR; b++)
         beatTimers.push(setTimeout(() => tickBeat(beat + b), (b * 60000) / bpm));
   };
-  b.onError = msg => store.update({ error: msg });
+  b.onError = msg => store.update({ error: msg, accompanimentStatus: 'Band connection interrupted' });
+  b.onStatus = (message, latencyMs) => {
+    if (band !== b) return;
+    store.update({ ...(message ? {accompanimentStatus:message} : {}),
+      ...(latencyMs !== undefined ? {modelLatencyMs:latencyMs} : {}) });
+  };
   b.onStats = s => {
     const increased = s.loops > store.state.loops;
     store.update({ loops: s.loops, loopsUpdatedAt: increased ? Date.now() : store.state.loopsUpdatedAt });
@@ -188,7 +198,7 @@ function wireBand(b: BandEngine): void {
  *  place at the same bpm. Returns a disposer to call once the engine is confirmed healthy or the
  *  band is torn down for another reason. */
 function armFallback(engine: EngineChoice, b: BandEngine): () => void {
-  const fallback = chooseFallback(engine, '', !(PI_EDITION && engine === 'amt'));
+  const fallback = chooseFallback(engine, '');
   if (!fallback) return () => {};
 
   let settled = false;
@@ -205,13 +215,16 @@ function armFallback(engine: EngineChoice, b: BandEngine): () => void {
 
   const userOnError = b.onError;
   b.onFirstBlock = settle;
+  // AMT is allowed to listen before producing notes; an open socket establishes
+  // connectivity, while onStatus/actual scheduled notes report output separately.
+  if (engine === 'amt') b.onConnected = settle;
   b.onError = msg => {
     userOnError?.(msg);
     trigger(msg);
   };
 
   function trigger(reason: string): void {
-    if (settled) return;
+    if (band !== b) return;
     settle();
     const result = chooseFallback(engine, reason);
     if (!result || band !== b) return;
@@ -319,6 +332,7 @@ function powerOff() {
   halfBarTimer = undefined;
   clearBeatTimers();
   band?.stop();
+  playbackActivity.clear();
   listener?.stop();
   listener = undefined;
   monitor?.stop();
@@ -326,6 +340,8 @@ function powerOff() {
   lastFollowedBpm = undefined;
   store.update({
     power: 'off',
+    activeParts: {},
+    accompanimentStatus: 'Paused',
     sources: { mic: 'off', midi: 'off' },
     locked: false,
     bar: 0,
@@ -397,9 +413,9 @@ store.subscribe(s => {
       store.update({ creativity: c });
     },
     setIntensity: i => {
-      // The knob only stores the manual setting; tickBeat folds it into the band's dynamics on
-      // the next beat. Nothing to push to the engine here.
-      store.update({ intensity: Math.min(1, Math.max(0, i)) });
+      const amount = Math.min(1, Math.max(0, i));
+      band?.setAmount?.(amount);
+      store.update({ intensity: amount });
     },
     setBpmOverride: bpm => {
       const clamped = bpm === undefined ? undefined : Math.min(240, Math.max(40, bpm));
@@ -501,6 +517,7 @@ viz = createViz(
 // Both note engines schedule through Players, so one hook covers Patterns and AMT. It feeds
 // the visualiser and, in ?debug=1, also records the schedule for chord-following checks.
 players.onSchedule = (inst, events, barStart, bpm) => {
+  playbackActivity.add(inst, events, barStart, bpm);
   const spb = 60 / bpm;
   for (const e of events) viz?.addNote(inst, e.note, barStart + e.time * spb, e.duration * spb, e.velocity);
   if (DEBUG) {
@@ -509,12 +526,22 @@ players.onSchedule = (inst, events, barStart, bpm) => {
   }
 };
 
+// Meter state uses the audio clock so future model plans do not look audible early.
+setInterval(() => {
+  if (!audioReady) return;
+  const s = store.state;
+  const activeParts = s.power === 'on' && !s.audioSuspended
+    ? playbackActivity.at(Tone.getContext().currentTime) : {};
+  if (JSON.stringify(activeParts) !== JSON.stringify(s.activeParts)) store.update({activeParts});
+}, 100);
+
 // ?demo=1 paints the live panel with sample state (design review / screenshots only).
 if (demo) {
   store.update({
     power: 'on',
     sources: { mic: 'on', midi: 'on' },
     genre: 'funk',
+    accompanimentStatus: 'Band phrase ready',
     creativity: 0.65,
     locked: true,
     bar: 9,

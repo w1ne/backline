@@ -10,6 +10,6 @@ export function applyDeviceProfile(store: Store, edition: string): void {
     enabled: { drums: true, bass: true, keys: true, lead: false },
     morphOut: null, routing: { ...MAIN_ROUTING },
     micIn: null, midiIn: null, micMuted: false,
-    offlineEngines: ['acestep', 'lyria'],
+    offlineEngines: [],
   });
 }

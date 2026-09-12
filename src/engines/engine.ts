@@ -9,6 +9,7 @@ export interface BandEngine {
   set(p: Partial<Pick<BandState, 'genre' | 'key' | 'chord' | 'creativity' | 'dynamics'>> & { chordBeat?: number }): void;
   setEnabled(i: Instrument, on: boolean): void;
   setBpm(bpm: number): void;
+  setAmount?(amount: number): void;
   /** smallest bpm change worth forwarding in follow mode */
   readonly bpmStep: number;
   onBar?: (bar: number) => void;
@@ -16,6 +17,8 @@ export interface BandEngine {
   onError?: (msg: string) => void;
   /** called once the engine has actually produced/received its first audio block */
   onFirstBlock?: () => void;
+  onConnected?: () => void;
+  onStatus?: (message: string, latencyMs?: number) => void;
   /** periodic playback stats (e.g. Lyria's audio-buffer loop/underrun counters) */
   onStats?: (s: { loops: number; starvedSec: number }) => void;
   /** ms until a control change is audible; UI shows "joining…" for this long */

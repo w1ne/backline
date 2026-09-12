@@ -19,14 +19,17 @@ def validate_command(command):
     kind = command.get('type')
     if kind == 'set':
         field, value = command.get('field'), command.get('value')
-        if field in ('intensity', 'creativity'):
+        if field in ('intensity', 'creativity', 'noiseVolume', 'droneVolume'):
             if type(value) not in (int, float) or not math.isfinite(value) or not 0 <= value <= 1:
                 raise ValueError('Value must be between 0 and 1')
+        elif field == 'sound':
+            if value not in ('grand', 'electric_piano_1', 'drawbar_organ', 'acoustic_guitar_nylon', 'string_ensemble_1', 'vibraphone'):
+                raise ValueError('Unknown keyboard sound')
         elif field == 'genre':
             if value not in ('lofi', 'funk', 'rock', 'jazz'):
                 raise ValueError('Unknown genre')
         elif field == 'engine':
-            if value not in ('patterns', 'amt'):
+            if value not in ('patterns', 'amt', 'acestep'):
                 raise ValueError('Unknown local engine')
         else:
             raise ValueError('Unknown setting')

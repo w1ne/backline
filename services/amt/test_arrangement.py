@@ -29,6 +29,14 @@ class ArrangementTest(unittest.TestCase):
         self.assertEqual(len(notes), 1)
         self.assertAlmostEqual(notes[0][0], start)
 
+    def test_support_stays_in_chord_and_answers_in_key(self):
+        raw = [(0, .2, 61), (.5, .2, 66), (1, .2, 70)]
+        support = shape_notes(raw, 0, 2, .5, False, key='C major', chord='Dm')
+        self.assertTrue(all(p % 12 in {2,5,9} for _,_,p in support))
+        answer = shape_notes(raw, 0, 2, .5, True, key='C major', chord='Dm')
+        self.assertTrue(all(p % 12 in {0,2,4,5,7,9,11} for _,_,p in answer))
+        self.assertLessEqual(max(t+d for t,d,_ in answer), 1)
+
     def test_bass_uses_the_players_harmony_in_a_fixed_bass_register(self):
         self.assertEqual(bass_pitch('Dm', 'C major'), 38)
         self.assertEqual(bass_pitch('F#min7', 'C major'), 42)
