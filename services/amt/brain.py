@@ -10,10 +10,16 @@ from typing import Optional
 
 from form import SongForm
 from harmony import Chord, Key, MelodyHarmonizer, chord_name, parse_key
-from predict import decide, predict_next
+from predict import (RECENT_HALF_BARS, HMM_WINDOW, decide, emission_vector, hmm_reading, predict_ahead_hmm,
+                     predict_next, predict_next_hmm)
 
 BEATS_PER_BAR = 4.0
 HALF_BAR = 2.0
+# Which next-chord predictor decide_chord uses: 'hmm' (learned Chordonomicon transitions +
+# Viterbi, predict.predict_next_hmm) or 'table' (the hand-written first-order table). The
+# default is hmm because HARMONY_BENCH.md scores it above the table on every scenario
+# (62% vs 50% bar-start accuracy averaged at lookahead 0).
+PREDICTOR = 'hmm'
 # Below this many heard notes an old client's `set.chord` still names the chord; from here on
 # the service's own decision wins.
 CLIENT_CHORD_MAX_NOTES = 4
@@ -45,10 +51,12 @@ def sampling_for(creativity: float) -> tuple[float, float]:
 
 class HarmonyBrain:
     def __init__(self, key: Optional[str] = None, genre: Optional[str] = None,
-                 lookahead_beats: float = 4.0, beats_per_bar: float = BEATS_PER_BAR, bpm: float = 90.0):
+                 lookahead_beats: float = 4.0, beats_per_bar: float = BEATS_PER_BAR, bpm: float = 90.0,
+                 predictor: str = PREDICTOR):
         self.lookahead_beats = lookahead_beats
         self.beats_per_bar = beats_per_bar
         self.latency_beats = DETECTION_LATENCY_S * bpm / 60.0
+        self.predictor = predictor
         self.reset(key, genre)
 
     def reset(self, key: Optional[str] = None, genre: Optional[str] = None) -> None:
@@ -56,6 +64,8 @@ class HarmonyBrain:
         self.genre = genre
         self.harmonizer = MelodyHarmonizer(window=HALF_BAR)
         self.recent_chords: list[Chord] = []
+        self.recent_sources: list[str] = []
+        self.emissions: list[list[float]] = []
         self.notes_heard = 0
         self.client_chord: Optional[str] = None
         self.chord: Optional[str] = None
@@ -117,18 +127,36 @@ class HarmonyBrain:
             return self.client_chord
         self.harmonizer.tick(tick_beat - self.latency_beats, key)
         reading = self.harmonizer.reading
-        chord, _source = decide(key, self.genre, reading, self.recent_chords,
-                                reading.coverage if reading else 0.0,
-                                downbeat=tick_beat % self.beats_per_bar == 0)
-        self.recent_chords = (self.recent_chords + [chord])[-4:]
+        downbeat = tick_beat % self.beats_per_bar == 0
+        self.emissions = (self.emissions + [emission_vector(reading, key)])[-HMM_WINDOW:]
+        genre, recent, emissions = self.genre, self.recent_chords, self.emissions
+        if self.predictor == 'hmm':
+            if reading is not None:
+                reading = hmm_reading(key, genre, reading, recent, emissions, downbeat=downbeat)
+            chord, source = decide(key, genre, reading, recent, reading.coverage if reading else 0.0,
+                                   downbeat=downbeat, sources=self.recent_sources,
+                                   predictor=lambda rc: predict_next_hmm(key, genre, rc, emissions, downbeat=downbeat),
+                                   predict_through_corrections=True)
+        else:
+            chord, source = decide(key, genre, reading, recent, reading.coverage if reading else 0.0,
+                                   downbeat=downbeat, sources=self.recent_sources)
+        self.recent_sources = (self.recent_sources + [source])[-RECENT_HALF_BARS:]
+        self.recent_chords = (self.recent_chords + [chord])[-RECENT_HALF_BARS:]
         # The plan is committed `lookahead_beats` ahead: walk the prediction over every downbeat
         # between the tick and the window start, as bench_harmony.run does.
-        target = chord
+        downbeats_ahead = 0
         t = tick_beat
         while t + HALF_BAR <= tick_beat + self.lookahead_beats:
             t += HALF_BAR
             if t % self.beats_per_bar == 0:
-                target = predict_next(key, [target], self.genre)
+                downbeats_ahead += 1
+        target = chord
+        if self.predictor == 'hmm':
+            target = predict_ahead_hmm(key, genre, self.recent_chords, self.recent_sources, emissions,
+                                       downbeat, chord, downbeats_ahead)
+        else:
+            for _ in range(downbeats_ahead):
+                target = predict_next(key, [target], genre)
         own = chord_name(target)
         if self.client_chord and self.notes_heard < CLIENT_CHORD_MAX_NOTES:
             return self.client_chord
