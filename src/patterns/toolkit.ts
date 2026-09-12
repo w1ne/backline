@@ -2,6 +2,7 @@ import type { BarContext, Chord, NoteEvent, Pattern, Key } from '../types';
 import { DRUM } from '../types';
 import { pentaOf } from '../music/scales';
 import { chordDegreeToMidi, tonicTriad } from '../listener/chordDetector';
+import { voiceLead } from '../music/voiceLeading';
 
 export interface Step { t: number; p: number; vel?: number; dur?: number }
 
@@ -54,22 +55,39 @@ export function bassPattern(shape: { t: number; degree: number; p: number; dur?:
   } };
 }
 
-export function chordPattern(voicings: number[][], hits: Step[], octave: number): Pattern {
+/**
+ * Comps a chord pattern the way a keys player would: the written `voicings` still decide how
+ * many notes ring per hit (its length sets the voice count, 3 for a triad-shaped entry, 4 for
+ * a seventh-shaped one) and which bar-to-bar variation is in play, but the actual pitches come
+ * from `voiceLead` against the chord active at each hit — so successive hits (and successive
+ * bars) move by the smallest total distance rather than jumping to fixed scale-degree offsets.
+ * The previous voicing is carried forward via `ctx.voicingMemo[voiceKey]`, explicit state the
+ * caller owns (e.g. the bandleader, one memo per its own lifetime) — never a module-level
+ * global, so separate pattern instances or test runs never see each other's voicings.
+ */
+export function chordPattern(voicings: number[][], hits: Step[], octave: number, voiceKey = 'keys'): Pattern {
+  const low = 12 * (octave + 1) - 2;
+  const high = low + 23;
   return { nextBar(ctx) {
     let i = ctx.bar % voicings.length;
     if (ctx.creativity > 0.5 && ctx.rng() < (ctx.creativity - 0.5)) i = Math.floor(ctx.rng() * voicings.length);
+    const voices = voicings[i].length;
     // A busy player already fills the bar; comping every written hit on top of that is what
     // makes a band sound like a backing track. Keep only the ones the pattern insists on.
     const thin = (ctx.dynamics?.intensity ?? 0) > THIN_ABOVE;
     const out: NoteEvent[] = [];
+    let prev = ctx.voicingMemo?.[voiceKey] ?? null;
     for (const h of hits) {
       if (thin && h.p < 1) continue;
       if (!fires(h, ctx)) continue;
       // Voiced against the chord at this hit, not at the downbeat, so the second half of a
       // bar follows a chord that changed underneath it.
       const chord = chordAt(ctx, h.t);
-      for (const d of voicings[i]) out.push(ev(h.t, chordDegreeToMidi(ctx.key, chord, d, octave), h.dur ?? 1, h.vel ?? 0.7, ctx));
+      const voicing = voiceLead(prev, chord, { low, high, voices });
+      prev = voicing;
+      for (const n of voicing) out.push(ev(h.t, n, h.dur ?? 1, h.vel ?? 0.7, ctx));
     }
+    if (ctx.voicingMemo && prev) ctx.voicingMemo[voiceKey] = prev;
     return out;
   } };
 }

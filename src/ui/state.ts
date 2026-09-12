@@ -40,6 +40,8 @@ export interface AppState {
   error: string | null;
   /** the Record button is armed: notes are being collected for the MIDI download */
   recording: boolean;
+  /** the band is held: no scheduling, listener keeps running */
+  paused: boolean;
   loops: number;
   loopsUpdatedAt: number | undefined;
   /** engines the /health probe found unreachable at page load; still selectable, just flagged in the UI */
@@ -88,6 +90,7 @@ const defaults: AppState = {
   bar: 0,
   error: null,
   recording: false,
+  paused: false,
   loops: 0,
   loopsUpdatedAt: undefined,
   offlineEngines: [],

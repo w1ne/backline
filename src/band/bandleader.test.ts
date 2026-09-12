@@ -111,6 +111,19 @@ describe('Bandleader', () => {
     expect(held).toEqual([0, 0, 7, 5]); // all four hits voiced against C
     expect(changed).toEqual([0, 7, 2, 0]); // beats 0-1 still C; beats 2+ are G, its fifth, its fourth
   });
+  it('colors a stored chord for the active genre (jazz gives I a maj7)', () => {
+    const { b } = mk();
+    b.set({ genre: 'jazz', key: { root: 0, mode: 'major' } });
+    b.set({ chord: { root: 0, quality: 'maj' }, chordBeat: 0 });
+    expect(b.state.chord).toEqual({ root: 0, quality: 'maj7' });
+    expect(b.chordAtBeat(0)).toEqual({ root: 0, quality: 'maj7' });
+  });
+  it('rock leaves the stored chord as a plain triad', () => {
+    const { b } = mk();
+    b.set({ genre: 'rock', key: { root: 0, mode: 'major' } });
+    b.set({ chord: { root: 2, quality: 'min' }, chordBeat: 0 });
+    expect(b.state.chord).toEqual({ root: 2, quality: 'min' });
+  });
   it('falls back to the key tonic triad when no chord was ever set', () => {
     const { clock, calls, b } = mk();
     b.set({ key: { root: 9, mode: 'minor' } });

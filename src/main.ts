@@ -33,6 +33,7 @@ import { DEBUG, installDebug, recordToggle } from './debug';
 import { chooseFallback } from './engines/fallback';
 import { RELAY_URL } from './config';
 import type { EngineChoice } from './ui/state';
+import { parseHealth } from './engines/health';
 import { MorphBus, setSinkSupported } from './audio/morphBus';
 import {
   listInputs,
@@ -295,11 +296,17 @@ function armFallback(engine: EngineChoice, b: BandEngine): () => void {
   return settle;
 }
 
-// Cheap readiness probe: flag ACE/Lyria as offline in the ENGINE switch if the relay is
-// unreachable at load time. Both stay selectable — this is advisory, not a lock.
-fetch(RELAY_URL + '/health').catch(() => {
-  store.update({ offlineEngines: ['acestep', 'lyria', 'amt'] });
-});
+// Readiness probe: the relay reports each upstream's health, so a stopped GPU pod lights the
+// engine LED red at load instead of the band silently going generic. Engines stay selectable.
+fetch(RELAY_URL + '/health')
+  .then(async res => {
+    const body = await res.text();
+    const health = parseHealth(body);
+    if (health) store.update({ offlineEngines: health });
+  })
+  .catch(() => {
+    store.update({ offlineEngines: ['acestep', 'lyria', 'amt'] });
+  });
 
 async function power() {
   store.update({ error: null });
@@ -362,7 +369,10 @@ async function power() {
     store.update({ input });
     if (input.key) drone.setRoot(input.key.root);
     if (input.key) band!.set({ key: input.key });
-    if (input.bpm && !store.state.locked) {
+    if (input.bpm && !store.state.locked && store.state.paused) {
+      store.update({ locked: true });
+      lastFollowedBpm = input.bpm;
+    } else if (input.bpm && !store.state.locked) {
       const db = listener!.downbeat! + perfOffset();
       const barLen = 240 / input.bpm;
       let first = db;
@@ -419,6 +429,7 @@ function powerOff() {
   lastFollowedBpm = undefined;
   store.update({
     power: 'off',
+    paused: false,
     activeParts: {},
     accompanimentStatus: 'Paused',
     sources: { mic: 'off', midi: 'off' },
@@ -462,6 +473,25 @@ store.subscribe(s => {
       }
       const bpm = lastFollowedBpm ?? store.state.input.bpm ?? undefined;
       downloadMidi(midiRecorder.toMidi(bpm), `${name}.mid`);
+    },
+    togglePause: () => {
+      if (!band) return;
+      if (!store.state.paused) {
+        if (halfBarTimer !== undefined) clearTimeout(halfBarTimer);
+        halfBarTimer = undefined;
+        clearBeatTimers();
+        band.stop();
+        playbackActivity.clear();
+        store.update({ paused: true, activeParts: {}, accompanimentStatus: 'Paused' });
+        return;
+      }
+      store.update({ paused: false, accompanimentStatus: 'Listening' });
+      const bpm = lastFollowedBpm ?? store.state.input.bpm;
+      if (bpm && store.state.locked) {
+        startBand(band, bpm, Tone.now() + 0.1).catch(err => {
+          store.update({ error: `${store.state.engine}: ${err instanceof Error ? err.message : String(err)}` });
+        });
+      } else store.update({ accompanimentStatus: 'Listening' });
     },
     wake: () => {
       if (store.state.audioSuspended) {

@@ -514,6 +514,31 @@ body {
   height: 60%;
   opacity: 1;
 }
+.pause-bars {
+  display: flex;
+  gap: 3px;
+}
+.pause-bars i {
+  display: block;
+  width: 3px;
+  height: 40%;
+  min-height: 10px;
+  background: var(--led);
+}
+.play-tri {
+  display: none;
+  width: 0;
+  height: 0;
+  border-left: 11px solid var(--led);
+  border-top: 7px solid transparent;
+  border-bottom: 7px solid transparent;
+  margin-left: 3px;
+}
+.pause-btn.paused .pause-bars { display: none; }
+.pause-btn.paused .play-tri { display: block; }
+.pause-btn.paused {
+  box-shadow: 0 0 10px rgba(42, 255, 149, 0.6);
+}
 @keyframes rec-fade {
   50% {
     box-shadow: 0 0 2px rgba(255, 59, 48, 0.15);

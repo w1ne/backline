@@ -50,6 +50,10 @@ export interface BarContext {
   rng: () => number;
   /** what the player is doing; absent means "no listener", and patterns play their static form */
   dynamics?: Dynamics;
+  /** Explicit, caller-owned scratch space for stateful voicing decisions (e.g. voice-led
+   *  chord pitches), keyed per track so it can be threaded across bars without a module-level
+   *  mutable global. Absent means "no memory" — a pattern falls back to a fresh voicing. */
+  voicingMemo?: Record<string, number[]>;
 }
 export interface Pattern { nextBar(ctx: BarContext): NoteEvent[] }
 
