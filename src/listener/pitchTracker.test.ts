@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { PitchTracker } from './pitchTracker';
+import { PitchTracker, VOICE_PROFILE } from './pitchTracker';
 
 const A3 = 220;
 const hz = (v: number, t = 0) => ({ hz: v, clarity: 0.95, t });
@@ -84,6 +84,35 @@ describe('PitchTracker dropouts', () => {
   });
 });
 
+describe('performance tracking regressions', () => {
+  const profile = {holdFrames:3,minClarity:.7,minAgree:2};
+  it.each([440,110])('accepts a sustained octave change to %s Hz', target => {
+    const tr=new PitchTracker(profile);
+    for(let i=0;i<4;i++) tr.push(hz(220));
+    expect(tr.push(hz(target))?.midi).toBe(57);
+    expect(tr.push(hz(target))?.midi).toBe(target===440?69:45);
+  });
+  it('expires low-clarity estimates instead of vouching for the old note forever',()=>{
+    const tr=new PitchTracker(profile);
+    for(let i=0;i<4;i++) tr.push(hz(220));
+    expect(tr.push({hz:330,clarity:.65,t:1})?.midi).toBe(57);
+    tr.push({hz:330,clarity:.65,t:2});
+    expect(tr.push({hz:330,clarity:.65,t:3})).toBeNull();
+  });
+  it('reports a settled 20-cent bend without changing the MIDI note',()=>{
+    const tr=new PitchTracker(profile);
+    for(let i=0;i<4;i++) tr.push(hz(220));
+    const bent=220*Math.pow(2,20/1200);
+    tr.push(hz(bent));
+    expect(tr.push(hz(bent))).toEqual({midi:57,cents:20,stable:true});
+  });
+});
+
+ it('acquires a clear voice after two polls without waiting for the whole history window', () => {
+   const tr=new PitchTracker(VOICE_PROFILE);
+   expect(tr.push(hz(220))).toBeNull();
+   expect(tr.push(hz(220))).toEqual({midi:57,cents:0,stable:true});
+ });
 describe('PitchTracker glide detection', () => {
   const voice = { holdFrames: 3, minClarity: 0.7, minAgree: 2 };
   const semis = (base: number, n: number) => base * Math.pow(2, n / 12);

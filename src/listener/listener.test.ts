@@ -345,8 +345,8 @@ describe('independent source readiness', () => {
   });
 });
 
-describe('Listener key snap for voice', () => {
-  it('moves an out-of-key sung pitch to the nearest scale tone once a key is known', async () => {
+describe('Listener preserves performer pitches', () => {
+  it('preserves an out-of-key sung pitch even after a key is known', async () => {
     const a = new Fake();
     const l = new Listener([a]);
     await l.start();
@@ -356,9 +356,9 @@ describe('Listener key snap for voice', () => {
     for (const n of [60, 62, 64, 65, 67, 69, 71, 72, 64, 67, 60]) a.note(n, 0.8, 1);
     expect(l.input.key).toEqual({ root: 0, mode: 'major' });
     heard.length = 0;
-    a.pitch!({ midi: 61, cents: 0, stable: true }); // C#4 glide → C4 or D4, never C#
+    a.pitch!({ midi: 61, cents: 0, stable: true }); // Intentional C#4 must reach the model unchanged
     expect(heard).toHaveLength(1);
-    expect([60, 62]).toContain(heard[0]);
+    expect(heard).toEqual([61]);
   });
   it('passes sung pitches through untouched while no key is known', async () => {
     const a = new Fake();

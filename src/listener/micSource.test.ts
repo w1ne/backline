@@ -101,6 +101,18 @@ describe('MicSource.setMuted', () => {
     src.stop();
   });
 
+  it('tracks a quiet periodic note below the old one-percent gate', async () => {
+    const {ctx, an}=fakeContext();mockRawContext=ctx;
+    an.getFloatTimeDomainData=(buf:Float32Array)=>{
+      for(let i=0;i<buf.length;i++) buf[i]=.004*Math.sin(2*Math.PI*220*i/48000);
+    };
+    const src=new MicSource();const onPitch=vi.fn();
+    await src.start(vi.fn(),vi.fn(),onPitch);
+    vi.advanceTimersByTime(300);
+    expect(onPitch.mock.calls.some(([p])=>p?.midi===57 && p.stable)).toBe(true);
+    src.stop();
+  });
+
   it('is idempotent when set to the same value', async () => {
     const src = new MicSource();
     const onLevel = vi.fn();

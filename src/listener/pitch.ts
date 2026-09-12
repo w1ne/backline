@@ -1,17 +1,21 @@
-/** Below this NSDF peak the frame is noise, whatever the source. */
-export const MIN_CLARITY = 0.6;
+import { DEFAULT_TUNING } from './tuning';
+
+/** Below this NSDF peak the frame is noise, whatever the source (DEFAULT_TUNING.pitch.minClarity). */
+export const MIN_CLARITY = DEFAULT_TUNING.pitch.minClarity;
 
 export interface PitchEstimate {
   hz: number;
   /** McLeod NSDF peak value chosen (0..1-ish), how clean the periodicity is. */
   clarity: number;
+  /** the tallest NSDF peak in the frame, the value the minClarity gate is applied to */
+  peak: number;
 }
 
 export function detectPitchHz(x: Float32Array, sr: number): number | null {
   return detectPitch(x, sr)?.hz ?? null;
 }
 
-export function detectPitch(x: Float32Array, sr: number): PitchEstimate | null {
+export function detectPitch(x: Float32Array, sr: number, minClarity = MIN_CLARITY): PitchEstimate | null {
   const n = x.length;
   const minLag = Math.floor(sr / 1200);
   const maxLag = Math.min(Math.floor(sr / 60), n - 1);
@@ -52,9 +56,9 @@ export function detectPitch(x: Float32Array, sr: number): PitchEstimate | null {
   const max = Math.max(...peaks.map(p => p.value));
   // Only reject what is plainly unpitched; the PitchTracker applies the per-source
   // clarity gate (0.85 for instruments, 0.7 for a breathy voice) on top of this.
-  if (max < MIN_CLARITY) return null;
+  if (max < minClarity) return null;
   const chosen = peaks.find(p => p.value >= 0.8 * max)!;
-  return { hz: sr / chosen.lag, clarity: chosen.value };
+  return { hz: sr / chosen.lag, clarity: chosen.value, peak: max };
 }
 
 export const hzToMidi = (hz: number) => Math.round(69 + 12 * Math.log2(hz / 440));
