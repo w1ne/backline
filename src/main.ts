@@ -30,6 +30,7 @@ import { DEBUG, installDebug, recordToggle } from './debug';
 import { chooseFallback } from './engines/fallback';
 import { RELAY_URL } from './config';
 import type { EngineChoice } from './ui/state';
+import { parseHealth } from './engines/health';
 import { MorphBus, setSinkSupported } from './audio/morphBus';
 import {
   listInputs,
@@ -250,11 +251,17 @@ function armFallback(engine: EngineChoice, b: BandEngine): () => void {
   return settle;
 }
 
-// Cheap readiness probe: flag ACE/Lyria as offline in the ENGINE switch if the relay is
-// unreachable at load time. Both stay selectable — this is advisory, not a lock.
-fetch(RELAY_URL + '/health').catch(() => {
-  store.update({ offlineEngines: ['acestep', 'lyria', 'amt'] });
-});
+// Readiness probe: the relay reports each upstream's health, so a stopped GPU pod lights the
+// engine LED red at load instead of the band silently going generic. Engines stay selectable.
+fetch(RELAY_URL + '/health')
+  .then(async res => {
+    const body = await res.text();
+    const health = parseHealth(body);
+    if (health) store.update({ offlineEngines: health });
+  })
+  .catch(() => {
+    store.update({ offlineEngines: ['acestep', 'lyria', 'amt'] });
+  });
 
 async function power() {
   store.update({ error: null });

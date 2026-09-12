@@ -1,5 +1,5 @@
 import type { BandState, Chord, Genre, Instrument, NoteEvent, Pattern } from '../types';
-import { INSTRUMENTS, IDLE_DYNAMICS } from '../types';
+import { INSTRUMENTS, IDLE_DYNAMICS, DRUM } from '../types';
 import { tonicTriad } from '../listener/chordDetector';
 import { colorChord } from '../music/chordColor';
 import { mulberry32 } from '../rng';
@@ -8,6 +8,31 @@ import type { ClockLike } from './clockTypes';
 const BEATS_PER_BAR = 4;
 /** chord-timeline entries kept; two bars of half-bar ticks is plenty to voice a bar from */
 const CHORD_LOG_MAX = 8;
+
+/** Timing jitter, in milliseconds either side of the written time. Kick and snare — the
+ *  notes that most give away a rigid grid — get a tighter window than everything else. */
+const JITTER_MS = 8;
+const JITTER_MS_TIGHT = 4;
+/** Velocity curve: written velocity randomized by up to this fraction, up or down. */
+const VELOCITY_VARIATION = 0.1;
+
+/** Applies deterministic (rng-seeded) timing jitter and velocity variation to a bar's worth
+ *  of events, so the band doesn't sit dead-on-grid at one fixed loudness. Pitch/duration/
+ *  note choice are untouched; ghost notes are out of scope. `spb` (seconds per beat)
+ *  converts the millisecond jitter into NoteEvent's beat-relative `time` unit. */
+export function humanize(inst: Instrument, events: NoteEvent[], spb: number, rng: () => number): NoteEvent[] {
+  return events.map(e => {
+    const tight = inst === 'drums' && (e.note === DRUM.kick || e.note === DRUM.snare);
+    const jitterMs = tight ? JITTER_MS_TIGHT : JITTER_MS;
+    const jitterBeats = ((rng() * 2 - 1) * jitterMs) / 1000 / spb;
+    const velocityMul = 1 + (rng() * 2 - 1) * VELOCITY_VARIATION;
+    return {
+      ...e,
+      time: Math.max(0, e.time + jitterBeats),
+      velocity: Math.min(1, Math.max(0, e.velocity * velocityMul)),
+    };
+  });
+}
 
 export interface PlayersLike {
   setBandAmount?(amount: number): void;
@@ -100,8 +125,9 @@ export class Bandleader {
       chord: this.chordAtBeat(barBeat),
       chordAt: (beat: number) => this.chordAtBeat(barBeat + beat),
     };
+    const spb = this.clock.bpm > 0 ? 60 / this.clock.bpm : 0.5;
     for (const i of INSTRUMENTS)
       if (enabled[i])
-        this.players.schedule(i, this.patterns[genre][i].nextBar(ctx), t, this.clock.bpm);
+        this.players.schedule(i, humanize(i, this.patterns[genre][i].nextBar(ctx), spb, this.rng), t, this.clock.bpm);
   }
 }
