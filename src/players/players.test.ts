@@ -1,4 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+const sf = vi.hoisted(() => ({ instruments: [] as any[] }));
+vi.mock('smplr', () => ({
+  Soundfont: () => {
+    let resolveReady!: () => void;
+    const inst = { ready: new Promise<void>(r => { resolveReady = r; }), start: vi.fn(), resolveReady: () => resolveReady() };
+    sf.instruments.push(inst);
+    return inst;
+  },
+}));
 import { Players } from './players';
 import { PATTERNS } from '../patterns';
 import { mulberry32 } from '../rng';
@@ -167,6 +176,36 @@ function withFakeBusses(players: Players) {
   Object.assign(players as unknown as Record<string, unknown>, { out, busses });
   return { out, busses };
 }
+
+describe('Players.scheduleAccompaniment', () => {
+  it('does not start notes before the soundfont is ready, then plays every kept note once it is', async () => {
+    sf.instruments.length = 0;
+    const players = new Players();
+    const now = 100;
+    players.scheduleAccompaniment(65, [{ time: 0, note: 60, duration: 1, velocity: 0.5 }], now + 1, 120);
+
+    const voice = sf.instruments[0];
+    expect(voice.start).not.toHaveBeenCalled();
+
+    voice.resolveReady();
+    await voice.ready;
+    expect(voice.start).toHaveBeenCalledTimes(1);
+    expect(voice.start).toHaveBeenCalledWith(expect.objectContaining({ note: 60 }));
+  });
+
+  it('reuses the same soundfont voice for repeated calls with the same GM program', () => {
+    sf.instruments.length = 0;
+    const players = new Players();
+    players.scheduleAccompaniment(65, [{ time: 0, note: 60, duration: 1, velocity: 0.5 }], 100, 120);
+    players.scheduleAccompaniment(65, [{ time: 1, note: 62, duration: 1, velocity: 0.5 }], 100, 120);
+    expect(sf.instruments).toHaveLength(1);
+  });
+
+  it('ignores an unknown GM program instead of throwing', () => {
+    const players = new Players();
+    expect(() => players.scheduleAccompaniment(999, [{ time: 0, note: 60, duration: 1, velocity: 0.5 }], 100, 120)).not.toThrow();
+  });
+});
 
 describe('Players.route', () => {
   it('leaves every instrument on the main output until a morph bus exists', () => {

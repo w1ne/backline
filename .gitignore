@@ -4,3 +4,8 @@ dist-pi
 __pycache__/
 
 .pi-samples/
+
+.dev-pids/
+.dev-logs/
+.env.local
+relay/.dev.vars

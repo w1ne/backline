@@ -1,5 +1,5 @@
-import { GENRES, INSTRUMENTS } from '../types';
-import type { Genre, Instrument } from '../types';
+import { GENRES, INSTRUMENTS, ACCOMP_ROW } from '../types';
+import type { AccompPreset, Genre, Instrument } from '../types';
 import { SOUNDS, SOUND_GROUPS, type MonitorSound } from '../players/monitor';
 import { keyName } from '../music/scales';
 import { chordName } from '../listener/chordDetector';
@@ -21,6 +21,8 @@ export interface LiveActions {
   setGenre(g: Genre): void;
   setEngine(e: 'lyria' | 'patterns' | 'acestep' | 'amt'): void;
   setCreativity(c: number): void;
+  /** AMT: toggle one extra GM instrument preset on/off */
+  toggleAccompPreset?(preset: AccompPreset, on: boolean): void;
   /** manual INTENSITY knob — how much the band adds */
   setIntensity?(i: number): void;
   setBpmOverride?(bpm: number | undefined): void;
@@ -116,6 +118,18 @@ function skeleton(): string {
             </div>`,
         ).join('')}
       </div>
+      <div class="inst" id="accomp-tiles">
+        ${ACCOMP_ROW.map(
+          p =>
+            `<div class="pad">
+              <button type="button" class="pad-btn ${p}" data-preset="${p}">
+                <span class="dot"></span>
+                <span class="name">${presetLabel(p)}</span>
+                <span class="st"><span class="st-text"></span></span>
+              </button>
+            </div>`,
+        ).join('')}
+      </div>
       <div class="row2">
         <div class="zone zone--pink knob-zone">
           <span class="zone-label">Creativity</span>
@@ -163,16 +177,16 @@ function skeleton(): string {
 
         </div>
       </div>
-      <details class="model-details"><summary>Models &amp; connection</summary><p>AMT turns your MIDI melody into a band phrase. ACE-Step generates backing textures; Patterns works without a cloud connection.</p>        <div class="zone zone--orange engine">
+      <details class="model-details"><summary>Models &amp; connection</summary><p>AMT turns your MIDI melody into a band phrase.</p>        <div class="zone zone--orange engine">
           <span class="zone-label">Accompaniment model</span>
           <div class="engine-keys" id="engine-choice">
-            <button type="button" class="engine-key" id="engine-patterns" data-engine="patterns">
+            <button type="button" class="engine-key" id="engine-patterns" data-engine="patterns" hidden>
               <span class="engine-key-text">
                 <span class="engine-key-name">Patterns</span><small>Offline · instant band</small>
               </span>
               <span class="engine-led" data-engine-led="patterns"></span>
             </button>
-            <button type="button" class="engine-key" id="engine-acestep" data-engine="acestep">
+            <button type="button" class="engine-key" id="engine-acestep" data-engine="acestep" hidden>
               <span class="engine-key-text">
                 <span class="engine-key-name">ACE-Step</span><small>Cloud · backing texture</small>
               </span>
@@ -186,7 +200,8 @@ function skeleton(): string {
             </button>
           </div>
         </div>
-<p id="engine-status" role="status"></p></details>
+<p id="engine-status" role="status"></p>
+</details>
     </div>
   `;
 }
@@ -237,6 +252,13 @@ function wireControls(screen: HTMLElement, store: Store): void {
 
   screen.querySelectorAll<HTMLButtonElement>('#engine-choice button').forEach(btn => {
     btn.addEventListener('click', () => actions().setEngine(btn.dataset.engine as 'lyria' | 'patterns' | 'acestep' | 'amt'));
+  });
+
+  screen.querySelectorAll<HTMLButtonElement>('#accomp-tiles button[data-preset]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const preset = btn.dataset.preset as AccompPreset;
+      actions().toggleAccompPreset?.(preset, !btn.classList.contains('on'));
+    });
   });
 
   const bpmInput = screen.querySelector<HTMLInputElement>('#bpm')!;
@@ -316,6 +338,7 @@ function update(screen: HTMLElement, s: AppState, changeLatencyMs: number): void
   updatePower(screen, s);
   updateHeader(screen, s);
   updateEngine(screen, s);
+  updateAccompTiles(screen, s);
   updateReadouts(screen, s);
   updateMicMute(screen, s);
   updateTiles(screen, s, changeLatencyMs);
@@ -370,11 +393,11 @@ function lcdText(s: AppState): string {
 function updatePower(screen: HTMLElement, s: AppState): void {
   const on = s.power === 'on';
   screen.classList.toggle('powered', on);
-  screen.querySelectorAll<HTMLElement>('#inst-tiles, .row2 .zone').forEach(el => el.classList.toggle('dimmed', !on));
+  screen.querySelectorAll<HTMLElement>('#inst-tiles, #accomp-tiles, .row2 .zone').forEach(el => el.classList.toggle('dimmed', !on));
   // Pads, the creativity knob, and manual tempo/key overrides need a running
   // band; ENGINE and GENRE only set state, so they stay clickable while off.
   screen
-    .querySelectorAll<HTMLElement>('#inst-tiles, .row2 .knob-zone, .row2 .manual')
+    .querySelectorAll<HTMLElement>('#inst-tiles, #accomp-tiles, .row2 .knob-zone, .row2 .manual')
     .forEach(el => el.classList.toggle('inert', !on));
 }
 
@@ -394,6 +417,21 @@ function updateEngine(screen: HTMLElement, s: AppState): void {
     led.classList.toggle('offline', !online && !connecting);
     led.classList.toggle('online', online);
     led.classList.toggle('connecting', connecting);
+  });
+}
+
+function updateAccompTiles(screen: HTMLElement, s: AppState): void {
+  const row = screen.querySelector<HTMLElement>('#accomp-tiles')!;
+  row.hidden = s.engine !== 'amt';
+
+  screen.querySelectorAll<HTMLButtonElement>('#accomp-tiles button[data-preset]').forEach(btn => {
+    const preset = btn.dataset.preset as AccompPreset;
+    const on = s.accompPresets.includes(preset);
+    const active = on && !!s.accompActive[preset];
+    btn.classList.toggle('on', on);
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-pressed', String(on));
+    btn.querySelector<HTMLElement>('.st-text')!.textContent = !on ? 'off' : active ? 'playing' : 'ready';
   });
 }
 
@@ -601,6 +639,12 @@ function cap(s: string): string {
 const DISPLAY_LABEL: Record<string, string> = { lead: 'Guitar' };
 function displayLabel(i: string): string {
   return DISPLAY_LABEL[i] ?? cap(i);
+}
+
+// "keys" here is the GM electric-piano preset, distinct from the main Keys instrument voice.
+const PRESET_LABEL: Record<string, string> = { keys: 'Electric piano' };
+function presetLabel(p: string): string {
+  return PRESET_LABEL[p] ?? cap(p);
 }
 
 function escapeHtml(s: string): string {

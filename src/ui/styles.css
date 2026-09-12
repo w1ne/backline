@@ -480,6 +480,7 @@ body {
   animation: engine-led-blink 0.9s steps(2, start) infinite;
 }
 
+
 @keyframes engine-led-blink {
   50% {
     opacity: 0.15;
@@ -733,6 +734,18 @@ body {
 }
 .inst .pad-btn.lead {
   --c: var(--lead);
+}
+.inst .pad-btn.sax {
+  --c: var(--orange);
+}
+.inst .pad-btn.strings {
+  --c: var(--yellow);
+}
+.inst .pad-btn.orchestral {
+  --c: var(--blue);
+}
+.inst .pad-btn.ambient {
+  --c: var(--pink);
 }
 
 .inst .pad-btn.on {

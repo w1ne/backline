@@ -10,6 +10,9 @@ const CHORD_LOG_MAX = 8;
 
 export interface PlayersLike {
   schedule(instrument: Instrument, events: NoteEvent[], barStartTime: number, bpm: number): void;
+  /** AMT only: play through a real GM instrument sampler (see gmInstruments.ts) instead of
+   *  the synthesized Keys voice. */
+  scheduleAccompaniment?(gmProgram: number, events: NoteEvent[], barStartTime: number, bpm: number): void;
 }
 
 export class Bandleader {

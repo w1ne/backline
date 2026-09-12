@@ -12,10 +12,10 @@ if available, else CPU).
 
 ## WebSocket contract (`/ws`)
 
-- client -> `{type:'start', bpm, key, genre, lookaheadBeats, commitBeats, listenBeats}`
+- client -> `{type:'start', bpm, key, genre, lookaheadBeats, commitBeats, listenBeats, accompInstruments?, accompBias?, temperature?}`
 - client -> `{type:'notes', notes:[{beat, pitch, dur, vel}]}`
 - client -> `{type:'bar', bar}` -- server replies with the plan for `bar+1`
-- client -> `{type:'set', genre?, creativity?, instruments?}` (accepted, no-op on generation)
+- client -> `{type:'set', genre?, creativity?, instruments?, accompInstruments?, accompBias?, temperature?}` (`genre`/`instruments` accepted, no-op on generation)
 - client -> `{type:'ping'}` -> server `{type:'pong'}`
 - server -> `{type:'plan', fromBeat, notes:[{beat, pitch, dur, vel, voice:'keys'|'bass'}]}`
 - server -> `{type:'status', latencyMs, tokensPerSec}` after each generation
@@ -24,6 +24,12 @@ if available, else CPU).
 Bass is the inferred chord root (mode of accompaniment pitch classes in the
 window) one octave below the accompaniment register, held for the commit
 window; omitted when no accompaniment notes were committed.
+
+`accompInstruments` is a list of preset names from `instruments.py`
+(`TOGGLEABLE_PRESETS`: guitar, sax, brass, ambient), mixed in on top of the
+default string ensemble; empty/absent falls back to strings only.
+`accompBias` (default 2.0) and `temperature` (default 1.0) are
+`generate_duet`'s own sampling knobs -- see `bench/amt/amt.py`.
 
 ## Run
 
