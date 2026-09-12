@@ -1,4 +1,5 @@
 import { GENRES, INSTRUMENTS } from '../types';
+import { SOUNDS, SOUND_GROUPS, type MonitorSound } from '../players/monitor';
 import type { Genre, Instrument } from '../types';
 import { keyName } from '../music/scales';
 import { chordName } from '../listener/chordDetector';
@@ -22,6 +23,7 @@ export interface LiveActions {
   setBpmOverride?(bpm: number | undefined): void;
   setKeyOverride?(key: { root: number; mode: 'major' | 'minor' } | undefined): void;
   setTempoMode?(m: 'locked' | 'follow'): void;
+  setSound?(s: MonitorSound): void;
   /** ms a toggled instrument spends showing "joining…"/"leaving…" before it settles */
   changeLatencyMs?: number;
 }
@@ -158,6 +160,17 @@ function skeleton(): string {
               ).join('')}
             </select>
           </div>
+          <div class="field">
+            <label for="sound">Keys</label>
+            <select id="sound">
+              ${SOUND_GROUPS.map(
+                g =>
+                  `<optgroup label="${g}">${SOUNDS.filter(s => s.group === g)
+                    .map(s => `<option value="${s.id}">${s.label}</option>`)
+                    .join('')}</optgroup>`,
+              ).join('')}
+            </select>
+          </div>
           <small class="hint" id="tempoMode-note" hidden>Follow needs the Patterns engine</small>
         </div>
       </div>
@@ -238,6 +251,9 @@ function wireControls(screen: HTMLElement, store: Store): void {
     actions().setBpmOverride?.(bpm);
   });
 
+  const soundSelect = screen.querySelector<HTMLSelectElement>('#sound')!;
+  soundSelect.value = store.state.sound;
+  soundSelect.addEventListener('change', () => actions().setSound?.(soundSelect.value as MonitorSound));
   const keySelect = screen.querySelector<HTMLSelectElement>('#key')!;
   keySelect.addEventListener('change', () => {
     if (keySelect.value === 'auto') {

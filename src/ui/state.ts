@@ -1,3 +1,4 @@
+import type { MonitorSound } from '../players/monitor';
 import type { BandInput, Genre, Instrument } from '../types';
 import { IDLE_DYNAMICS } from '../types';
 import type { SourceStatus } from '../listener/listener';
@@ -9,6 +10,8 @@ export interface AppState {
   sources: SourceStatus;
   genre: Genre;
   engine: EngineChoice;
+  /** sound used to play the player's own MIDI keyboard */
+  sound: MonitorSound;
   creativity: number;
   enabled: Record<Instrument, boolean>;
   input: BandInput;
@@ -29,6 +32,7 @@ const defaults: AppState = {
   sources: { mic: 'off', midi: 'off' },
   genre: 'lofi',
   engine: 'acestep',
+  sound: 'grand',
   creativity: 0.3,
   enabled: { drums: true, bass: false, keys: false, lead: false },
   input: { bpm: null, key: null, chord: null, notesNow: [], pitch: null, inputLevel: 0, onsets: 0, pendingBpm: null, dynamics: IDLE_DYNAMICS },
