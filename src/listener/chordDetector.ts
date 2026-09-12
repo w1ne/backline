@@ -179,9 +179,12 @@ export class ChordDetector {
 export function chordScale(key: Key, chord: Chord): number[] {
   const tones = QUALITY_TONES[chord.quality];
   const rel = new Set(scaleOf(key).map(pc => mod12(pc - chord.root)));
-  const up = (lo: number, hi: number, fallback: number): number => {
+  // Passing tones must come from the key. When the gap between two chord tones holds no key
+  // tone at all — a sus4's fourth-to-fifth, a dim's tritone-to-seventh — fall back to the
+  // chord tone below rather than inventing a chromatic note the band has no business playing.
+  const up = (lo: number, hi: number): number => {
     for (let s = lo + 1; s < hi; s++) if (rel.has(s)) return s;
-    return fallback;
+    return lo;
   };
   const down = (hi: number, lo: number, fallback: number): number => {
     for (let s = hi - 1; s > lo; s--) if (rel.has(s)) return s;
@@ -190,15 +193,7 @@ export function chordScale(key: Key, chord: Chord): number[] {
   const third = tones[1];
   const fifth = tones[2];
   const seventh = tones[3] ?? down(12, fifth, third >= 4 ? 11 : 10);
-  return [
-    0,
-    up(0, third, Math.min(2, Math.max(1, third - 1))),
-    third,
-    up(third, fifth, Math.min(third + 2, fifth - 1)),
-    fifth,
-    up(fifth, seventh, Math.min(fifth + 2, seventh - 1)),
-    seventh,
-  ];
+  return [0, up(0, third), third, up(third, fifth), fifth, up(fifth, seventh), seventh];
 }
 
 /** `degreeToMidi`, but the degrees are read off the chord instead of off the key. */
