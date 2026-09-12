@@ -174,3 +174,14 @@ describe('lead plays without space at a high manual intensity', () => {
     expect(p.nextBar({ ...ctx(0), dynamics: d }).length).toBe(1);
   });
 });
+
+describe('chordPattern under a singer', () => {
+  it('keeps a full comping range below the keysHigh ceiling instead of a two-semitone slot', () => {
+    const p = chordPattern([[0, 2, 4]], [{ t: 0, p: 1, dur: 2 }], 4);
+    const c = { ...ctx(0), keysHigh: 60, voicingMemo: {} } as any;
+    const out = p.nextBar(c);
+    expect(out.length).toBeGreaterThanOrEqual(3);
+    expect(Math.max(...out.map(e => e.note))).toBeLessThanOrEqual(60);
+    expect(Math.min(...out.map(e => e.note))).toBeGreaterThanOrEqual(36);
+  });
+});
