@@ -70,25 +70,29 @@ if ! grep -q "proxy_pass http://localhost:18081" "$NGINX_CONF"; then
 import re, sys
 p = sys.argv[1]
 s = open(p).read()
-pattern = re.compile(
-    r"(# code-server\s*\n\s*server \{\s*\n\s*listen 8081;\s*\n).*?(\n\s*\}\s*\n)",
-    re.S,
-)
-replacement = (
-    r"\1"
-    "\n        location / {\n"
-    "            proxy_pass http://localhost:18081;\n"
-    "            proxy_http_version 1.1;\n"
-    "            proxy_set_header Upgrade $http_upgrade;\n"
-    "            proxy_set_header Connection \"upgrade\";\n"
-    "            proxy_set_header Host $host;\n"
-    "            proxy_read_timeout 3600s;\n"
-    "        }\n"
-    r"\2"
-)
-new_s, n = pattern.subn(replacement, s, count=1)
-if n == 1:
-    open(p, "w").write(new_s)
+# Find the "# code-server" server block that listens on 8081 and replace its whole body.
+# Brace counting, not a regex: the body holds several nested location blocks, and a
+# non-greedy match stops at the first "}" and leaves the rest (and a stray brace) behind.
+m = re.search(r"# code-server\s*\n\s*server \{", s)
+if m and "listen 8081;" in s[m.end():m.end() + 200]:
+    depth, i = 1, m.end()
+    while depth and i < len(s):
+        if s[i] == "{": depth += 1
+        elif s[i] == "}": depth -= 1
+        i += 1
+    body = (
+        "\n        listen 8081;\n"
+        "\n        location / {\n"
+        "            proxy_pass http://localhost:18081;\n"
+        "            proxy_http_version 1.1;\n"
+        "            proxy_set_header Upgrade $http_upgrade;\n"
+        "            proxy_set_header Connection \"upgrade\";\n"
+        "            proxy_set_header Host $host;\n"
+        "            proxy_read_timeout 3600s;\n"
+        "        }\n"
+        "    }\n"
+    )
+    open(p, "w").write(s[:m.end()] + body + s[i:])
     print("patched nginx 8081 vhost")
 else:
     print("WARNING: could not find default 8081 vhost to patch (already patched or image changed)")

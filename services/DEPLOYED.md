@@ -1,11 +1,13 @@
 # Backline live deployment (ACE-Step + AMT)
 
-Pod ID: `51midnuq8qqmuz`
+Pod ID: `6r2srn274qynf1` (L40S, $1.09/h, created 2026-09-12; the earlier L4 pod 51midnuq8qqmuz is EXITED and its host has no free GPU). SSH: `ssh -p 34907 root@103.196.86.81`.
+
+**Do not stop this pod during the hackathon.** A stopped pod wipes its disk and the app falls back to Patterns; the relay `/health` shows `amt:false` when that happens.
 GPU: NVIDIA L4
 Cost: $0.49/h (on-demand, no network volume, 40 GB container disk)
 
-- ACE-Step (block generation): `wss://51midnuq8qqmuz-8080.proxy.runpod.net/ws`
-- AMT (accompaniment): `wss://51midnuq8qqmuz-8081.proxy.runpod.net/ws`
+- ACE-Step (block generation): `wss://6r2srn274qynf1-8080.proxy.runpod.net/ws`
+- AMT (accompaniment): `wss://6r2srn274qynf1-8081.proxy.runpod.net/ws`
 
 Relay upstream secrets on the `backline-relay` Worker:
 `ACESTEP_UPSTREAM` (unchanged, same pod) and `AMT_UPSTREAM` (set this
@@ -45,7 +47,7 @@ Get the current SSH mapping and HTTP proxy ports with:
 source /home/andrii/.local/secrets/runpod.env
 curl -s -X POST "https://api.runpod.io/graphql?api_key=${RUNPOD_API_KEY}" \
   -H "Content-Type: application/json" \
-  -d '{"query": "query { pod(input: {podId: \"51midnuq8qqmuz\"}) { desiredStatus runtime { ports { ip publicPort privatePort type } } } }"}'
+  -d '{"query": "query { pod(input: {podId: \"6r2srn274qynf1\"}) { desiredStatus runtime { ports { ip publicPort privatePort type } } } }"}'
 ```
 
 `pod-bootstrap.sh` is idempotent: apt packages, clones/updates
@@ -121,11 +123,11 @@ automatically after both services' deps are installed.
   busy", and the lead instrument is dropped from the prompt and from
   `track_classes` unless the player has left space). Pulled on the pod,
   tmux `ace` restarted, `/health` OK on
-  `https://51midnuq8qqmuz-8080.proxy.runpod.net/health`.
+  `https://6r2srn274qynf1-8080.proxy.runpod.net/health`.
 
 ## Verified (bring-up session, 2026-09-12)
 
-- `/health` OK on both `https://51midnuq8qqmuz-8080.proxy.runpod.net/health`
+- `/health` OK on both `https://6r2srn274qynf1-8080.proxy.runpod.net/health`
   and `-8081.proxy.runpod.net/health`.
 - ACE-Step WS round trip (`{"type":"block","seq":1,...}`): 3252 ms wall,
   2282 ms server-side generation, 983044 bytes of PCM back.
@@ -146,12 +148,12 @@ source /home/andrii/.local/secrets/runpod.env
 # stop (keeps billing off, but disk is wiped on next resume anyway)
 curl -s -X POST "https://api.runpod.io/graphql?api_key=${RUNPOD_API_KEY}" \
   -H "Content-Type: application/json" \
-  -d '{"query": "mutation { podStop(input: {podId: \"51midnuq8qqmuz\"}) { id } }"}'
+  -d '{"query": "mutation { podStop(input: {podId: \"6r2srn274qynf1\"}) { id } }"}'
 
 # terminate for good
 curl -s -X POST "https://api.runpod.io/graphql?api_key=${RUNPOD_API_KEY}" \
   -H "Content-Type: application/json" \
-  -d '{"query": "mutation { podTerminate(input: {podId: \"51midnuq8qqmuz\"}) }"}'
+  -d '{"query": "mutation { podTerminate(input: {podId: \"6r2srn274qynf1\"}) }"}'
 ```
 
 ## Verified (Pi instruments, drone, and public web, 2026-09-12)
