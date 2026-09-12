@@ -1009,9 +1009,25 @@ body {
 
 .you {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto 1fr auto auto;
   align-items: center;
   gap: 14px;
+}
+
+.you .note {
+  font-family: var(--mono);
+  min-width: 6ch;
+  text-align: center;
+}
+
+.you .note.stable {
+  background: var(--led);
+  border-color: var(--led);
+  color: var(--ink);
+}
+
+.you .note.unstable {
+  opacity: 0.55;
 }
 
 .you .label {

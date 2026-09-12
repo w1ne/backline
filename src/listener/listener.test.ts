@@ -4,7 +4,11 @@ import type { Source } from './listener';
 
 class Fake implements Source {
   note!: (m: number, v: number, t: number) => void;
-  async start(onNote: Fake['note']) { this.note = onNote; }
+  pitch?: (p: { midi: number; cents: number; stable: boolean } | null) => void;
+  async start(onNote: Fake['note'], _onLevel: (l: number) => void, onPitch?: Fake['pitch']) {
+    this.note = onNote;
+    this.pitch = onPitch;
+  }
   stop() {}
 }
 
@@ -27,6 +31,22 @@ describe('Listener live tempo estimate', () => {
     for (let i = 0; i < 3; i++) { a.note(-1, 0.8, t); t += 0.6; }
     expect(l.input.bpm).toBeNull();
     expect(l.input.pendingBpm).toBeCloseTo(100, 0);
+  });
+});
+
+describe('Listener continuous pitch', () => {
+  it('exposes the stable pitch and folds new stable notes into notesNow/keyDetector', async () => {
+    const a = new Fake();
+    const l = new Listener([a], ['mic']);
+    await l.start();
+    expect(l.input.pitch).toBeNull();
+
+    a.pitch!({ midi: 57, cents: 4, stable: true });
+    expect(l.input.pitch).toEqual({ midi: 57, cents: 4, stable: true });
+    expect(l.input.notesNow).toContain(57);
+
+    a.pitch!(null);
+    expect(l.input.pitch).toBeNull();
   });
 });
 

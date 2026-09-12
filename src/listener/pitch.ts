@@ -1,4 +1,14 @@
+export interface PitchEstimate {
+  hz: number;
+  /** McLeod NSDF peak value chosen (0..1-ish), how clean the periodicity is. */
+  clarity: number;
+}
+
 export function detectPitchHz(x: Float32Array, sr: number): number | null {
+  return detectPitch(x, sr)?.hz ?? null;
+}
+
+export function detectPitch(x: Float32Array, sr: number): PitchEstimate | null {
   const n = x.length;
   const minLag = Math.floor(sr / 1200);
   const maxLag = Math.min(Math.floor(sr / 60), n - 1);
@@ -39,7 +49,7 @@ export function detectPitchHz(x: Float32Array, sr: number): number | null {
   const max = Math.max(...peaks.map(p => p.value));
   if (max < 0.9) return null;
   const chosen = peaks.find(p => p.value >= 0.8 * max)!;
-  return sr / chosen.lag;
+  return { hz: sr / chosen.lag, clarity: chosen.value };
 }
 
 export const hzToMidi = (hz: number) => Math.round(69 + 12 * Math.log2(hz / 440));
