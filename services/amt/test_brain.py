@@ -72,12 +72,12 @@ class TestLiveReplay:
         assert hits / len(truth) >= 0.5, (hits, at_start)
 
     def test_arpeggio_live_sequence_lookahead_2_hmm(self):
-        """The default (hmm) predictor on the same messages. Bar 1 is the client chord for both
+        """The HMM predictor on the same messages. Bar 1 is the client chord for both
         predictors; the hmm lands F C G on bars 2-4 where the table lands G F Am, and loses bars 6-7
         to the corpus preferring i -> VI and (i, iv) -> i over this clip's Dm and Em. 7/16 here
         against the table's 8/16; HARMONY_BENCH.md has it ahead at every lookahead on average."""
         truth = [chord_name(c) for c in ARPEGGIO] * 2
-        at_start = live_replay(2.0)
+        at_start = live_replay(2.0, predictor="hmm")
         assert at_start[:8] == ["Am", "Am", "C", "G", "Am", "F", "Am", "G"], at_start
         assert sum(a == t for a, t in zip(at_start, truth)) == 7, at_start
 
@@ -88,7 +88,7 @@ class TestLiveReplay:
 
     def test_lookahead_4_hmm(self):
         truth = [chord_name(c) for c in ARPEGGIO] * 2
-        at_start = live_replay(4.0)
+        at_start = live_replay(4.0, predictor="hmm")
         assert at_start[:8] == ["Am", "Am", "C", "G", "Am", "F", "C", "G"], at_start
         assert sum(a == t for a, t in zip(at_start, truth)) / len(truth) >= 0.5
 
