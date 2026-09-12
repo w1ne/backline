@@ -11,6 +11,8 @@ export interface BandInput {
   notesNow: number[];
   inputLevel: number;
   onsets: number;
+  /** read-only running estimate from the onsets so far, shown while still listening */
+  pendingBpm: number | null;
 }
 
 export interface NoteEvent { time: number; note: number; duration: number; velocity: number }

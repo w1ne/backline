@@ -58,6 +58,31 @@ describe('tileLabel', () => {
   });
 });
 
+describe('the listening LCD', () => {
+  const noop = (): void => {};
+  const actions: LiveActions = { power: noop, powerOff: noop, toggle: noop, setGenre: noop, setEngine: noop, setCreativity: noop };
+
+  function lcd(input: Partial<Store['state']['input']>, rest: Partial<Store['state']> = {}): string {
+    const store = new Store();
+    const root = document.createElement('div');
+    store.update({ power: 'on', sources: { mic: 'on', midi: 'off' }, ...rest, input: { ...store.state.input, ...input } });
+    renderLive(root, store, actions);
+    return root.querySelector<HTMLElement>('#lcd')!.textContent!;
+  }
+
+  it('counts onsets towards the lock', () => {
+    expect(lcd({ onsets: 3 })).toBe('LISTENING · MIC ✓ MIDI ✗ · 3/12');
+  });
+
+  it('shows the running estimate as soon as there is one', () => {
+    expect(lcd({ onsets: 7, pendingBpm: 98.4 })).toBe('LISTENING · MIC ✓ MIDI ✗ · 7/12 · ~98 BPM');
+  });
+
+  it('drops the estimate once the band is live', () => {
+    expect(lcd({ onsets: 12, pendingBpm: 98.4 }, { locked: true, bar: 2 })).toBe('LIVE · BAR 2');
+  });
+});
+
 describe('engine and genre controls while power is off', () => {
   const noop = (): void => {};
   const actions: LiveActions = {

@@ -15,6 +15,21 @@ class FailingFake implements Source {
   stop() {}
 }
 
+describe('Listener live tempo estimate', () => {
+  it('offers a running bpm from six onsets, before the lock at twelve', async () => {
+    const a = new Fake();
+    const l = new Listener([a]);
+    await l.start();
+    let t = 1;
+    for (let i = 0; i < 5; i++) { a.note(-1, 0.8, t); t += 0.6; }
+    expect(l.input.pendingBpm).toBeNull();
+    expect(l.input.bpm).toBeNull();
+    for (let i = 0; i < 3; i++) { a.note(-1, 0.8, t); t += 0.6; }
+    expect(l.input.bpm).toBeNull();
+    expect(l.input.pendingBpm).toBeCloseTo(100, 0);
+  });
+});
+
 describe('Listener multi-source', () => {
   it('starts all sources and both feed the same lock', async () => {
     const a = new Fake();
