@@ -72,7 +72,7 @@ INSTRUMENT_WORDS = {
     "drums": "drums",
     "bass": "bass",
     "keys": "electric piano",
-    "lead": "lead synth",
+    "lead": "electric guitar lead",
 }
 
 
