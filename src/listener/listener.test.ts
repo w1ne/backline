@@ -390,3 +390,15 @@ it('closes mic lifecycle at captured transition, silence and mute times with sta
   listener.setMicMuted(true);
   expect(seen.at(-1)).toMatchObject({ type: 'note_off', durationSec: 1 });
 });
+
+it('exports only explicit manual preferences, without exposing mutable key state', () => {
+  const listener = new Listener([new Fake()]);
+  expect(listener.manualOverrides).toEqual({bpmOverride:null,keyOverride:null});
+  listener.setOverride({bpm:90,key:{root:9,mode:'minor'}});
+  const copy = listener.manualOverrides;
+  expect(copy).toEqual({bpmOverride:90,keyOverride:{root:9,mode:'minor'}});
+  copy.keyOverride!.root = 0;
+  expect(listener.manualOverrides.keyOverride?.root).toBe(9);
+  listener.setOverride({bpm:undefined,key:undefined});
+  expect(listener.manualOverrides).toEqual({bpmOverride:null,keyOverride:null});
+});

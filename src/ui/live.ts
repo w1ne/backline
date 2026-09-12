@@ -1,3 +1,4 @@
+import { GM_INSTRUMENTS } from '../players/gmInstruments';
 import { GENRES, INSTRUMENTS, ACCOMP_ROW } from '../types';
 import type { AccompPreset, Genre, Instrument } from '../types';
 import { SOUNDS, SOUND_GROUPS, type MonitorSound } from '../players/soundCatalog';
@@ -536,6 +537,10 @@ function updateEngine(screen: HTMLElement, s: AppState): void {
   });
 }
 
+export function accompPresetMuted(preset: AccompPreset, enabled: Record<Instrument, boolean>): boolean {
+  return !Object.values(GM_INSTRUMENTS).some(gm => gm.presets.includes(preset) && enabled[gm.role]);
+}
+
 function updateAccompTiles(screen: HTMLElement, s: AppState): void {
   const row = screen.querySelector<HTMLElement>('#accomp-tiles')!;
   row.hidden = s.engine !== 'amt';
@@ -543,11 +548,12 @@ function updateAccompTiles(screen: HTMLElement, s: AppState): void {
   screen.querySelectorAll<HTMLButtonElement>('#accomp-tiles button[data-preset]').forEach(btn => {
     const preset = btn.dataset.preset as AccompPreset;
     const on = s.accompPresets.includes(preset);
-    const active = on && !!s.accompActive[preset];
+    const muted = accompPresetMuted(preset, s.enabled);
+    const active = on && !muted && !!s.accompActive[preset];
     btn.classList.toggle('on', on);
     btn.classList.toggle('active', active);
     btn.setAttribute('aria-pressed', String(on));
-    btn.querySelector<HTMLElement>('.st-text')!.textContent = !on ? 'off' : active ? 'playing' : 'ready';
+    btn.querySelector<HTMLElement>('.st-text')!.textContent = !on ? 'off' : muted ? 'muted' : active ? 'playing' : 'ready';
   });
 }
 

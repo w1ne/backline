@@ -13,6 +13,7 @@ jobs:
         with: { node-version: 20, cache: npm }
       - run: npm ci
       - run: python3 -m unittest discover -s services/unoq/python -p 'test_*.py'
+      - run: python3 -m unittest discover -s services/pi -p 'test_*.py'
       - uses: actions/cache@v4
         with:
           path: .pi-samples

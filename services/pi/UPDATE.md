@@ -8,7 +8,10 @@ from real performance, including a quiet grace period, rather than its always-on
 listening power state. Missing, malformed, disconnected, or old status defers.
 The first deployment must bootstrap both the new renderer status and installer.
 
-The public `pi-latest` COMMIT is discovery only. An archive is unpacked into a private
+The public `pi-latest` COMMIT is discovery only. For a versioned installation the
+GitHub compare API must confirm the candidate is ahead of the installed COMMIT;
+behind, diverged, unknown and unavailable comparisons defer without downloading or
+changing runtime files. Unversioned bootstrap has no ancestry to compare. An archive is unpacked into a private
 staging directory; absolute paths, traversal, links and special files are rejected.
 Required web, Pi and UNO Q paths and the exact 40-character COMMIT are validated.
 A rolling-release upload race therefore fails without installing. The validated
@@ -17,7 +20,7 @@ modified. This binds the staged contents to the archive's COMMIT; it is not a
 cryptographic signature or independent authenticity check.
 
 Before installation the updater snapshots `site`, `services/pi`, `services/unoq`,
-COMMIT, affected systemd unit files, and service enabled/active states under
+COMMIT, explicit renderer preferences, affected systemd unit files, and service enabled/active states under
 `.updates/backups/<previous-commit>-<id>`. It rechecks performance after downloading
 and after copying the snapshot. A durable `pending.json` records recovery before
 runtime paths change. Those existing absolute paths are preserved for the installer,
@@ -27,6 +30,13 @@ unneeded historical directories when no update is running.
 
 Installation must return success, then web and browser units must be active and
 fresh renderer status must report `online: true` and `audioSuspended: false`.
+Before COMMIT advances, the updater restores sound, genre, engine, creativity,
+amount, ambient levels, enabled roles, mic mute, accompaniment presets and explicit
+BPM/key overrides through local commands, then waits for matching renderer status.
+Detected input, playback/power and recording are never replayed; missing override
+fields from older renderers are not inferred. Rollback restores these preferences
+too, while old journals without preference snapshots remain compatible. Toggle
+commands are sent once per restoration, never retried on an ambiguous response.
 Only then does COMMIT advance. Any failure restores the prior assets, COMMIT, unit
 files and service state. Failed recovery retains its journal for the next retry.
 The update timer stays active throughout installation and recovery, so an

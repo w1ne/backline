@@ -27,8 +27,8 @@ health, and roll back failed or interrupted installations. See
 
 Validation performed during integration:
 
-- Production web and Pi builds; 664 frontend tests; 161 backend tests (plus two
-  subtests); 30 Pi tests (one optional dependency skip); all 44 benchmark gates,
+- Production web and Pi builds; 674 frontend tests; 161 backend tests (plus two
+  subtests); 40 Pi tests (one optional dependency skip); all 44 benchmark gates,
   including the MIR-1K real-voice subset.
 - Browser fake microphone: quiet 220/440 Hz tones, +20-cent bend, and silence release;
   Worker loaded, both notes and bend tracked, no application error reported.
@@ -45,3 +45,11 @@ Synthetic probes demonstrate execution and invariants, not subjective musical
 quality on every performance. Response timing is an estimate from capture to
 scheduled output including reported browser output delay, not a physical acoustic
 round-trip measurement.
+
+Live device follow-up found and repaired the missing remote preset action and the
+Guitar role's missing model-instrument request. The role now requests GM24 directly,
+without adding another UI. Update restoration preserves explicit preferences and
+refuses a stale rolling release unless GitHub confirms it is ahead of the installed
+commit. A real failed legacy-release installation rolled back to the working assets;
+a simulated MIDI performance correctly caused the updater to defer. The Pi's output
+monitor captured nonzero audio while AMT scheduling and response timing were active.

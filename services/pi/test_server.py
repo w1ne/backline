@@ -86,6 +86,25 @@ class DeviceHTTPTest(unittest.TestCase):
                 server.server_close()
                 thread.join()
 
+class AccompanimentCommandTests(unittest.TestCase):
+    def test_preset_selection_is_explicit_and_survives_the_command_queue(self):
+        state = DeviceState()
+        for preset, enabled in [('guitar', True), ('strings', False), ('sax', True)]:
+            command = dict(type='accompPreset', preset=preset, on=enabled)
+            self.assertEqual(validate_command(command), command)
+            state.enqueue(command)
+        self.assertEqual([(c['preset'], c['on']) for c in state.commands(0)],
+                         [('guitar', True), ('strings', False), ('sax', True)])
+
+    def test_unknown_presets_and_non_boolean_selection_are_rejected(self):
+        for command in [dict(type='accompPreset', preset='system', on=True),
+                        dict(type='accompPreset', preset='guitar', on='true'),
+                        dict(type='accompPreset', preset='guitar', on=1),
+                        dict(type='accompPreset', preset='guitar'),
+                        dict(type='accompPreset', preset=['guitar'], on=True)]:
+            with self.assertRaises(ValueError):
+                validate_command(command)
+
 
 if __name__ == '__main__':
     unittest.main()
