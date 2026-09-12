@@ -74,6 +74,20 @@ describe('colorChord', () => {
     });
   });
 
+  describe("source: 'mic'", () => {
+    it('leaves every genre as a plain triad, even where the genre would otherwise color it', () => {
+      for (const genre of ['lofi', 'funk', 'rock', 'jazz'] as const) {
+        expect(colorChord(c(0, 'maj'), genre, CMAJ, 'mic')).toEqual(c(0, 'maj')); // I
+        expect(colorChord(c(2, 'min'), genre, CMAJ, 'mic')).toEqual(c(2, 'min')); // ii
+        expect(colorChord(c(7, 'maj'), genre, CMAJ, 'mic')).toEqual(c(7, 'maj')); // V, dom7 in jazz/funk otherwise
+      }
+    });
+    it("is unaffected when source is 'midi' or omitted", () => {
+      expect(colorChord(c(0, 'maj'), 'lofi', CMAJ, 'midi')).toEqual(c(0, 'maj7'));
+      expect(colorChord(c(0, 'maj'), 'lofi', CMAJ)).toEqual(c(0, 'maj7'));
+    });
+  });
+
   describe('only produces qualities from the ChordQuality union', () => {
     const ALLOWED = new Set(['maj', 'min', 'dom7', 'min7', 'maj7', 'sus4', 'dim']);
     it('across every diatonic degree, key and genre', () => {

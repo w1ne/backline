@@ -5,8 +5,11 @@ __pycache__/
 
 .pi-samples/
 
-# local relay secrets written by scripts/run-local.sh
+.dev-pids/
+.dev-logs/
+.env.local
 relay/.dev.vars
+# local relay secrets written by scripts/run-local.sh
 COMMIT.pi
 .claude/
 

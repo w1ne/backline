@@ -1,0 +1,14 @@
+[Unit]
+Description=duet.ai hearts on the Arduino UNO Q over USB
+After=duet-web.service
+Wants=duet-web.service
+
+[Service]
+User=test
+WorkingDirectory=/home/test/duet-ai
+ExecStart=/bin/bash /home/test/duet-ai/services/pi/unoq-sync.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

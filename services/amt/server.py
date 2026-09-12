@@ -44,7 +44,6 @@ from anticipation.vocab import TIME_OFFSET  # noqa: E402
 
 from amt import (  # noqa: E402
     MELODY_INSTR,
-    STRING_ENSEMBLE_ACCOMP_INSTRS,
     ACCOMP_BIAS,
     make_event,
     parse_events,
@@ -55,6 +54,8 @@ from arrangement import (  # noqa: E402
     shape_notes, bass_pitch, harmony_classes, voice_chord, early_entry_plan, fill_silent_window, plan_window,
 )
 from cached import cached_generate  # noqa: E402
+from brain import HarmonyBrain, sampling_for  # noqa: E402
+from instruments import resolve as resolve_instruments, TOGGLEABLE_PRESETS  # noqa: E402,F401
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("amt-server")
@@ -119,8 +120,8 @@ class ChordInference:
 
 
 BEATS_PER_BAR = 4.0
-# Beats between a cue and the start of the window it plans: one bar, so a plan has a bar of
-# wall time before its first note is due whether the cue is a `bar` or a `tick`.
+# Default beats between a cue and the start of the window it plans; the `start` message's
+# `lookaheadBeats` overrides it per session (the browser sends 2 with half-bar commits).
 PLAN_LOOKAHEAD_BEATS = 4.0
 
 
@@ -138,10 +139,10 @@ class Session:
 
     def __init__(self, model):
         self.model = model
-        self.reset(bpm=100.0, lookahead_beats=4.0, commit_beats=2.0, listen_beats=8.0, top_p=0.95)
+        self.reset(bpm=100.0, lookahead_beats=PLAN_LOOKAHEAD_BEATS, commit_beats=2.0, listen_beats=8.0, top_p=0.95)
 
     def reset(self, bpm, lookahead_beats, commit_beats, listen_beats, top_p,
-              accomp_instrs=STRING_ENSEMBLE_ACCOMP_INSTRS):
+              instrument_names=None, accomp_bias=ACCOMP_BIAS, key=None, genre=None):
         self.bpm = bpm
         self.beat_s = 60.0 / bpm
         self.lookahead_beats = lookahead_beats
@@ -153,29 +154,40 @@ class Session:
         self.temperature = 1.02
         # Default to the validated string-ensemble preset rather than a lone violin: a single
         # instrument was consistently too sparse against a real, densely-played performance to be
-        # heard at all (see bench/amt/SETUP.md in the Music repo this was ported from). The three
-        # instruments are independent voices that may overlap each other -- AccompanimentCommitter
-        # below only keeps each individual instrument monophonic -- and all three get flattened
-        # into the single "keys" output voice the client plays, same as before.
-        self.accomp_instrs = accomp_instrs
+        # heard at all (see bench/amt/SETUP.md in the Music repo this was ported from). Every
+        # selected instrument is an independent voice that may overlap the others --
+        # AccompanimentCommitter below only keeps each individual instrument monophonic -- and
+        # they all flatten into the single "keys" output voice the client plays.
+        self.instrument_names = list(instrument_names or [])
+        self.accomp_instrs = resolve_instruments(self.instrument_names)
+        self.accomp_bias = accomp_bias
 
         self.history: list[int] = []
         self.committer = AccompanimentCommitter(self.history)
         self.human_notes: list[tuple[float, float, int]] = []  # (onset_beat, dur_beat, pitch)
         self.committed_horizon_beats = 0.0
         self.last_accomp_notes: list[tuple[float, float, int]] = []
-        self.key = None
+        self.key = key
+        self.genre = genre
+        # The chord the model's window is voiced against: decided by the brain on every tick
+        # (an old client's `set.chord` only until four human notes have been heard).
         self.chord = None
+        self.section = "intro"
         self.space = False
+        self.brain = HarmonyBrain(key=key, genre=genre, lookahead_beats=lookahead_beats, bpm=bpm)
 
     def set_controls(self, msg):
         self.key = msg.get("key", self.key)
-        self.chord = msg.get("chord", self.chord)
+        self.brain.set_controls(msg)
         self.space = bool(msg.get("space", self.space))
         self.creativity = max(0.0, min(1.0, float(msg.get("creativity", self.creativity))))
-        self.top_p = 0.85 + self.creativity * 0.14
-        self.temperature = 0.9 + self.creativity * 0.4
+        self.temperature, self.top_p = sampling_for(self.creativity)
         self.amount = max(0.0, min(1.0, float(msg.get("amount", self.amount))))
+        if "accompInstruments" in msg:
+            self.instrument_names = list(msg["accompInstruments"] or [])
+            self.accomp_instrs = resolve_instruments(self.instrument_names)
+        if "accompBias" in msg:
+            self.accomp_bias = float(msg["accompBias"])
 
     def add_human_notes(self, notes):
         for n in notes:
@@ -183,6 +195,7 @@ class Session:
             dur_beat = float(n.get("dur", 0.5))
             pitch = int(n["pitch"])
             self.human_notes.append((onset_beat, dur_beat, pitch))
+            self.brain.on_note(pitch, onset_beat)
             self.history.extend(
                 make_event(onset_beat * self.beat_s, dur_beat * self.beat_s, MELODY_INSTR, pitch)
             )
@@ -221,7 +234,7 @@ class Session:
 
     def generate_plan(self, now_beat: float, span_beats: float, label: str = "") -> dict:
         """Generate the accompaniment plan for the `span_beats` window starting
-        PLAN_LOOKAHEAD_BEATS past the cue at `now_beat` (4/4 assumed -- matches
+        `self.lookahead_beats` past the cue at `now_beat` (4/4 assumed -- matches
         the app's Players.schedule bar granularity).
 
         The window is anchored to the cue that just happened. It used to start
@@ -233,7 +246,19 @@ class Session:
         the kept window stayed two beats -- which is why most bars came back
         with no notes at all.
         """
-        target_start_beat, target_end_beat = plan_window(now_beat, span_beats, PLAN_LOOKAHEAD_BEATS)
+        target_start_beat, target_end_beat = plan_window(now_beat, span_beats, self.lookahead_beats)
+
+        # Chord and section for this window: harmony.py/predict.py and form.py via the brain.
+        brain_out = self.brain.on_tick(now_beat)
+        self.chord = brain_out["chord"]
+        self.section = brain_out["section"]
+        if brain_out["idle"]:
+            # The form has ended: nothing until a start or new human notes reset it.
+            log.info("%s: ended, empty plan", label)
+            return {
+                "plan": self.plan_message(target_start_beat, target_end_beat, []),
+                "status": {"type": "status", "latencyMs": 0.0, "tokensPerSec": 0.0},
+            }
 
         # Listen-first (ReaLJam): commit nothing until `listen_beats` of the
         # player's melody have been heard, so the model answers real material
@@ -243,12 +268,9 @@ class Session:
             log.info("%s: listening (target window ends at beat %.1f, listen=%.1f)",
                      label, target_end_beat, self.listen_beats)
             return {
-                "plan": {
-                    "type": "plan",
-                    "fromBeat": target_start_beat,
-                    "toBeat": target_end_beat,
-                    "notes": early_entry_plan(self.key, self.chord, target_start_beat, target_end_beat),
-                },
+                "plan": self.plan_message(
+                    target_start_beat, target_end_beat,
+                    early_entry_plan(self.key, self.chord, target_start_beat, target_end_beat)),
                 "status": {"type": "status", "latencyMs": 0.0, "tokensPerSec": 0.0},
             }
 
@@ -272,9 +294,9 @@ class Session:
         deadline_s = GENERATION_BUDGET * (commit_end_beat - start_beat) * self.beat_s
         t0 = time.monotonic()
         result = generate_duet(
-            self.model, start_s, end_s, history_before, self.accomp_instrs, self.top_p, ACCOMP_BIAS,
-            deadline_s=deadline_s,
+            self.model, start_s, end_s, history_before, self.accomp_instrs, self.top_p, self.accomp_bias,
             temperature=self.temperature,
+            deadline_s=deadline_s,
             # The committed voice is monophonic and the app plays to a beat grid, so a
             # sixteenth note is the shortest onset gap worth sampling.
             min_interval_ticks=max(1, round(self.beat_s / 4.0 * TIME_RESOLUTION)),
@@ -314,7 +336,7 @@ class Session:
         # pitch to -- bass (below) stays a single note per onset, monophonic.
         chord_tones = harmony_classes(self.key, self.chord) or harmony_classes(self.key)
         notes_out = []
-        for onset_s, dur_s, _instr, pitch in committed:
+        for onset_s, dur_s, instr, pitch in committed:
             for voiced_pitch in voice_chord(pitch, chord_tones, want=3):
                 notes_out.append(
                     {
@@ -323,6 +345,7 @@ class Session:
                         "dur": dur_s / self.beat_s,
                         "vel": 0.65 if self.space else 0.5,
                         "voice": "keys",
+                        "gmInstr": instr,
                     }
                 )
 
@@ -352,14 +375,18 @@ class Session:
         tokens_per_sec = (tokens_generated / (latency_ms / 1000.0)) if latency_ms > 0 else 0.0
 
         return {
-            "plan": {
-                "type": "plan",
-                "fromBeat": start_beat,
-                "toBeat": commit_end_beat,
-                "notes": notes_out,
-            },
+            "plan": self.plan_message(start_beat, commit_end_beat, notes_out),
             "status": {"type": "status", "latencyMs": latency_ms, "tokensPerSec": tokens_per_sec},
         }
+
+    def plan_message(self, from_beat: float, to_beat: float, notes: list) -> dict:
+        """A plan with the chord in force from the window start and the current section.
+        `chord`/`chordFrom`/`section` are optional: an old client ignores them."""
+        plan = {"type": "plan", "fromBeat": from_beat, "toBeat": to_beat, "notes": notes, "section": self.section}
+        if self.chord:
+            plan["chord"] = self.chord
+            plan["chordFrom"] = from_beat
+        return plan
 
 
 @app.websocket("/ws")
@@ -388,12 +415,15 @@ async def websocket_endpoint(websocket: WebSocket):
                 elif mtype == "start":
                     session.reset(
                         bpm=float(msg.get("bpm", 100.0)),
-                        lookahead_beats=float(msg.get("lookaheadBeats", 4.0)),
+                        lookahead_beats=float(msg.get("lookaheadBeats", PLAN_LOOKAHEAD_BEATS)),
                         commit_beats=float(msg.get("commitBeats", 2.0)),
                         listen_beats=float(msg.get("listenBeats", 8.0)),
                         top_p=0.95,
+                        instrument_names=msg.get("accompInstruments"),
+                        accomp_bias=float(msg.get("accompBias", ACCOMP_BIAS)),
+                        key=msg.get("key"),
+                        genre=msg.get("genre"),
                     )
-                    session.key = msg.get("key")
                     # Tells a new client it may cue with `tick` every commitBeats instead of
                     # `bar` every bar. An old client ignores unknown message types.
                     await websocket.send_text(json.dumps({"type": "ready", "tick": True}))

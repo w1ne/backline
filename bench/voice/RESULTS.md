@@ -15,32 +15,32 @@ Generated 2026-09-12 by bench/voice/run.ts.
 | sustained-A4 | VOICE | 100.0 | 0.0 | 1.00 | 1.00 | 1.00 | 109 | — | — | — | — |
 | sustained-A4 | INSTRUMENT | 100.0 | 0.0 | 1.00 | 1.00 | 1.00 | 205 | — | — | — | — |
 | scale-vib0-port0 | VOICE | 92.7 | 0.0 | 1.00 | 1.00 | 1.00 | 105 | 2.86 | — | — | — |
-| scale-vib0-port0 | INSTRUMENT | 92.7 | 0.0 | 0.89 | 1.00 | 0.94 | 157 | 2.60 | — | — | — |
-| scale-vib0-port60 | VOICE | 88.5 | 0.0 | 1.00 | 1.00 | 1.00 | 133 | 2.81 | — | — | — |
+| scale-vib0-port0 | INSTRUMENT | 92.7 | 0.0 | 1.00 | 1.00 | 1.00 | 157 | 3.01 | — | — | — |
+| scale-vib0-port60 | VOICE | 88.5 | 0.0 | 1.00 | 1.00 | 1.00 | 155 | 2.95 | — | — | — |
 | scale-vib0-port60 | INSTRUMENT | 88.5 | 0.0 | 1.00 | 1.00 | 1.00 | 201 | 2.95 | — | — | — |
-| scale-vib40-port0 | VOICE | 92.7 | 0.0 | 1.00 | 1.00 | 1.00 | 105 | 2.86 | — | — | — |
-| scale-vib40-port0 | INSTRUMENT | 92.7 | 0.0 | 0.89 | 1.00 | 0.94 | 159 | 3.10 | — | — | — |
-| scale-vib40-port60 | VOICE | 88.5 | 0.0 | 0.89 | 1.00 | 0.94 | 157 | 2.90 | — | — | — |
-| scale-vib40-port60 | INSTRUMENT | 88.5 | 0.0 | 0.89 | 1.00 | 0.94 | 204 | 2.95 | — | — | — |
-| scale-vib100-port0 | VOICE | 40.6 | 0.0 | 0.29 | 0.88 | 0.44 | 203 | 3.10 | — | — | — |
-| scale-vib100-port0 | INSTRUMENT | 40.6 | 0.0 | 0.30 | 1.00 | 0.46 | 256 | 1.95 | — | — | — |
-| scale-vib100-port60 | VOICE | 38.5 | 0.0 | 0.33 | 0.88 | 0.48 | 203 | 3.16 | — | — | — |
-| scale-vib100-port60 | INSTRUMENT | 38.5 | 0.0 | 0.27 | 0.88 | 0.41 | 301 | 3.05 | — | — | — |
-| melody-A3-root | VOICE | 87.4 | 0.0 | 0.85 | 0.91 | 0.88 | 125 | 3.10 | yes | 7.61 | -0.2 |
-| melody-A3-root | INSTRUMENT | 87.4 | 0.0 | 0.50 | 0.88 | 0.64 | 205 | 3.90 | yes | 7.61 | -0.2 |
-| arpeggio-Am-progression | VOICE | 89.5 | 0.0 | 0.80 | 1.00 | 0.89 | 136 | 2.36 | yes | 7.61 | -0.2 |
-| arpeggio-Am-progression | INSTRUMENT | 89.5 | 0.0 | 0.64 | 1.00 | 0.78 | 205 | 1.76 | yes | 7.61 | -0.2 |
-| melody-A2-root-low | VOICE | 86.9 | 0.0 | 0.68 | 0.88 | 0.77 | 125 | 3.16 | yes | 6.95 | -0.1 |
-| melody-A2-root-low | INSTRUMENT | 86.9 | 0.0 | 0.43 | 0.94 | 0.59 | 221 | 3.96 | yes | 6.95 | -0.1 |
-| melody-A4-root-high | VOICE | 87.8 | 0.0 | 0.97 | 0.91 | 0.94 | 125 | 3.10 | yes | 9.61 | -0.2 |
-| melody-A4-root-high | INSTRUMENT | 87.8 | 0.0 | 0.62 | 0.91 | 0.73 | 205 | 3.46 | yes | 9.61 | -0.2 |
+| scale-vib40-port0 | VOICE | 92.7 | 0.0 | 1.00 | 1.00 | 1.00 | 108 | 2.95 | — | — | — |
+| scale-vib40-port0 | INSTRUMENT | 92.7 | 0.0 | 1.00 | 1.00 | 1.00 | 159 | 2.90 | — | — | — |
+| scale-vib40-port60 | VOICE | 88.5 | 0.0 | 0.89 | 1.00 | 0.94 | 157 | 2.86 | — | — | — |
+| scale-vib40-port60 | INSTRUMENT | 88.5 | 0.0 | 1.00 | 1.00 | 1.00 | 204 | 2.95 | — | — | — |
+| scale-vib100-port0 | VOICE | 40.6 | 0.0 | 0.39 | 0.88 | 0.54 | 203 | 3.85 | — | — | — |
+| scale-vib100-port0 | INSTRUMENT | 40.6 | 0.0 | 0.67 | 1.00 | 0.80 | 259 | 2.51 | — | — | — |
+| scale-vib100-port60 | VOICE | 38.5 | 0.0 | 0.44 | 0.88 | 0.58 | 205 | 4.11 | — | — | — |
+| scale-vib100-port60 | INSTRUMENT | 38.5 | 0.0 | 0.55 | 0.75 | 0.63 | 352 | 2.95 | — | — | — |
+| melody-A3-root | VOICE | 87.4 | 0.0 | 0.97 | 0.91 | 0.94 | 125 | 3.20 | yes | 7.61 | -0.2 |
+| melody-A3-root | INSTRUMENT | 87.4 | 0.0 | 0.93 | 0.88 | 0.90 | 205 | 4.26 | yes | 7.61 | -0.2 |
+| arpeggio-Am-progression | VOICE | 89.5 | 0.0 | 0.97 | 1.00 | 0.98 | 136 | 3.01 | yes | 7.61 | -0.2 |
+| arpeggio-Am-progression | INSTRUMENT | 89.5 | 0.0 | 1.00 | 1.00 | 1.00 | 205 | 3.05 | yes | 7.61 | -0.2 |
+| melody-A2-root-low | VOICE | 86.9 | 0.0 | 0.85 | 0.88 | 0.86 | 125 | 3.20 | yes | 6.95 | -0.1 |
+| melody-A2-root-low | INSTRUMENT | 86.9 | 0.0 | 0.90 | 0.88 | 0.89 | 216 | 3.31 | yes | 6.95 | -0.1 |
+| melody-A4-root-high | VOICE | 87.8 | 0.0 | 0.97 | 0.91 | 0.94 | 125 | 3.20 | yes | 9.61 | -0.2 |
+| melody-A4-root-high | INSTRUMENT | 87.8 | 0.0 | 0.94 | 0.91 | 0.92 | 205 | 4.26 | yes | 9.61 | -0.2 |
 
 ## False notes on the spoken (no stable pitch) clip
 
 | profile | false notes emitted (truth = 0) |
 |---|---|
-| VOICE | 28 |
-| INSTRUMENT | 12 |
+| VOICE | 18 |
+| INSTRUMENT | 11 |
 
 ## Candidate VOICE_PROFILE tweak (not applied to src/)
 
@@ -48,8 +48,8 @@ Generated 2026-09-12 by bench/voice/run.ts.
 
 | profile | mean note F1 on the three melody clips | false notes on spoken clip |
 |---|---|---|
-| current VOICE_PROFILE | 0.86 | 28 |
-| candidate (holdFrames 2) | 0.43 | 22 |
+| current VOICE_PROFILE | 0.91 | 18 |
+| candidate (holdFrames 2) | 0.87 | 17 |
 
 Two frames of agreement (100 ms) instead of three: fewer false notes on the spoken clip, but a much lower note F1 on the melodies now that the tracker holds a note through short dropouts. Not applied. Checked against synthetic voices only; real recordings may move both numbers.
 

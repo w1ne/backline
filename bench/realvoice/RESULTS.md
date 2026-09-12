@@ -6,50 +6,50 @@ Generated 2026-09-12 by bench/realvoice/run.ts. 24 clips, 12 singers (12 clips f
 
 | clip | range | s | off-key cents (median) | pitch acc % | octave err % | no pitch % | other err % | note F1 | P | R | notes (label/det) | latency ms | key lock s | key | key plausible | label key (cov) | tempo lock s | bpm | backing bpm |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| amy_4_01 | f | 8.0 | 19 | 96.2 | 0.0 | 0.0 | 3.8 | 0.79 | 0.73 | 0.85 | 13/15 | 109 | 4.61 | D# min | no | C min (78%) | 6.45 | 103 | 144 |
-| amy_15_03 | f | 6.9 | 21 | 97.9 | 0.0 | 0.0 | 2.1 | 0.58 | 0.48 | 0.73 | 15/23 | 113 | 1.15 | A# maj | no | C min (70%) | — | — | 176 |
-| Ani_1_01 | f | 8.8 | 21 | 86.5 | 0.0 | 5.2 | 8.3 | 0.58 | 0.42 | 0.92 | 12/26 | 123 | 3.36 | B maj | no | C# min (73%) | 5.41 | 97 | 71 |
-| Ani_4_02 | f | 7.8 | 19 | 87.6 | 0.0 | 2.9 | 9.5 | 0.65 | 0.50 | 0.93 | 15/28 | 98 | 3.25 | D maj | no | B min (77%) | 5.11 | 138 | 117 |
-| ariel_1_01 | f | 9.2 | 21 | 94.6 | 0.9 | 0.0 | 4.5 | 0.65 | 0.52 | 0.88 | 16/27 | 101 | 1.95 | B maj | no | F# min (78%) | 4.50 | 109 | 181 |
-| ariel_3_02 | f | 9.4 | 24 | 96.1 | 0.0 | 0.8 | 3.1 | 0.67 | 0.54 | 0.88 | 25/41 | 91 | 1.45 | G# maj | no | C min (87%) | 4.11 | 128 | 75 |
-| heycat_2_01 | f | 12.0 | 24 | 98.6 | 0.0 | 0.0 | 1.4 | 0.52 | 0.43 | 0.67 | 24/37 | 120 | 3.16 | F min | no | C maj (69%) | 6.15 | 88 | 100 |
-| heycat_4_01 | f | 6.5 | 19 | 98.9 | 0.0 | 0.0 | 1.1 | 0.69 | 0.67 | 0.71 | 17/18 | 106 | 2.56 | D# maj | yes | G min (88%) | 4.46 | 122 | 134 |
-| titon_1_01 | f | 8.0 | 19 | 100.0 | 0.0 | 0.0 | 0.0 | 0.53 | 0.50 | 0.57 | 14/16 | 114 | 2.15 | D# maj | yes | A# maj (96%) | 4.91 | 142 | 68 |
-| titon_4_03 | f | 8.4 | 24 | 99.3 | 0.0 | 0.0 | 0.7 | 0.57 | 0.52 | 0.63 | 19/23 | 130 | 1.65 | A# min | no | E min (77%) | 6.01 | 139 | 134 |
-| yifen_1_01 | f | 5.1 | 19 | 85.2 | 0.0 | 0.0 | 14.8 | 0.63 | 0.45 | 1.00 | 5/11 | 113 | 3.85 | D# maj | yes | C min (86%) | 4.26 | 139 | 165 |
-| yifen_3_02 | f | 5.8 | 19 | 93.9 | 0.0 | 1.5 | 4.5 | 0.63 | 0.71 | 0.56 | 9/7 | 92 | — | — | — | D min (80%) | — | — | 89 |
-| abjones_1_01 | m | 11.6 | 30 | 82.1 | 0.0 | 2.0 | 15.9 | 0.38 | 0.31 | 0.48 | 23/35 | 136 | 1.71 | A# min | no | D# min (65%) | 4.96 | 125 | 68 |
-| abjones_3_02 | m | 7.2 | 30 | 67.0 | 0.0 | 4.4 | 28.6 | 0.46 | 0.32 | 0.80 | 10/25 | 109 | 1.86 | D# min | no | A# min (67%) | 4.85 | 129 | 64 |
-| davidson_1_01 | m | 7.7 | 30 | 90.4 | 0.0 | 1.4 | 8.2 | 0.55 | 0.39 | 0.90 | 10/23 | 113 | 2.95 | F# min | no | C# maj (72%) | 4.65 | 165 | 181 |
-| davidson_3_02 | m | 6.3 | 21 | 93.8 | 0.0 | 0.0 | 6.2 | 0.73 | 0.65 | 0.85 | 13/17 | 103 | 1.00 | A# maj | no | D min (80%) | — | — | 72 |
-| geniusturtle_4_01 | m | 7.2 | 23 | 95.7 | 0.0 | 1.7 | 2.6 | 0.69 | 0.61 | 0.79 | 14/18 | 87 | 1.80 | C# maj | yes | C# maj (85%) | — | — | 161 |
-| geniusturtle_7_02 | m | 8.1 | 26 | 89.8 | 0.0 | 4.7 | 5.5 | 0.60 | 0.55 | 0.67 | 18/22 | 127 | — | — | — | B min (64%) | — | — | 152 |
-| jmzen_1_01 | m | 9.2 | 23 | 90.7 | 0.9 | 0.0 | 8.3 | 0.50 | 0.39 | 0.69 | 13/23 | 137 | — | — | — | F min (79%) | 7.81 | 96 | 95 |
-| jmzen_3_02 | m | 8.2 | 19 | 95.3 | 0.0 | 0.8 | 3.9 | 0.73 | 0.67 | 0.80 | 20/24 | 117 | 1.86 | E min | no | A min (68%) | 6.71 | 72 | 131 |
-| leon_1_01 | m | 7.2 | 26 | 94.7 | 0.0 | 0.0 | 5.3 | 0.67 | 0.54 | 0.88 | 16/26 | 113 | 3.36 | G# maj | no | C min (68%) | 5.71 | 148 | 74 |
-| leon_5_02 | m | 6.2 | 30 | 89.4 | 1.1 | 4.3 | 5.3 | 0.60 | 0.60 | 0.60 | 15/15 | 129 | 1.86 | C maj | no | F min (75%) | — | — | 78 |
-| Kenshin_1_01 | m | 7.2 | 30 | 98.1 | 0.0 | 0.0 | 1.9 | 0.58 | 0.64 | 0.54 | 13/11 | 109 | 4.65 | B maj | no | E min (81%) | — | — | 170 |
-| Kenshin_5_03 | m | 9.4 | 16 | 94.9 | 0.0 | 0.0 | 5.1 | 0.59 | 0.45 | 0.83 | 12/22 | 111 | 3.66 | A# maj | no | F maj (84%) | 5.21 | 93 | 72 |
+| amy_4_01 | f | 8.0 | 19 | 96.2 | 0.0 | 0.0 | 3.8 | 0.80 | 0.83 | 0.77 | 13/12 | 125 | — | — | — | C min (78%) | 6.45 | 103 | 144 |
+| amy_15_03 | f | 6.9 | 21 | 97.9 | 0.0 | 0.0 | 2.1 | 0.69 | 0.65 | 0.73 | 15/17 | 113 | — | — | — | C min (70%) | — | — | 176 |
+| Ani_1_01 | f | 8.8 | 21 | 86.5 | 0.0 | 5.2 | 8.3 | 0.65 | 0.53 | 0.83 | 12/19 | 131 | 3.66 | E maj | no | C# min (73%) | 5.41 | 97 | 71 |
+| Ani_4_02 | f | 7.8 | 19 | 87.6 | 0.0 | 2.9 | 9.5 | 0.86 | 0.75 | 1.00 | 15/20 | 107 | 3.55 | D maj | no | B min (77%) | 5.11 | 138 | 117 |
+| ariel_1_01 | f | 9.2 | 21 | 94.6 | 0.9 | 0.0 | 4.5 | 0.76 | 0.72 | 0.81 | 16/18 | 105 | 4.00 | B maj | no | F# min (78%) | 4.50 | 109 | 181 |
+| ariel_3_02 | f | 9.4 | 24 | 96.1 | 0.0 | 0.8 | 3.1 | 0.79 | 0.75 | 0.84 | 25/28 | 93 | 2.30 | F min | no | C min (87%) | 4.11 | 128 | 75 |
+| heycat_2_01 | f | 12.0 | 24 | 98.6 | 0.0 | 0.0 | 1.4 | 0.54 | 0.54 | 0.54 | 24/24 | 105 | — | — | — | C maj (69%) | 6.15 | 88 | 100 |
+| heycat_4_01 | f | 6.5 | 19 | 98.9 | 0.0 | 0.0 | 1.1 | 0.80 | 0.92 | 0.71 | 17/13 | 120 | 3.51 | D# maj | yes | G min (88%) | 4.46 | 122 | 134 |
+| titon_1_01 | f | 8.0 | 19 | 100.0 | 0.0 | 0.0 | 0.0 | 0.75 | 0.90 | 0.64 | 14/10 | 113 | 4.41 | D# maj | yes | A# maj (96%) | 4.91 | 142 | 68 |
+| titon_4_03 | f | 8.4 | 24 | 99.3 | 0.0 | 0.0 | 0.7 | 0.63 | 0.63 | 0.63 | 19/19 | 129 | 1.71 | A# min | no | E min (77%) | 6.01 | 139 | 134 |
+| yifen_1_01 | f | 5.1 | 19 | 85.2 | 0.0 | 0.0 | 14.8 | 0.60 | 0.60 | 0.60 | 5/5 | 130 | 4.05 | D# maj | yes | C min (86%) | 4.26 | 139 | 165 |
+| yifen_3_02 | f | 5.8 | 19 | 93.9 | 0.0 | 1.5 | 4.5 | 0.67 | 0.83 | 0.56 | 9/6 | 113 | — | — | — | D min (80%) | — | — | 89 |
+| abjones_1_01 | m | 11.6 | 30 | 82.1 | 0.0 | 2.0 | 15.9 | 0.57 | 0.57 | 0.57 | 23/23 | 122 | 3.85 | G min | no | D# min (65%) | 4.96 | 125 | 68 |
+| abjones_3_02 | m | 7.2 | 30 | 67.0 | 0.0 | 4.4 | 28.6 | 0.55 | 0.42 | 0.80 | 10/19 | 160 | 2.30 | D# min | no | A# min (67%) | 4.85 | 129 | 64 |
+| davidson_1_01 | m | 7.7 | 30 | 90.4 | 0.0 | 1.4 | 8.2 | 0.59 | 0.47 | 0.80 | 10/17 | 127 | 3.66 | A min | no | C# maj (72%) | 4.65 | 165 | 181 |
+| davidson_3_02 | m | 6.3 | 21 | 93.8 | 0.0 | 0.0 | 6.2 | 0.52 | 0.60 | 0.46 | 13/10 | 118 | 1.56 | A# min | no | D min (80%) | — | — | 72 |
+| geniusturtle_4_01 | m | 7.2 | 23 | 95.7 | 0.0 | 1.7 | 2.6 | 0.73 | 0.69 | 0.79 | 14/16 | 89 | 2.81 | C# maj | yes | C# maj (85%) | — | — | 161 |
+| geniusturtle_7_02 | m | 8.1 | 26 | 89.8 | 0.0 | 4.7 | 5.5 | 0.67 | 0.73 | 0.61 | 18/15 | 140 | 7.20 | A# min | no | B min (64%) | — | — | 152 |
+| jmzen_1_01 | m | 9.2 | 23 | 90.7 | 0.9 | 0.0 | 8.3 | 0.60 | 0.53 | 0.69 | 13/17 | 137 | 3.01 | G min | no | F min (79%) | 7.81 | 96 | 95 |
+| jmzen_3_02 | m | 8.2 | 19 | 95.3 | 0.0 | 0.8 | 3.9 | 0.83 | 0.94 | 0.75 | 20/16 | 115 | — | — | — | A min (68%) | 6.71 | 72 | 131 |
+| leon_1_01 | m | 7.2 | 26 | 94.7 | 0.0 | 0.0 | 5.3 | 0.76 | 0.72 | 0.81 | 16/18 | 115 | 3.81 | G# min | no | C min (68%) | 5.71 | 148 | 74 |
+| leon_5_02 | m | 6.2 | 30 | 89.4 | 1.1 | 4.3 | 5.3 | 0.67 | 0.75 | 0.60 | 15/12 | 124 | 5.56 | C maj | no | F min (75%) | — | — | 78 |
+| Kenshin_1_01 | m | 7.2 | 30 | 98.1 | 0.0 | 0.0 | 1.9 | 0.61 | 0.70 | 0.54 | 13/10 | 118 | 4.85 | B maj | no | E min (81%) | — | — | 170 |
+| Kenshin_5_03 | m | 9.4 | 16 | 94.9 | 0.0 | 0.0 | 5.1 | 0.62 | 0.57 | 0.67 | 12/14 | 141 | 9.30 | A# maj | no | F maj (84%) | 5.21 | 93 | 72 |
 
-Means: pitch acc 92.4%, octave err 0.1%, no pitch 1.2%, note F1 0.61 (P 0.52, R 0.76), median latency 113 ms. Key locked on 21/24 clips (median 2.2 s), plausible on 4. Tempo locked on 17/24 clips; of those, 2 within 8% of the backing track's bpm, 4 at double or half of it. Median off-key distance of the labelled pitch from the nearest semitone: 22 cents; 41% of voiced frames are more than 30 cents from any semitone.
+Means: pitch acc 92.4%, octave err 0.1%, no pitch 1.2%, note F1 0.68 (P 0.68, R 0.70), median latency 119 ms. Key locked on 19/24 clips (median 3.7 s), plausible on 4. Tempo locked on 17/24 clips; of those, 2 within 8% of the backing track's bpm, 4 at double or half of it. Median off-key distance of the labelled pitch from the nearest semitone: 22 cents; 41% of voiced frames are more than 30 cents from any semitone.
 
-Female-range clips: pitch acc 94.6%, note F1 0.62. Male-range clips: pitch acc 90.2%, note F1 0.59.
+Female-range clips: pitch acc 94.6%, note F1 0.71. Male-range clips: pitch acc 90.2%, note F1 0.64.
 
 ## Fit: the band over four stitched ~30 s songs (lofi, creativity 0.5)
 
 | song | s | detected bpm | backing bpm | key used | label key (cov) | sung pitch in band chord: following | static tonic | best diatonic triad per half bar | band notes in label key: following | static | dissonant half bars: following (bass / keys) | static (bass / keys) | chord changes |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| amy_15 | 36.6 | 174 | 117 | D# min (label, no lock) | D# min (74%) | 45% | 45% | 48% | 100% | 100% | 72% (39% / 67%), 46 scored | 72% (39% / 67%) | 0 |
-| yifen_1 | 33.8 | 139 | 84 | D# maj | C min (72%) | 40% | 52% | 53% | 99% | 100% | 65% (26% / 65%), 31 scored | 77% (42% / 74%) | 6 |
-| abjones_2 | 31.6 | 165 | 87 | A# maj | A# maj (76%) | 40% | 50% | 59% | 93% | 100% | 63% (25% / 63%), 32 scored | 72% (25% / 72%) | 11 |
-| leon_8 | 35.8 | 144 | 148 | E maj (label, no lock) | E maj (70%) | 41% | 41% | 48% | 100% | 100% | 77% (38% / 77%), 39 scored | 77% (38% / 77%) | 0 |
+| amy_15 | 36.6 | 174 | 117 | D# min | D# min (74%) | 40% | 45% | 48% | 100% | 100% | 50% (46% / 15%), 46 scored | 52% (48% / 15%) | 4 |
+| yifen_1 | 33.8 | 139 | 84 | D# min | C min (72%) | 34% | 38% | 53% | 70% | 94% | 26% (23% / 13%), 31 scored | 45% (42% / 16%) | 10 |
+| abjones_2 | 31.6 | 165 | 87 | A# maj | A# maj (76%) | 40% | 50% | 59% | 98% | 100% | 25% (16% / 19%), 32 scored | 19% (16% / 13%) | 11 |
+| leon_8 | 35.8 | 144 | 148 | G# min | E maj (70%) | 39% | 39% | 48% | 93% | 100% | 69% (56% / 31%), 39 scored | 54% (38% / 28%) | 6 |
 
 Chord per bar, following band:
 
-- amy_15: D#m7 D#m7 D#m7 D#m7 D#m7 D#m7 D#m7 D#m7 D#m7 D#m7 D#m7 D#m7 D#m7 D#m7 D#m7 D#m7 D#m7 D#m7 D#m7 D#m7 D#m7 D#m7 D#m7 D#m7 D#m7 D#m7 D#m7
-- yifen_1: D#maj7 D#maj7 D#maj7 A#maj7 D#maj7 Cm7 Cm7 Cm7 Cm7 A#maj7 Cm7 Cm7 Cm7 Cm7 Cm7 Cm7 Cm7 Cm7 Cm7
-- abjones_2: A#maj7 A#maj7 A#maj7 A#maj7 D#maj7 D#maj7 D#maj7 D#maj7 C# G# A#maj7 A#maj7 A#maj7 Fm7 D#maj7 D#maj7 D#maj7 D#maj7 D#maj7 Fmaj7 A#maj7
-- leon_8: Emaj7 Emaj7 Emaj7 Emaj7 Emaj7 Emaj7 Emaj7 Emaj7 Emaj7 Emaj7 Emaj7 Emaj7 Emaj7 Emaj7 Emaj7 Emaj7 Emaj7 Emaj7 Emaj7 Emaj7 Emaj7
+- amy_15: D#m7 D#m7 D#m7 D#m7 D#m7 D#m7 D#m7 D#m7 D#m7 D#m7 D#m7 D#m7 D#m7 D#m7 A#m7 D#m7 D#m7 D#m7 C#maj7 C#maj7 D#m7 D#m7 D#m7 D#m7 D#m7 D#m7 D#m7
+- yifen_1: D#m7 D#m7 D#m7 A#maj7 D#maj7 Fm7 D#m7 D#m7 D#m7 A#maj7 Cm Bmaj7 Bmaj7 A#m7 A#m7 Bmaj7 Bmaj7 Bmaj7 F#maj7
+- abjones_2: A#maj7 A#maj7 A#maj7 Fm7 D#maj7 D#maj7 D#maj7 Cm7 Fm7 Fm7 A#maj7 G# Fm7 Fm7 D#maj7 D#maj7 D#maj7 D#maj7 D#maj7 A#maj7 A#maj7
+- leon_8: G#m7 G#m7 G#m7 G#m7 G#m7 G#m7 G#m7 G#m7 G#m7 G#m7 G#m7 G#m7 G#m7 Emaj7 D#m7 D#m7 Bmaj7 Emaj7 Emaj7 Emaj7 C#m7
 
 ## Mixes
 
@@ -65,13 +65,13 @@ Raw voice at -3 dB over the fluidsynth-rendered band at -9 dB; not in git.
 
 The pitch detector itself is not the problem. On 24 raw amateur recordings the McLeod estimate is within 50 cents of the hand label on 92% of voiced frames, with 0.1% octave errors and 1.2% frames returning nothing. That is better than the synthetic bench (87-90%), because real vibrato is narrower than the 50-cent synthetic one. The weakest clips belong to the pitchiest singer (abjones, median 30 cents off the nearest semitone): 67-82% accurate, with the misses being slides and scoops between notes, not octave jumps.
 
-Note segmentation is worse than on synthetic voices: F1 0.60 against 0.78-0.94, and the drop is almost all precision (0.53). The tracker emits about 1.4 notes for every note the labels imply; the extra ones are the intermediate semitones a real voice passes through while sliding or settling, which the synthetic portamento (60 ms) never produced. Recall (0.72) and latency (110 ms median, versus 125-157 ms synthetic) are fine.
+Note segmentation is worse than on synthetic voices: F1 0.67 against 0.86-0.98, with precision and recall both at 0.68 and a median latency of 117 ms. The first run of this bench scored F1 0.60 (precision 0.53, recall 0.72): the tracker emitted 1.4 notes for every note the labels imply. Half of the extra notes were the same note re-triggered right after a breath: the tracker reported its held reading as unstable during the one or two silent frames, the listener forgot the note, and when the voice came back the window still held two frames of the old note and reported it again before moving on. The tracker now vouches for a held note through a breath, a single unclear frame or a slide, and freezes its reading while the pitch is still moving monotonically by more than 35 cents a frame (the slide through the semitones between two notes). What is left of the gap is mostly long notes where the tracker and the hand label round a pitch 40-60 cents off to different semitones, which no segmentation rule can settle. Adding a 50 ms dwell before a new note is reported was benched and rejected: precision 0.70, recall 0.67, median latency 151 ms.
 
 Key detection now happens, though the keys it finds are only as good as the singing. KeyDetector weighs a sung pitch by how long it is held and accepts a key early when one scale covers 85% of the held time and clearly beats the runner-up (coverage acceptance, keyDetector.ts); once accepted the key is held until another is accepted, and sung pitches are only snapped onto it while the singer is actually staying inside it. It locks on 21 of 24 clips (12 before), median 2.2 s, and the band gets a key on 2 of the 4 songs (1 before). Only 4 of the 21 name a key whose scale holds 85% of what was sung, but that is the ceiling of the data, not the detector: the best-fitting major or minor scale covers 85% of the labelled pitch classes on only 5 of 24 clips, because the median sung pitch is 22 cents off the nearest semitone and 41% of voiced frames are more than 30 cents off. Splitting each frame's weight between its two neighbouring semitones instead of rounding was measured and locks fewer (12 of 24). amy_15 and leon_8 still get no key in 36 s: their label scales cover 70-74% of what was sung, so neither rule can accept one, and lowering the correlation threshold to 0.45 was measured earlier to pick G# minor for leon_8 where the labels say E major.
 Tempo from a solo voice is syllable rate, not beat rate. TempoLock reports a bpm on 17 of 24 clips, typically after 4-6 s, but on three of the four songs it is 1.5-1.9 times the backing track the singer was actually following (174 vs 117, 139 vs 84, 165 vs 87); only leon_8 (144 vs 148) matched. The per-clip backing bpm is an autocorrelation estimate over 5-12 s and is itself octave-ambiguous, so use the song rows for this. The synthetic bench could not show this because its notes sat exactly on the beat. tempoLock.ts now takes the half tempo for mic onsets when the half is in 70-130 and the IOI histogram has a second peak there holding at least 40% of the winner's count; on these songs it does not fire, because the 12-onset histogram at lock has no half peak at all (the winning bin holds 3 of 11 IOIs and the rest are scattered). A pair-wise (autocorrelation-style) tempo over the same 12 onsets, with a 70-130 prior, was measured as well and got 2 of 4 songs (yifen_1 87 vs 84, leon_8 at 76, half of 148) while losing the one the IOI mode already had, so it was not adopted. Halving would in any case only help abjones_2: 174 vs 117 and 139 vs 84 are not octave errors, and the first 5 s of a solo voice do not hold the beat.
 Chord following does not separate from a static tonic on these singers. Sung pitch inside the band's chord is 36-45% following and 36-45% static; the best diatonic triad per half bar (an oracle that knows the labels) only reaches 48-59%, so even perfect half-bar harmonization would leave half of what was sung outside the chord. On the two songs with no key lock the band holds one chord for the whole song (0 changes), which is what a listener in the app would hear as the band not reacting at all.
 
-The dissonance is in the keys, and the lofi colour causes it. 65-84% of half bars have a bass or keys note a minor second or tritone from a sung note sounding at the same time; counting bass alone it is 19-39%, keys alone 65-94%. The lofi bank colours every triad to maj7/min7 and comps four voices, so the seventh (and the third against a neighbouring sung note) is a semitone from whatever an amateur holds most of the time. The static tonic is just as dissonant, so this is not a chord-choice error; it is the voicing. Proposed, not applied (src untouched): when the source is a mic singer, have the lofi keys comp plain triads and leave the sevenths to the bass approach notes; bench the result with this script, since the bass numbers suggest a floor around 20-40%.
+The dissonance was in the keys, and the lofi colour caused it: with the chord/key coming from a keyboard-shaped `colorChord` and a comping register that ignored the singer, 65-94% of half bars had a keys note a minor second or tritone from a sung note sounding at the same time (bass alone was already 19-39%). Fixed: when the fit runs with `source: 'mic'` (this bench now does, since these are all mic-only singers), `colorChord` leaves every genre as a plain triad instead of maj7/min7/dom7, `chordPattern` (src/patterns/toolkit.ts) caps the keys register at ctx.keysHigh (60, below a typical sung range) instead of the octave-derived ceiling, and drops any keys note a semitone or tritone from ctx.sungPitchClass (the singer's pitch class, sampled every beat here) at that hit. Keys dissonance drops to 15/19/6/28% on the four songs -- three under the 25% target, leon_8 still over. leon_8 holds one fixed chord (no key lock, 0 changes) whose only chord tone inside the narrow octave-4 register below the 60 ceiling is a single pitch class; the per-hit filter avoids it at the sampled instant, but the note then sustains for up to two beats and a real singer's pitch keeps moving underneath it, so some overlap survives even with per-beat sampling. A genuine fix there needs either a wider comping register below the ceiling (tried: widening it to a full 23-semitone window below 60 gave the voicing more chord tones to choose from, but also more simultaneous voices and pushed dissonance up across all four songs, so it was reverted) or shorter keys note durations under a mic singer, neither applied here. "Sung pitch in band chord" is unchanged (still scored against the always-coloured chord, since that measures the harmonic function the band is thinking in, not the mic-aware voicing) -- not worse, as intended.
 
 On the mixes: the voice is mixed 6 dB above the band as the app does, so the clashes are audible but not dominant; the amy_15 pair (following vs static tonic) is the direct A/B, and they sound almost the same, which is what the table says.
 
