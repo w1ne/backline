@@ -260,6 +260,7 @@ export class AmtEngine implements BandEngine {
     this.onResponseTiming?.(null);
     this.players.cancelScheduled?.();
     this.players.setBandAmount?.(1);
+    for (const i of ['drums', 'bass', 'keys', 'lead'] as const) this.players.setEnabled?.(i, true);
     clearTimeout(this.responseTimer);
     this.responseTimer = undefined;
     clearTimeout(this.halfBarTimer);

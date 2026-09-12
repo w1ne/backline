@@ -461,6 +461,7 @@ async function power() {
 
   midi = new MidiSource(store.state.midiIn);
   mic = new MicSource(store.state.micIn);
+  mic.onPitchError = error => store.update({ error });
   midi.onInputs(inputs => store.update({ midiInputs: inputs }));
   // MIDI times are performance.now-based. Read at use, not at boot: the AudioContext clock
   // stands still until the first gesture resumes it.
