@@ -13,7 +13,9 @@ jobs:
         with: { node-version: 20, cache: npm }
       - run: npm ci
       - uses: actions/cache@v4
-        with: { path: .pi-samples, key: pi-samples-${{ hashFiles('services/pi/fetch-samples.mjs') }} }
+        with:
+          path: .pi-samples
+          key: pi-samples-${{ hashFiles('services/pi/fetch-samples.mjs') }}
       - run: node services/pi/fetch-samples.mjs
       - run: npm run build:pi
       - name: Pack
@@ -28,7 +30,8 @@ jobs:
           tar -C pkg -czf duet-pi.tar.gz .
           cp pkg/COMMIT COMMIT
       - name: Publish rolling release
-        env: { GH_TOKEN: "${{ github.token }}" }
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           gh release view pi-latest >/dev/null 2>&1 || gh release create pi-latest --title "Pi edition (rolling)" --notes "Built automatically from main. Installed by services/pi/update.sh on the pedal." --latest=false
