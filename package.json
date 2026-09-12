@@ -11,7 +11,8 @@
     "build": "tsc --noEmit && vite build",
     "build:pi": "tsc --noEmit && vite build --mode pi --outDir dist-pi",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "bench:voice": "vite-node bench/voice/run.ts"
   },
   "keywords": [],
   "author": "",
