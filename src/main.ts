@@ -128,7 +128,14 @@ function tickBeat(beat: number): void {
   // consumer (patterns, Lyria density, ACE/AMT requests) sees the effective value. The store keeps
   // the effective number too, for the INTENSITY bar to show what the band is actually playing at.
   const eff = effectiveDynamics(listener.tickBeat(beat), store.state.intensity, beat);
-  band?.set({ dynamics: eff });
+  // A mic-only singer has no keyboard chord to lean on, so the band knows to keep the keys
+  // comp plain and out of the sung note's way (see colorChord / chordPattern).
+  const pitch = listener.input.pitch;
+  const sungPitchClass = pitch?.stable ? ((pitch.midi % 12) + 12) % 12 : undefined;
+  // `source`/`sungPitchClass` are Bandleader-only fields (see src/band/bandleader.ts); cast
+  // rather than widen BandEngine.set's signature, since the other engines (Lyria/ACE/AMT)
+  // don't and shouldn't know about them -- they simply ignore the extra properties.
+  band?.set({ dynamics: eff, source: micIsOnlySource() ? 'mic' : 'midi', sungPitchClass } as Parameters<NonNullable<typeof band>['set']>[0]);
   store.update({ effectiveIntensity: eff.intensity });
   // The form only moves on bar boundaries; tickBeat also runs on beats 1-3 off timers.
   if (beat % BEATS_PER_BAR !== 0) return;
@@ -295,7 +302,7 @@ function wireBand(b: BandEngine): void {
   INSTRUMENTS.forEach(i => b.setEnabled(i, store.state.enabled[i]));
   b.routeBand?.(store.state.routing.band, morph?.input);
   b.onBar = bar => {
-    store.update({ bar });
+    store.update({ bar, barStartedAt: Date.now() });
     const beat = bar * BEATS_PER_BAR;
     // The downbeat's dynamics have to be in the band's hands before it schedules this bar,
     // and onBar runs ahead of scheduling, so tick the beat first.

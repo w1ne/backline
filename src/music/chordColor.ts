@@ -17,8 +17,14 @@ const DOMINANT = 4; // V (or v)
  * `key`. Non-diatonic chords (a secondary dominant borrowed from outside the key, say) are
  * passed through unchanged in every genre -- there is no "diatonic color" for a chord that
  * isn't diatonic to begin with.
+ *
+ * When `source` is 'mic' the chord was inferred from a singer, not played on a keyboard: the
+ * seventh (or extension) that colors it in every genre is exactly what lands a semitone or
+ * tritone from whatever the singer is holding, so a mic-sourced chord is left as a plain
+ * triad regardless of genre.
  */
-export function colorChord(chord: Chord, genre: Genre, key: Key): Chord {
+export function colorChord(chord: Chord, genre: Genre, key: Key, source?: 'midi' | 'mic'): Chord {
+  if (source === 'mic') return chord;
   if (genre === 'rock') return chord;
   const degree = diatonicDegree(chord, key);
   if (degree === -1) return chord;

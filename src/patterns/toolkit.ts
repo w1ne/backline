@@ -6,6 +6,10 @@ import { voiceLead } from '../music/voiceLeading';
 
 export interface Step { t: number; p: number; vel?: number; dur?: number }
 
+const mod12 = (n: number): number => ((n % 12) + 12) % 12;
+/** Semitone distance between two pitch classes, folded to the shorter way round (0-6). */
+const pcDistance = (a: number, b: number): number => { const d = Math.abs(mod12(a) - mod12(b)); return Math.min(d, 12 - d); };
+
 /** The chord in force at `beat` of this bar: the live one if the app supplied it, else the
  *  bar's chord, else the key's tonic triad — so a pattern always has something to sit on. */
 export const chordAt = (ctx: BarContext, beat: number): Chord =>
@@ -67,8 +71,11 @@ export function bassPattern(shape: { t: number; degree: number; p: number; dur?:
  */
 export function chordPattern(voicings: number[][], hits: Step[], octave: number, voiceKey = 'keys'): Pattern {
   const low = 12 * (octave + 1) - 2;
-  const high = low + 23;
+  const baseHigh = low + 23;
   return { nextBar(ctx) {
+    // `ctx.keysHigh` (threaded per bar, not a module-level global) pulls the comping range
+    // below a singer's held note when the chord came from a mic rather than a keyboard.
+    const high = ctx.keysHigh !== undefined ? Math.min(baseHigh, ctx.keysHigh) : baseHigh;
     let i = ctx.bar % voicings.length;
     if (ctx.creativity > 0.5 && ctx.rng() < (ctx.creativity - 0.5)) i = Math.floor(ctx.rng() * voicings.length);
     const voices = voicings[i].length;
@@ -85,7 +92,12 @@ export function chordPattern(voicings: number[][], hits: Step[], octave: number,
       const chord = chordAt(ctx, h.t);
       const voicing = voiceLead(prev, chord, { low, high, voices });
       prev = voicing;
-      for (const n of voicing) out.push(ev(h.t, n, h.dur ?? 1, h.vel ?? 0.7, ctx));
+      // Drop any note a semitone or tritone from the singer's currently held pitch class —
+      // exactly the intervals that read as a clash against a sustained sung note.
+      const sounding = ctx.sungPitchClass !== undefined
+        ? voicing.filter(n => pcDistance(n, ctx.sungPitchClass!) !== 1 && pcDistance(n, ctx.sungPitchClass!) !== 6)
+        : voicing;
+      for (const n of sounding) out.push(ev(h.t, n, h.dur ?? 1, h.vel ?? 0.7, ctx));
     }
     if (ctx.voicingMemo && prev) ctx.voicingMemo[voiceKey] = prev;
     return out;

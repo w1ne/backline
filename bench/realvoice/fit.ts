@@ -32,40 +32,59 @@ export interface BandPlan {
   beats?: RunResult['beats'];
   creativity: number;
   seed: number;
+  /** 'mic' when the chord/key came from a singer rather than a MIDI keyboard -- plain triads,
+   *  keys kept below the singer's range, and the held note avoided (see chordColor/toolkit). */
+  source?: 'midi' | 'mic';
+  /** the singer's pitch class at time t (from the labels), or undefined when silent/unstable;
+   *  only consulted when `source` is 'mic'. */
+  sungPitchClassAt?: (t: number) => number | undefined;
 }
 
-/** What Bandleader.onBar does, bar by bar, with absolute seconds instead of a Tone clock. */
+/** What Bandleader.onBar does, bar by bar, with absolute seconds instead of a Tone clock. When
+ *  `source` is 'mic' each bar is driven in four beat-wide passes so the sung pitch class used
+ *  to steer the keys comp (see toolkit.chordPattern) tracks the singer more closely than one
+ *  scalar for the whole bar would. */
 export function driveBand(plan: BandPlan): BandNote[] {
   const spb = 60 / plan.bpm;
   const barSec = 4 * spb;
   const rng = mulberry32(plan.seed);
   const voicingMemo: Record<string, number[]> = {};
   const out: BandNote[] = [];
-  const colour = (c: Chord) => colorChord(c, 'lofi', plan.key);
+  const colour = (c: Chord) => colorChord(c, 'lofi', plan.key, plan.source);
   const dynAt = (t: number): Dynamics | undefined => {
     if (!plan.beats) return undefined;
     let d: Dynamics | undefined;
     for (const b of plan.beats) { if (b.t <= t + 1e-6) d = b.dynamics; else break; }
     return d;
   };
+  const mic = plan.source === 'mic';
+  // Finer than a half bar: sampling the sung pitch class every beat (rather than every two)
+  // catches more of a singer's mid-half-bar moves without changing the per-bar production
+  // shape (Bandleader still samples once per bar; this just tightens the bench's estimate).
   for (let bar = 0; ; bar++) {
     const barStart = plan.t0 + bar * barSec;
     if (barStart >= plan.durationSec) break;
-    const ctx: BarContext = {
-      bar,
-      key: plan.key,
-      creativity: plan.creativity,
-      rng,
-      dynamics: dynAt(barStart),
-      chord: colour(plan.chordAt(barStart)),
-      chordAt: beat => colour(plan.chordAt(barStart + beat * spb)),
-      voicingMemo,
-    };
-    for (const inst of INSTRUMENTS) {
-      for (const e of PATTERNS.lofi[inst].nextBar(ctx)) {
-        const t = barStart + e.time * spb;
-        if (t >= plan.durationSec) continue;
-        out.push({ inst, t, durSec: e.duration * spb, note: e.note, velocity: e.velocity });
+    const halves = mic ? [0, 1, 2, 3] : [0];
+    for (const half of halves) {
+      const ctx: BarContext = {
+        bar,
+        key: plan.key,
+        creativity: plan.creativity,
+        rng,
+        dynamics: dynAt(barStart),
+        chord: colour(plan.chordAt(barStart)),
+        chordAt: beat => colour(plan.chordAt(barStart + beat * spb)),
+        voicingMemo,
+        keysHigh: mic ? 60 : undefined,
+        sungPitchClass: mic ? plan.sungPitchClassAt?.(barStart + half * spb) : undefined,
+      };
+      for (const inst of INSTRUMENTS) {
+        for (const e of PATTERNS.lofi[inst].nextBar(ctx)) {
+          if (mic && (e.time < half || e.time >= half + 1)) continue;
+          const t = barStart + e.time * spb;
+          if (t >= plan.durationSec) continue;
+          out.push({ inst, t, durSec: e.duration * spb, note: e.note, velocity: e.velocity });
+        }
       }
     }
   }
@@ -110,6 +129,9 @@ export function scoreFit(
   for (let h = 0; ; h++) {
     const hs = plan.t0 + h * half, he = hs + half;
     if (hs >= plan.durationSec) break;
+    // Chord-tone coverage/timeline are scored against the genre-coloured chord regardless of
+    // `source` -- they measure the harmonic fit of the underlying chord the band is thinking
+    // in, not what the mic-aware keys voicing actually plays (that's dissonantKeys below).
     const chord = colorChord(plan.chordAt(hs), 'lofi', plan.key);
     const name = chordName(chord);
     if (prev && name !== prev) changes++;

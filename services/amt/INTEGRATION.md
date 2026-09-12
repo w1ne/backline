@@ -66,11 +66,14 @@ the listening / empty-window fallbacks):
 "chordFrom": start_beat,        # the beat the plan window starts; the chord is in force from there
 ```
 
-`chordFrom` is the window's `fromBeat`: when the window starts ahead of the tick (LOOKAHEAD_BEATS
-4 today) the chord applies from the window start, not from the tick. HARMONY_BENCH.md has the
-accuracy at lookahead 0, 2 and 4; the decision above is taken at the tick, so with a lookahead
-that crosses a downbeat the wiring should step the prediction forward as `bench_harmony.run`
-does (one `predict_next` per downbeat between tick and window start).
+`chordFrom` is the window's `fromBeat`: the window starts `lookaheadBeats` (from the client's
+`start` message; the browser sends 2, the server defaults to 4) past the tick and the chord
+applies from the window start, not from the tick. HARMONY_BENCH.md has the accuracy at
+lookahead 0, 2 and 4; the decision above is taken at the tick, so with a lookahead that crosses
+a downbeat the wiring steps the prediction forward as `bench_harmony.run` does (one
+`predict_next` per downbeat between tick and window start). Until 2026-09-13 server.py planned
+one bar ahead whatever `lookaheadBeats` said, which is why the relay scored 3/8 at both
+settings; `test_brain.py::TestLiveReplay` replays the relay tool's message sequence.
 
 ## Client side (not part of this module)
 

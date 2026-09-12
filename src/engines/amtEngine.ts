@@ -13,7 +13,9 @@ import { mulberry32 } from '../rng';
 
 const KEY_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const BEATS_PER_BAR = 4;
-const LOOKAHEAD_BEATS = 4;
+// Two beats: with half-bar commits at ~240 ms cue-to-plan the model has a beat of slack, and
+// the harmony brain lands the chord on the downbeat 62% of bars at 2 vs 50% at 4 (HARMONY_BENCH.md).
+const LOOKAHEAD_BEATS = 2;
 const COMMIT_BEATS = 2;
 const LISTEN_BEATS = 8;
 const NOTE_BATCH_MS = 100;

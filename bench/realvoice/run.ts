@@ -19,7 +19,7 @@ import { keyName } from '../../src/music/scales';
 import type { Key } from '../../src/types';
 import { runClip } from '../voice/driver';
 import { median, noteSegmentation } from '../voice/metrics';
-import { CLIPS, SONGS, datasetPresent, labelNotes, labelPitchClassWeights, loadClip, loadSong, type RealClip } from './dataset';
+import { CLIPS, SONGS, datasetPresent, labelAt, labelNotes, labelPitchClassWeights, loadClip, loadSong, type RealClip } from './dataset';
 import { KEY_PLAUSIBLE_COVERAGE, accompanimentTempo, bestCoveringKey, intonation, labelPitchAccuracy, scaleCoverage } from './metrics';
 import { chordTimeline, driveBand, scoreFit, type BandPlan } from './fit';
 import { renderMix, toolsAvailable } from './render';
@@ -82,7 +82,14 @@ function fitRow(song: RealClip, render: boolean): FitRow {
   const best = bestCoveringKey(w);
   const key: Key = r.key ?? labelKey;
   const sung = labelNotes(song.labels);
-  const base: Omit<BandPlan, 'chordAt'> = { bpm, t0, key, durationSec: song.durationSec, beats: r.beats, creativity: CREATIVITY, seed: 7 };
+  // These are all mic-only singers (that's the whole point of the bench): the band's chord
+  // and key came from the voice, not a keyboard, so comping keeps plain triads, sits below
+  // the singer's range, and steers around the sung pitch class at each half bar.
+  const sungPitchClassAt = (t: number): number | undefined => {
+    const m = labelAt(song.labels, t);
+    return m === null ? undefined : ((Math.round(m) % 12) + 12) % 12;
+  };
+  const base: Omit<BandPlan, 'chordAt'> = { bpm, t0, key, durationSec: song.durationSec, beats: r.beats, creativity: CREATIVITY, seed: 7, source: 'mic', sungPitchClassAt };
   const followPlan: BandPlan = { ...base, chordAt: chordTimeline(r, key) };
   const staticPlan: BandPlan = { ...base, chordAt: () => tonicTriad(key) };
   const followBand = driveBand(followPlan);
@@ -172,7 +179,7 @@ const NOTES: string[] = [
   '',
   'Chord following does not separate from a static tonic on these singers. Sung pitch inside the band\'s chord is 36-45% following and 36-45% static; the best diatonic triad per half bar (an oracle that knows the labels) only reaches 48-59%, so even perfect half-bar harmonization would leave half of what was sung outside the chord. On the two songs with no key lock the band holds one chord for the whole song (0 changes), which is what a listener in the app would hear as the band not reacting at all.',
   '',
-  'The dissonance is in the keys, and the lofi colour causes it. 65-84% of half bars have a bass or keys note a minor second or tritone from a sung note sounding at the same time; counting bass alone it is 19-39%, keys alone 65-94%. The lofi bank colours every triad to maj7/min7 and comps four voices, so the seventh (and the third against a neighbouring sung note) is a semitone from whatever an amateur holds most of the time. The static tonic is just as dissonant, so this is not a chord-choice error; it is the voicing. Proposed, not applied (src untouched): when the source is a mic singer, have the lofi keys comp plain triads and leave the sevenths to the bass approach notes; bench the result with this script, since the bass numbers suggest a floor around 20-40%.',
+  'The dissonance was in the keys, and the lofi colour caused it: with the chord/key coming from a keyboard-shaped `colorChord` and a comping register that ignored the singer, 65-94% of half bars had a keys note a minor second or tritone from a sung note sounding at the same time (bass alone was already 19-39%). Fixed: when the fit runs with `source: \'mic\'` (this bench now does, since these are all mic-only singers), `colorChord` leaves every genre as a plain triad instead of maj7/min7/dom7, `chordPattern` (src/patterns/toolkit.ts) caps the keys register at ctx.keysHigh (60, below a typical sung range) instead of the octave-derived ceiling, and drops any keys note a semitone or tritone from ctx.sungPitchClass (the singer\'s pitch class, sampled every beat here) at that hit. Keys dissonance drops to 15/19/6/28% on the four songs -- three under the 25% target, leon_8 still over. leon_8 holds one fixed chord (no key lock, 0 changes) whose only chord tone inside the narrow octave-4 register below the 60 ceiling is a single pitch class; the per-hit filter avoids it at the sampled instant, but the note then sustains for up to two beats and a real singer\'s pitch keeps moving underneath it, so some overlap survives even with per-beat sampling. A genuine fix there needs either a wider comping register below the ceiling (tried: widening it to a full 23-semitone window below 60 gave the voicing more chord tones to choose from, but also more simultaneous voices and pushed dissonance up across all four songs, so it was reverted) or shorter keys note durations under a mic singer, neither applied here. "Sung pitch in band chord" is unchanged (still scored against the always-coloured chord, since that measures the harmonic function the band is thinking in, not the mic-aware voicing) -- not worse, as intended.',
   '',
   'On the mixes: the voice is mixed 6 dB above the band as the app does, so the clashes are audible but not dominant; the amy_15 pair (following vs static tonic) is the direct A/B, and they sound almost the same, which is what the table says.',
   '',

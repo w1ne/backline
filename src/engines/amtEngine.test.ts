@@ -196,7 +196,7 @@ describe('AmtEngine', () => {
       bpm: 100,
       key: 'A minor',
       genre: 'jazz',
-      lookaheadBeats: 4,
+      lookaheadBeats: 2,
       commitBeats: 2,
       listenBeats: 8,
     });
