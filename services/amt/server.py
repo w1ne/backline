@@ -51,7 +51,9 @@ from amt import (  # noqa: E402
     generate_duet,
 )
 from live_duet import AccompanimentCommitter  # noqa: E402
-from arrangement import shape_notes, bass_pitch, harmony_classes, voice_chord, early_entry_plan, fill_silent_window
+from arrangement import (  # noqa: E402
+    shape_notes, bass_pitch, harmony_classes, voice_chord, early_entry_plan, fill_silent_window, plan_window,
+)
 from cached import cached_generate  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -116,9 +118,10 @@ class ChordInference:
         return max(0, root)
 
 
-def plan_window(bar, span_bars=1):
-    """A contiguous future window; Pi uses two bars above 110 BPM."""
-    return ((bar + span_bars) * 4.0, (bar + 2 * span_bars) * 4.0)
+BEATS_PER_BAR = 4.0
+# Beats between a cue and the start of the window it plans: one bar, so a plan has a bar of
+# wall time before its first note is due whether the cue is a `bar` or a `tick`.
+PLAN_LOOKAHEAD_BEATS = 4.0
 
 
 class Session:
@@ -209,10 +212,19 @@ class Session:
         return n
 
     def generate_next_bar_plan(self, bar: int) -> dict:
-        """Generate the accompaniment plan covering bar `bar + 1` (4 beats,
-        4/4 assumed -- matches the app's Players.schedule bar granularity).
+        """An old client's `bar` cue: the plan for the whole of bar `bar + 1`."""
+        return self.generate_plan(bar * BEATS_PER_BAR, BEATS_PER_BAR, label=f"bar {bar}")
 
-        The window is anchored to the bar that just started. It used to start
+    def generate_tick_plan(self, beat: float) -> dict:
+        """A `tick` cue at `beat` (every `commit_beats`): the plan for the half bar one bar ahead."""
+        return self.generate_plan(beat, self.commit_beats, label=f"tick {beat:g}")
+
+    def generate_plan(self, now_beat: float, span_beats: float, label: str = "") -> dict:
+        """Generate the accompaniment plan for the `span_beats` window starting
+        PLAN_LOOKAHEAD_BEATS past the cue at `now_beat` (4/4 assumed -- matches
+        the app's Players.schedule bar granularity).
+
+        The window is anchored to the cue that just happened. It used to start
         at a horizon that only crept forward by `commit_beats` per `bar`
         message: a bar is four beats but only two were ever committed, so the
         plan slipped two beats further into the past every bar (by bar 7 it
@@ -221,15 +233,15 @@ class Session:
         the kept window stayed two beats -- which is why most bars came back
         with no notes at all.
         """
-        target_start_beat, target_end_beat = plan_window(bar, getattr(self, "plan_bars", 1))
+        target_start_beat, target_end_beat = plan_window(now_beat, span_beats, PLAN_LOOKAHEAD_BEATS)
 
         # Listen-first (ReaLJam): commit nothing until `listen_beats` of the
         # player's melody have been heard, so the model answers real material
         # instead of guessing from a nearly empty bar. This was parsed from
         # the `start` message and then never used.
-        if not self.human_notes or (bar + 2) * 4.0 <= self.listen_beats:
-            log.info("bar %d: listening (target bar ends at beat %.1f, listen=%.1f)",
-                     bar, target_end_beat, self.listen_beats)
+        if not self.human_notes or target_end_beat <= self.listen_beats:
+            log.info("%s: listening (target window ends at beat %.1f, listen=%.1f)",
+                     label, target_end_beat, self.listen_beats)
             return {
                 "plan": {
                     "type": "plan",
@@ -254,8 +266,9 @@ class Session:
         self.prune_context(start_beat)
         history_before = list(self.history)
         human_in_context = sum(1 for (onset_beat, _, _) in self.human_notes if onset_beat <= start_beat)
-        # The plan for bar N+1 is asked for at the downbeat of bar N, so there is one bar of
-        # wall time before its first note is due. Spend at most most of it.
+        # The plan is asked for one bar before its first note is due, and the next cue arrives
+        # after `span_beats`. Spend at most most of the committed window's own duration, so a
+        # half-bar tick gets half the budget of a bar and the queue never falls behind the cues.
         deadline_s = GENERATION_BUDGET * (commit_end_beat - start_beat) * self.beat_s
         t0 = time.monotonic()
         result = generate_duet(
@@ -289,9 +302,9 @@ class Session:
         self.last_accomp_notes = [(t, d, p) for (t, d, _, p) in committed]
 
         log.info(
-            "bar %d: window [%.1f..%.1f) beats (generate to %.1f), human events in context=%d, "
+            "%s: window [%.1f..%.1f) beats (generate to %.1f), human events in context=%d, "
             "context tokens=%d, accompaniment generated=%d, in window=%d, committed=%d, %.0f ms%s",
-            bar, start_beat, commit_end_beat, end_beat, human_in_context,
+            label, start_beat, commit_end_beat, end_beat, human_in_context,
             len(history_before), len(accomp), len(raw_notes), len(committed), latency_ms,
             " (hit generation budget)" if latency_ms >= deadline_s * 1000.0 else "",
         )
@@ -315,7 +328,7 @@ class Session:
 
         root = bass_pitch(self.chord, self.key)
         if root is not None and committed:
-            # One held bass note per bar, anchored to the performer's detected harmony
+            # One held bass note per window, anchored to the performer's detected harmony
             # rather than the most frequent pitch in the generated counter-melody.
             notes_out.append(
                 {
@@ -381,6 +394,9 @@ async def websocket_endpoint(websocket: WebSocket):
                         top_p=0.95,
                     )
                     session.key = msg.get("key")
+                    # Tells a new client it may cue with `tick` every commitBeats instead of
+                    # `bar` every bar. An old client ignores unknown message types.
+                    await websocket.send_text(json.dumps({"type": "ready", "tick": True}))
 
                 elif mtype == "notes":
                     session.add_human_notes(msg.get("notes", []))
@@ -389,6 +405,13 @@ async def websocket_endpoint(websocket: WebSocket):
                     bar = int(msg.get("bar", 0))
                     async with inference_lock:
                         out = await asyncio.to_thread(session.generate_next_bar_plan, bar)
+                    await websocket.send_text(json.dumps(out["plan"]))
+                    await websocket.send_text(json.dumps(out["status"]))
+
+                elif mtype == "tick":
+                    beat = float(msg.get("beat", 0.0))
+                    async with inference_lock:
+                        out = await asyncio.to_thread(session.generate_tick_plan, beat)
                     await websocket.send_text(json.dumps(out["plan"]))
                     await websocket.send_text(json.dumps(out["status"]))
 
