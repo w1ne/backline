@@ -448,3 +448,38 @@ it('does not publish AMT response timing when a real Players sampler finishes lo
     vi.unstubAllGlobals();
   }
 });
+
+it('cancels GM events still queued inside the sampler, not just active sound sources', async () => {
+  sf.instruments.length = 0;
+  const players = new Players();
+  withFakeBusses(players);
+  players.scheduleAccompaniment(24, [{time:0,note:60,duration:2,velocity:.8}], 100, 120);
+  const voice = sf.instruments[0];
+  let queued = false;
+  const cancelQueued = vi.fn(() => { queued = false; });
+  // smplr.stop() only stops active BufferVoices. Its start() return value also
+  // removes future events from the internal scheduler before sources exist.
+  voice.start.mockImplementation(() => { queued = true; return cancelQueued; });
+  voice.resolveReady(); await voice.ready;
+  expect(queued).toBe(true);
+  players.cancelScheduled();
+  expect(cancelQueued).toHaveBeenCalledOnce();
+  expect(queued).toBe(false);
+  players.cancelScheduled();
+  expect(cancelQueued).toHaveBeenCalledOnce();
+});
+
+it('forgets completed GM handles instead of retaining one cancellation per note forever', async () => {
+  sf.instruments.length = 0;
+  const players = new Players();
+  withFakeBusses(players);
+  players.scheduleAccompaniment(24, [{time:0,note:60,duration:2,velocity:.8}], 100, 120);
+  const voice = sf.instruments[0];
+  const cancelQueued = vi.fn();
+  let ended!: () => void;
+  voice.start.mockImplementation((event: {onEnded:()=>void}) => {ended=event.onEnded;return cancelQueued;});
+  voice.resolveReady(); await voice.ready;
+  ended();
+  players.cancelScheduled();
+  expect(cancelQueued).not.toHaveBeenCalled();
+});

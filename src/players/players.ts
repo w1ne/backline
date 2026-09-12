@@ -71,6 +71,7 @@ export class Players implements PlayersLike {
   private lastVoiceTime = new Map<string, number>();
   /** Lazily-created real-instrument sampler per GM program, for AMT accompaniment. */
   private accompVoices = new Map<number, ReturnType<typeof Soundfont>>();
+  private accompanimentStops = new Set<() => void>();
 
   async init() {
     if (!this.out) {
@@ -114,6 +115,8 @@ export class Players implements PlayersLike {
   /** Remove old-tempo events and tails when an engine transport restarts. */
   cancelScheduled(): void {
     this.accompanimentEpoch++;
+    for (const stop of this.accompanimentStops) stop();
+    this.accompanimentStops.clear();
     this.accompVoices.forEach(voice => voice.stop());
     if (!this.set) return;
     this.set.dispose();
@@ -321,7 +324,15 @@ export class Players implements PlayersLike {
       const sounding: NoteEvent[] = [];
       notes.forEach((note, index) => {
         if (note.time < minReadyTime) { this.dropped++; return; }
-        voice.start(note);
+        let stop: (() => void) | undefined;
+        let ended = false;
+        stop = voice.start({...note, onEnded: () => {
+          ended = true;
+          if (stop) this.accompanimentStops.delete(stop);
+        }});
+        // start() owns a scheduler event before a source exists. Soundfont.stop()
+        // alone cannot cancel it, so retain its handle until it ends or we stop.
+        if (stop && !ended) this.accompanimentStops.add(stop);
         sounding.push(kept[index]);
       });
       if (!sounding.length) return;
