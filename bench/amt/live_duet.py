@@ -236,8 +236,8 @@ class LiveDuet:
                  poll_interval=0.05):
         if bpm <= 0 or commit_beats <= 0 or lookahead_beats < commit_beats:
             raise ValueError("Require bpm > 0 and 0 < commit beats <= lookahead beats")
-        if listen_first_beats < lookahead_beats:
-            raise ValueError("Listen-first beats must be at least lookahead beats")
+        if listen_first_beats < 0:
+            raise ValueError("Listen-first beats must be >= 0")
         if not 0 < top_p <= 1:
             raise ValueError("top_p must be in (0, 1]")
         self.model = model
