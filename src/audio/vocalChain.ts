@@ -30,6 +30,7 @@ export class VocalChain {
   private compressor: Tone.Compressor;
   private trim: Tone.Gain;
   private enabled = false;
+  private disposed = false;
 
   constructor(
     private micSource: Tone.ToneAudioNode | AudioNode,
@@ -51,7 +52,7 @@ export class VocalChain {
   }
 
   setEnabled(enabled: boolean): void {
-    if (enabled === this.enabled) return;
+    if (this.disposed || enabled === this.enabled) return;
     this.enabled = enabled;
     if (enabled) {
       Tone.connect(this.trim, this.reverbBus);
@@ -63,10 +64,20 @@ export class VocalChain {
   }
 
   dispose(): void {
+    if (this.disposed) return;
     this.setEnabled(false);
-    Tone.disconnect(this.micSource, this.hpf);
-    this.hpf.dispose();
-    this.compressor.dispose();
-    this.trim.dispose();
+    this.disposed = true;
+    try {
+      Tone.disconnect(this.micSource, this.hpf);
+    } catch (error) {
+      // The listener owns this shared source and may already have disconnected
+      // all its outputs. A missing edge is already torn down; other failures
+      // still surface after releasing the nodes this chain owns.
+      if (!(error instanceof DOMException && error.name === 'InvalidAccessError')) throw error;
+    } finally {
+      this.hpf.dispose();
+      this.compressor.dispose();
+      this.trim.dispose();
+    }
   }
 }

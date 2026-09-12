@@ -573,10 +573,12 @@ function powerOff() {
   songForm.reset();
   playbackActivity.clear();
   accompActivity.clear();
-  listener?.stop();
-  listener = undefined;
+  // Remove the monitor's owned edge before the listener disconnects the shared
+  // microphone source from every destination.
   vocalChain?.dispose();
   vocalChain = undefined;
+  listener?.stop();
+  listener = undefined;
   monitor?.stop();
   monitor = undefined;
   lastFollowedBpm = undefined;
