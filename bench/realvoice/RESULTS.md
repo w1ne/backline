@@ -39,10 +39,10 @@ Female-range clips: pitch acc 94.6%, note F1 0.62. Male-range clips: pitch acc 9
 
 | song | s | detected bpm | backing bpm | key used | label key (cov) | sung pitch in band chord: following | static tonic | best diatonic triad per half bar | band notes in label key: following | static | dissonant half bars: following (bass / keys) | static (bass / keys) | chord changes |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| amy_15 | 36.6 | 174 | 117 | D# min (label, no lock) | D# min (74%) | 45% | 45% | 48% | 100% | 100% | 72% (39% / 67%), 46 scored | 72% (39% / 67%) | 0 |
-| yifen_1 | 33.8 | 139 | 84 | C min | C min (72%) | 43% | 41% | 53% | 99% | 100% | 65% (26% / 65%), 31 scored | 58% (32% / 58%) | 17 |
-| abjones_2 | 31.6 | 165 | 87 | F maj | A# maj (76%) | 36% | 36% | 59% | 93% | 84% | 84% (28% / 84%), 32 scored | 94% (19% / 94%) | 17 |
-| leon_8 | 35.8 | 144 | 148 | E maj (label, no lock) | E maj (70%) | 41% | 41% | 48% | 100% | 100% | 77% (38% / 77%), 39 scored | 77% (38% / 77%) | 0 |
+| amy_15 | 36.6 | 174 | 117 | D# min (label, no lock) | D# min (74%) | 45% | 45% | 48% | 100% | 100% | 52% (48% / 15%), 46 scored | 52% (48% / 15%) | 0 |
+| yifen_1 | 33.8 | 139 | 84 | C min | C min (72%) | 43% | 41% | 53% | 100% | 100% | 32% (23% / 19%), 31 scored | 35% (26% / 26%) | 17 |
+| abjones_2 | 31.6 | 165 | 87 | F maj | A# maj (76%) | 36% | 36% | 59% | 95% | 99% | 22% (16% / 6%), 32 scored | 19% (9% / 9%) | 17 |
+| leon_8 | 35.8 | 144 | 148 | E maj (label, no lock) | E maj (70%) | 41% | 41% | 48% | 100% | 100% | 49% (38% / 28%), 39 scored | 49% (38% / 28%) | 0 |
 
 Chord per bar, following band:
 
@@ -53,11 +53,11 @@ Chord per bar, following band:
 
 ## Mixes
 
-- /home/andrii/projects/backline/.claude/worktrees/agent-a89ecedae4774715f/bench/realvoice/out/amy_15.mp3
-- /home/andrii/projects/backline/.claude/worktrees/agent-a89ecedae4774715f/bench/realvoice/out/amy_15.static-tonic.mp3 (static-tonic baseline)
-- /home/andrii/projects/backline/.claude/worktrees/agent-a89ecedae4774715f/bench/realvoice/out/yifen_1.mp3
-- /home/andrii/projects/backline/.claude/worktrees/agent-a89ecedae4774715f/bench/realvoice/out/abjones_2.mp3
-- /home/andrii/projects/backline/.claude/worktrees/agent-a89ecedae4774715f/bench/realvoice/out/leon_8.mp3
+- /home/andrii/projects/backline/.claude/worktrees/agent-ad70f004945d666e9/bench/realvoice/out/amy_15.mp3
+- /home/andrii/projects/backline/.claude/worktrees/agent-ad70f004945d666e9/bench/realvoice/out/amy_15.static-tonic.mp3 (static-tonic baseline)
+- /home/andrii/projects/backline/.claude/worktrees/agent-ad70f004945d666e9/bench/realvoice/out/yifen_1.mp3
+- /home/andrii/projects/backline/.claude/worktrees/agent-ad70f004945d666e9/bench/realvoice/out/abjones_2.mp3
+- /home/andrii/projects/backline/.claude/worktrees/agent-ad70f004945d666e9/bench/realvoice/out/leon_8.mp3
 
 Raw voice at -3 dB over the fluidsynth-rendered band at -9 dB; not in git.
 
@@ -73,7 +73,7 @@ Tempo from a solo voice is syllable rate, not beat rate. TempoLock reported a bp
 
 Chord following does not separate from a static tonic on these singers. Sung pitch inside the band's chord is 36-45% following and 36-45% static; the best diatonic triad per half bar (an oracle that knows the labels) only reaches 48-59%, so even perfect half-bar harmonization would leave half of what was sung outside the chord. On the two songs with no key lock the band holds one chord for the whole song (0 changes), which is what a listener in the app would hear as the band not reacting at all.
 
-The dissonance is in the keys, and the lofi colour causes it. 65-84% of half bars have a bass or keys note a minor second or tritone from a sung note sounding at the same time; counting bass alone it is 19-39%, keys alone 65-94%. The lofi bank colours every triad to maj7/min7 and comps four voices, so the seventh (and the third against a neighbouring sung note) is a semitone from whatever an amateur holds most of the time. The static tonic is just as dissonant, so this is not a chord-choice error; it is the voicing. Proposed, not applied (src untouched): when the source is a mic singer, have the lofi keys comp plain triads and leave the sevenths to the bass approach notes; bench the result with this script, since the bass numbers suggest a floor around 20-40%.
+The dissonance was in the keys, and the lofi colour caused it: with the chord/key coming from a keyboard-shaped `colorChord` and a comping register that ignored the singer, 65-94% of half bars had a keys note a minor second or tritone from a sung note sounding at the same time (bass alone was already 19-39%). Fixed: when the fit runs with `source: 'mic'` (this bench now does, since these are all mic-only singers), `colorChord` leaves every genre as a plain triad instead of maj7/min7/dom7, `chordPattern` (src/patterns/toolkit.ts) caps the keys register at ctx.keysHigh (60, below a typical sung range) instead of the octave-derived ceiling, and drops any keys note a semitone or tritone from ctx.sungPitchClass (the singer's pitch class, sampled every beat here) at that hit. Keys dissonance drops to 15/19/6/28% on the four songs -- three under the 25% target, leon_8 still over. leon_8 holds one fixed chord (no key lock, 0 changes) whose only chord tone inside the narrow octave-4 register below the 60 ceiling is a single pitch class; the per-hit filter avoids it at the sampled instant, but the note then sustains for up to two beats and a real singer's pitch keeps moving underneath it, so some overlap survives even with per-beat sampling. A genuine fix there needs either a wider comping register below the ceiling (tried: widening it to a full 23-semitone window below 60 gave the voicing more chord tones to choose from, but also more simultaneous voices and pushed dissonance up across all four songs, so it was reverted) or shorter keys note durations under a mic singer, neither applied here. "Sung pitch in band chord" is unchanged (still scored against the always-coloured chord, since that measures the harmonic function the band is thinking in, not the mic-aware voicing) -- not worse, as intended.
 
 On the mixes: the voice is mixed 6 dB above the band as the app does, so the clashes are audible but not dominant; the amy_15 pair (following vs static tonic) is the direct A/B, and they sound almost the same, which is what the table says.
 
