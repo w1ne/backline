@@ -4,6 +4,7 @@ import { Store } from './ui/state';
 import { renderLive, setLatency } from './ui/live';
 import { Listener } from './listener/listener';
 import { MidiSource } from './listener/midiSource';
+import { MidiMonitor } from './players/monitor';
 import { MicSource } from './listener/micSource';
 import { Players } from './players/players';
 import { PATTERNS } from './patterns';
@@ -40,6 +41,7 @@ const root = document.getElementById('app')!;
 const store = new Store();
 let listener: Listener | undefined;
 let band: BandEngine | undefined;
+let monitor: MidiMonitor | undefined;
 const players = new Players();
 let morph: MorphBus | undefined;
 let mic: MicSource | undefined;
@@ -221,6 +223,8 @@ async function power() {
   const perfOffset = Tone.now() - performance.now() / 1000; // MIDI times are performance.now-based
 
   listener = new Listener([midi, mic], ['midi', 'mic']);
+  monitor = new MidiMonitor(players.rawContext(), store.state.sound);
+  monitor.start().catch(() => undefined);
   band = makeBand(engine);
   band.set({ genre: store.state.genre, creativity: store.state.creativity });
   wireBand(band);
@@ -271,6 +275,8 @@ function powerOff() {
   band?.stop();
   listener?.stop();
   listener = undefined;
+  monitor?.stop();
+  monitor = undefined;
   lastFollowedBpm = undefined;
   store.update({
     power: 'off',
@@ -306,6 +312,10 @@ store.subscribe(s => {
       players.setGenre(g);
       band?.set({ genre: g });
       store.update({ genre: g });
+    },
+    setSound: snd => {
+      store.update({ sound: snd });
+      monitor?.setSound(snd);
     },
     setEngine: e => {
       const prevEngine = store.state.engine;
