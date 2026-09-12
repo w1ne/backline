@@ -40,6 +40,9 @@ export class Players implements PlayersLike {
   /** one gain per instrument, between its synths and the outputs — the re-routing point */
   private busses?: Record<Instrument, Tone.Gain>;
   private mix?: MixBus;
+  /** master compressor, exposed so an outboard chain (e.g. the vocal chain) can join the
+   *  band ahead of the limiter instead of bypassing it. */
+  private compressorNode?: Tone.Compressor;
   /** the MORPH bus input, when an output device has been chosen */
   private morphNode?: AudioNode;
   private routes: Record<Instrument, MorphRoute> = { drums: 'main', bass: 'main', keys: 'main', lead: 'main' };
@@ -69,6 +72,7 @@ export class Players implements PlayersLike {
       const compressor = new Tone.Compressor(MASTER_CHAIN.compressor);
       const limiter = new Tone.Limiter(MASTER_CHAIN.limiterCeilingDb);
       this.out.chain(compressor, limiter, Tone.getDestination());
+      this.compressorNode = compressor;
       // Reverb is a send effect (100% wet): each instrument's bus feeds it at its own level
       // via `sends`, and its output joins the same compressor/limiter chain as the dry signal.
       const reverb = new Tone.Reverb({ decay: MASTER_CHAIN.reverbDecay, wet: 1 }).connect(compressor);
@@ -150,6 +154,20 @@ export class Players implements PlayersLike {
     this.analyser = ctx.createAnalyser();
     this.out.connect(this.analyser);
     return this.analyser;
+  }
+
+  /** The band's shared reverb send bus (a plate-style return, 100% wet) — anything else
+   *  that wants a touch of the same room, such as the vocal chain, sends into this
+   *  instead of building a second reverb. Undefined until init() has run. */
+  reverbBus(): Tone.Reverb | undefined {
+    return this.mix?.reverb;
+  }
+
+  /** The master compressor's input, i.e. the point right before the limiter. An outboard
+   *  chain (the vocal chain) connects here so it rides through the same compressor/limiter
+   *  as the band, rather than hitting the limiter alone or bypassing it. */
+  preLimiterInput(): Tone.Compressor | undefined {
+    return this.compressorNode;
   }
 
   /** The AudioContext backing this Players' Tone context; shared with LyriaEngine's PcmPlayer. */
