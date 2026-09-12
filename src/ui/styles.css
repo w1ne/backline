@@ -1036,6 +1036,12 @@ body {
   text-transform: uppercase;
 }
 
+.you .meters {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
 .you .level {
   position: relative;
   height: 26px;
@@ -1061,6 +1067,23 @@ body {
   background-size: 100% 100%;
   background-size: 100cqw 100%;
   transition: width 60ms linear;
+}
+
+/* Intensity: what the band hears the player *doing*, under the raw level bar. */
+.you .level--intensity {
+  height: 9px;
+  border-width: 2px;
+  border-radius: 4px;
+}
+
+.you .level--intensity i {
+  background-image: none;
+  background-color: var(--pink);
+  transition: width 140ms linear;
+}
+
+.you .level--intensity::before {
+  display: none;
 }
 
 .you .level::before {

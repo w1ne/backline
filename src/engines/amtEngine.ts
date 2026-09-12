@@ -1,5 +1,6 @@
 import * as Tone from 'tone';
 import type { BandState, Instrument, Key, NoteEvent } from '../types';
+import { IDLE_DYNAMICS } from '../types';
 import { chordName } from '../listener/chordDetector';
 import type { BandEngine } from './engine';
 import { ToneClock } from '../band/clock';
@@ -64,6 +65,7 @@ export class AmtEngine implements BandEngine {
     chord: null,
     creativity: 0.3,
     enabled: { drums: false, bass: false, keys: false, lead: false },
+    dynamics: { ...IDLE_DYNAMICS },
   };
   private ws?: WebSocket;
   private clock: ClockLike;
@@ -178,7 +180,8 @@ export class AmtEngine implements BandEngine {
     this.scheduled.clear();
   }
 
-  set(p: Partial<Pick<BandState, 'genre' | 'key' | 'chord' | 'creativity'>>): void {
+  set(p: Partial<Pick<BandState, 'genre' | 'key' | 'chord' | 'creativity' | 'dynamics'>>): void {
+    if (p.dynamics !== undefined) this.state.dynamics = p.dynamics;
     if (p.genre !== undefined) this.state.genre = p.genre;
     if (p.key !== undefined) this.state.key = p.key;
     // AMT already follows the player's actual notes, so it needs nothing from the chord
@@ -205,6 +208,11 @@ export class AmtEngine implements BandEngine {
       chord: this.state.chord ? chordName(this.state.chord) : null,
       creativity: this.state.creativity,
       instruments: { ...this.state.enabled },
+      // Density hint for the model. `services/amt/server.py` ignores it for now — the
+      // anticipation scheduler has no density control — but it rides along so the server can
+      // start using it without a client change, and it is coarse (one step per 0.2) so a
+      // moving intensity does not defeat the `set` de-duplication above.
+      intensity: Math.round(this.state.dynamics.intensity * 5) / 5,
     });
     if (payload === this.lastSetPayload) {
       // Back to what the server already has — drop anything queued in between.

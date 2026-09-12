@@ -189,3 +189,51 @@ describe('engine and genre controls while power is off', () => {
     expect(store.state.engine).toBe('acestep');
   });
 });
+
+describe('the live LCD reports what the band is doing with the player', () => {
+  const noop = (): void => {};
+  const actions: LiveActions = { power: noop, powerOff: noop, toggle: noop, setGenre: noop, setEngine: noop, setCreativity: noop };
+  const dyn = (d: Partial<Store['state']['input']['dynamics']>): Store['state']['input']['dynamics'] =>
+    ({ intensity: 0, space: false, fillDue: false, silenceBeats: 0, ...d });
+
+  function render(
+    dynamics: Store['state']['input']['dynamics'],
+    rest: Partial<Store['state']> = {},
+  ): { lcd: string; intensityWidth: string } {
+    const store = new Store();
+    const root = document.createElement('div');
+    store.update({
+      power: 'on',
+      sources: { mic: 'on', midi: 'off' },
+      locked: true,
+      bar: 3,
+      ...rest,
+      input: { ...store.state.input, dynamics },
+    });
+    renderLive(root, store, actions);
+    return {
+      lcd: root.querySelector<HTMLElement>('#lcd')!.textContent!,
+      intensityWidth: root.querySelector<HTMLElement>('#you-intensity')!.style.width,
+    };
+  }
+
+  it('says nothing extra while the player is playing', () => {
+    expect(render(dyn({ intensity: 0.9 })).lcd).toBe('LIVE · BAR 3');
+  });
+
+  it('announces the answer only when the lead is actually in', () => {
+    const lead = { drums: true, bass: false, keys: false, lead: true };
+    expect(render(dyn({ space: true }), { enabled: lead }).lcd).toBe('LIVE · BAR 3 · ANSWER');
+    expect(render(dyn({ space: true })).lcd).toBe('LIVE · BAR 3');
+  });
+
+  it('flags the fill bar', () => {
+    expect(render(dyn({ fillDue: true })).lcd).toBe('LIVE · BAR 3 · FILL');
+  });
+
+  it('drives the intensity bar', () => {
+    expect(render(dyn({ intensity: 0 })).intensityWidth).toBe('0%');
+    expect(render(dyn({ intensity: 0.42 })).intensityWidth).toBe('42%');
+    expect(render(dyn({ intensity: 1 })).intensityWidth).toBe('100%');
+  });
+});

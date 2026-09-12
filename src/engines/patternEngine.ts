@@ -24,7 +24,7 @@ export class PatternEngine implements BandEngine {
     this.band.stop();
   }
 
-  set(p: Partial<Pick<BandState, 'genre' | 'key' | 'chord' | 'creativity'>> & { chordBeat?: number }): void {
+  set(p: Partial<Pick<BandState, 'genre' | 'key' | 'chord' | 'creativity' | 'dynamics'>> & { chordBeat?: number }): void {
     this.band.set(p);
   }
 

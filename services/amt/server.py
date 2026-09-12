@@ -342,7 +342,10 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 elif mtype == "set":
                     # genre/creativity/instruments have no effect on this PoC's
-                    # generation path yet -- acknowledged but not applied.
+                    # generation path yet -- acknowledged but not applied. The
+                    # client also sends `intensity` (0-1, how hard the player is
+                    # working) as a density hint; the anticipation scheduler has
+                    # no density control, so it is ignored here for now.
                     pass
 
                 else:

@@ -76,15 +76,34 @@ INSTRUMENT_WORDS = {
 }
 
 
+def intensity_words(intensity: float) -> str:
+    # How hard the player is working, as prompt text. ACE-Step has no density control, so
+    # this is the only lever the block request has on how busy the band sounds.
+    intensity = max(0.0, min(1.0, intensity))
+    if intensity < 0.35:
+        return "sparse, laid back"
+    if intensity > 0.7:
+        return "energetic, busy"
+    return "medium"
+
+
+def audible_instruments(instruments: list[str], exclude: Optional[str] = None, space: bool = True) -> list[str]:
+    # The lead answers the player rather than playing over them: it is only prompted for
+    # while the player has left space.
+    return [i for i in instruments if i != exclude and (space or i != "lead")]
+
+
 def build_prompt(
     genre: str,
     instruments: list[str],
     exclude: Optional[str] = None,
     chords: Optional[list[str]] = None,
+    intensity: float = 0.5,
+    space: bool = True,
 ) -> str:
     genre_text = GENRE_PROMPTS.get(genre, GENRE_PROMPTS["lofi"])
-    words = [INSTRUMENT_WORDS.get(i, i) for i in instruments if i != exclude]
-    parts = [genre_text]
+    words = [INSTRUMENT_WORDS.get(i, i) for i in audible_instruments(instruments, exclude, space)]
+    parts = [genre_text, intensity_words(intensity)]
     if words:
         parts.append(", ".join(words))
     if chords:
@@ -96,8 +115,8 @@ def build_prompt(
     return ", ".join(parts)
 
 
-def track_classes_for(instruments: list[str], exclude: Optional[str] = None) -> list[str]:
-    return [INSTRUMENT_WORDS.get(i, i) for i in instruments if i != exclude]
+def track_classes_for(instruments: list[str], exclude: Optional[str] = None, space: bool = True) -> list[str]:
+    return [INSTRUMENT_WORDS.get(i, i) for i in audible_instruments(instruments, exclude, space)]
 
 
 def creativity_to_guidance(creativity: float) -> float:
@@ -345,11 +364,15 @@ class Session:
         bars = int(msg.get("bars", 2))
         player_instrument = msg.get("player_instrument")
         chords = [str(c) for c in (msg.get("chords") or [])]
+        intensity = float(msg.get("intensity", 0.5))
+        space = bool(msg.get("space", True))
 
         duration = bars * 240.0 / bpm
         needs_restart = bpm != self.last_bpm or key != self.last_key or self.prev_audio_path is None
         task_type = "text2music" if needs_restart else "complete"
-        prompt = build_prompt(genre, instruments, exclude=player_instrument, chords=chords)
+        prompt = build_prompt(
+            genre, instruments, exclude=player_instrument, chords=chords, intensity=intensity, space=space
+        )
 
         params = GenParams(
             task_type=task_type,
@@ -361,7 +384,9 @@ class Session:
             guidance=creativity_to_guidance(creativity),
             seed=creativity_to_seed(creativity, seq),
             src_audio_path=None if task_type == "text2music" else self.prev_audio_path,
-            track_classes=None if task_type == "text2music" else track_classes_for(instruments, player_instrument),
+            track_classes=None
+            if task_type == "text2music"
+            else track_classes_for(instruments, player_instrument, space),
         )
 
         loop = asyncio.get_running_loop()

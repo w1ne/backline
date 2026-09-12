@@ -1,4 +1,5 @@
-import type { Genre, Instrument, Key } from '../types';
+import type { Dynamics, Genre, Instrument, Key } from '../types';
+import { IDLE_DYNAMICS } from '../types';
 
 const SCALE_NAMES = [
   'C_MAJOR_A_MINOR',
@@ -36,13 +37,18 @@ const INSTRUMENT_PROMPT: Record<Instrument, { text: string; weight: number }> = 
 
 const INSTRUMENT_ORDER: Instrument[] = ['drums', 'bass', 'keys', 'lead'];
 
+/** The lead is an answering voice: its prompt is only weighted in while the player has left
+ *  space. Without dynamics (no listener yet) it behaves as it always did. */
 export function promptsFor(
   genre: Genre,
   enabled: Record<Instrument, boolean>,
+  dynamics?: Dynamics,
 ): { text: string; weight: number }[] {
   const prompts = [{ text: GENRE_TEXT[genre], weight: 1 }];
   for (const i of INSTRUMENT_ORDER) {
-    if (enabled[i]) prompts.push(INSTRUMENT_PROMPT[i]);
+    if (!enabled[i]) continue;
+    if (i === 'lead' && dynamics && !dynamics.space) continue;
+    prompts.push(INSTRUMENT_PROMPT[i]);
   }
   return prompts;
 }
@@ -61,12 +67,16 @@ export function configFor(
   key: Key,
   creativity: number,
   enabled: Record<Instrument, boolean>,
+  dynamics: Dynamics = IDLE_DYNAMICS,
 ): LyriaConfig {
+  const intensity = Math.min(1, Math.max(0, dynamics.intensity));
   return {
     bpm: Math.min(200, Math.max(60, bpm)),
     scale: scaleFor(key),
+    // Creativity still owns how far the model wanders; how *much* it plays follows the
+    // player, so the band thickens up with them and thins out when they stop.
     temperature: 0.6 + creativity * 1.6,
-    density: 0.3 + creativity * 0.5,
+    density: 0.25 + intensity * 0.5,
     muteDrums: !enabled.drums,
     muteBass: !enabled.bass,
   };

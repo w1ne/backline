@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import type { LiveMusicGenerationConfig, LiveMusicSession } from '@google/genai';
 import type { BandState, Instrument, Key } from '../types';
+import { IDLE_DYNAMICS } from '../types';
 import type { BandEngine } from './engine';
 import { promptsFor, configFor } from './lyriaMap';
 import { PcmPlayer } from './pcmPlayer';
@@ -31,7 +32,11 @@ export class LyriaEngine implements BandEngine {
     chord: null,
     creativity: 0.3,
     enabled: { drums: false, bass: false, keys: false, lead: false },
+    dynamics: { ...IDLE_DYNAMICS },
   };
+  /** true once a queued apply must also reset the model's context (bpm/key/genre changes);
+   *  a dynamics-only change must not, or the stream would cut every beat */
+  private applyReset = false;
   private session?: LiveMusicSession;
   private player?: PcmPlayer;
   private barTimer?: ReturnType<typeof setInterval>;
@@ -137,8 +142,18 @@ export class LyriaEngine implements BandEngine {
    *  the session dirty. Lyria applies a harmonic change by resetting the stream, which costs a
    *  reconnect and an audible gap — far too expensive to pay every half bar. Key changes are
    *  rare and keep the existing reset path; chord following on Lyria is left to the player. */
-  set(p: Partial<Pick<BandState, 'genre' | 'key' | 'chord' | 'creativity'>>): void {
+  set(p: Partial<Pick<BandState, 'genre' | 'key' | 'chord' | 'creativity' | 'dynamics'>>): void {
     let dirty = false;
+    if (p.dynamics !== undefined) {
+      // Dynamics land on every beat. Only a real change of behaviour is worth a round trip —
+      // the lead coming in or out, or a visible step in density — and it never resets context.
+      const prev = this.state.dynamics;
+      const stepped =
+        p.dynamics.space !== prev.space ||
+        Math.round(p.dynamics.intensity * 5) !== Math.round(prev.intensity * 5);
+      this.state.dynamics = p.dynamics;
+      if (stepped) this.scheduleApply(false);
+    }
     if (p.chord !== undefined) this.state.chord = p.chord;
     if (p.genre !== undefined && p.genre !== this.state.genre) {
       this.state.genre = p.genre;
@@ -198,15 +213,18 @@ export class LyriaEngine implements BandEngine {
   }
 
   /** Coalesces rapid control changes, firing at most COALESCE_MS after the FIRST change in a burst. */
-  private scheduleApply(): void {
+  private scheduleApply(reset = true): void {
     const now = Date.now();
+    if (reset) this.applyReset = true;
     if (this.firstDirtyAt === undefined) this.firstDirtyAt = now;
     if (this.applyTimer !== undefined) clearTimeout(this.applyTimer);
     const remaining = Math.max(0, COALESCE_MS - (now - this.firstDirtyAt));
     this.applyTimer = setTimeout(() => {
       this.applyTimer = undefined;
       this.firstDirtyAt = undefined;
-      this.applyAll(true).catch(err => {
+      const reset = this.applyReset;
+      this.applyReset = false;
+      this.applyAll(reset).catch(err => {
         this.onError?.(`Lyria: ${err instanceof Error ? err.message : String(err)}`);
       });
     }, remaining);
@@ -214,10 +232,10 @@ export class LyriaEngine implements BandEngine {
 
   private async applyAll(reset = false): Promise<void> {
     if (!this.session) return;
-    const { genre, key, creativity, enabled } = this.state;
-    await this.session.setWeightedPrompts({ weightedPrompts: promptsFor(genre, enabled) });
+    const { genre, key, creativity, enabled, dynamics } = this.state;
+    await this.session.setWeightedPrompts({ weightedPrompts: promptsFor(genre, enabled, dynamics) });
     await this.session.setMusicGenerationConfig({
-      musicGenerationConfig: configFor(this.bpm, key, creativity, enabled) as unknown as LiveMusicGenerationConfig,
+      musicGenerationConfig: configFor(this.bpm, key, creativity, enabled, dynamics) as unknown as LiveMusicGenerationConfig,
     });
     if (reset) {
       this.player?.cut(RESET_FADE_SEC);

@@ -164,7 +164,10 @@ function skeleton(): string {
       <div class="bottom">
         <div class="zone zone--green you">
           <span class="label">You</span>
-          <span class="level"><i id="you-level"></i></span>
+          <span class="meters">
+            <span class="level level--main"><i id="you-level"></i></span>
+            <span class="level level--intensity" title="Intensity"><i id="you-intensity"></i></span>
+          </span>
           <span class="pill note" id="you-note">—</span>
           <span class="pill" id="you-notes"></span>
         </div>
@@ -322,7 +325,12 @@ const ENGINE_NAMES: Record<AppState['engine'], string> = {
 
 function lcdText(s: AppState): string {
   if (s.power === 'off') return 'OFF · PRESS POWER';
-  if (s.locked) return `LIVE · BAR ${s.bar}${s.input.chord ? ` · ${chordName(s.input.chord)}` : ''}`;
+  if (s.locked) {
+    const d = s.input.dynamics;
+    // What the band is doing with the gap the player left, in the two words that matter.
+    const flags = `${d.space && s.enabled.lead ? ' · ANSWER' : ''}${d.fillDue ? ' · FILL' : ''}`;
+    return `LIVE · BAR ${s.bar}${s.input.chord ? ` · ${chordName(s.input.chord)}` : ''}${flags}`;
+  }
   // once there is enough to guess with, show the running estimate — it is the
   // only feedback that the mic is hearing a tempo and not just noise
   const guess = s.input.pendingBpm ? ` · ~${Math.round(s.input.pendingBpm)} BPM` : '';
@@ -490,7 +498,12 @@ function updateYouStrip(screen: HTMLElement, s: AppState): void {
   const decayed = held ? Math.max(0, held.v - ((now - held.t) / 1000) * 0.6) : 0;
   const peak = Math.max(level, decayed);
   peakHold.set(screen, { v: peak, t: now });
-  screen.querySelector<HTMLElement>('.you .level')!.style.setProperty('--peak', String(Math.round(peak * 100)));
+  screen.querySelector<HTMLElement>('.you .level--main')!.style.setProperty('--peak', String(Math.round(peak * 100)));
+
+  // Second, thinner bar: not how loud the player is, but how hard the band reads them as
+  // working — it lags the level bar on the way down, which is the whole point.
+  const intensity = Math.max(0, Math.min(1, s.input.dynamics.intensity));
+  screen.querySelector<HTMLElement>('#you-intensity')!.style.width = `${Math.round(intensity * 100)}%`;
 
   screen.querySelector<HTMLElement>('#you-notes')!.textContent = s.input.notesNow.length
     ? s.input.notesNow.map(noteName).join(' · ')

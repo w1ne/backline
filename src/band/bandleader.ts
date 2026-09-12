@@ -1,5 +1,5 @@
 import type { BandState, Chord, Genre, Instrument, NoteEvent, Pattern } from '../types';
-import { INSTRUMENTS } from '../types';
+import { INSTRUMENTS, IDLE_DYNAMICS } from '../types';
 import { tonicTriad } from '../listener/chordDetector';
 import { mulberry32 } from '../rng';
 import type { ClockLike } from './clockTypes';
@@ -19,6 +19,7 @@ export class Bandleader {
     chord: null,
     creativity: 0.3,
     enabled: { drums: false, bass: false, keys: false, lead: false },
+    dynamics: { ...IDLE_DYNAMICS },
   };
   onBarCb?: (bar: number) => void;
   private rng: () => number;
@@ -37,7 +38,7 @@ export class Bandleader {
     this.rng = mulberry32(seed);
     clock.onBar((bar, t) => this.onBar(bar, t));
   }
-  set(p: Partial<Pick<BandState, 'genre' | 'key' | 'chord' | 'creativity'>> & { chordBeat?: number }) {
+  set(p: Partial<Pick<BandState, 'genre' | 'key' | 'chord' | 'creativity' | 'dynamics'>> & { chordBeat?: number }) {
     const { chordBeat, ...rest } = p;
     Object.assign(this.state, rest);
     if (p.chord) this.pushChord(p.chord, chordBeat);
@@ -77,12 +78,13 @@ export class Bandleader {
     // start has already slipped into the past, don't schedule stale notes for it — the
     // instrument simply joins on the next bar.
     if (t < this.now()) return;
-    const { genre, key, creativity, enabled } = this.state;
+    const { genre, key, creativity, enabled, dynamics } = this.state;
     const barBeat = bar * BEATS_PER_BAR;
     const ctx = {
       bar,
       key,
       creativity,
+      dynamics,
       rng: this.rng,
       chord: this.chordAtBeat(barBeat),
       chordAt: (beat: number) => this.chordAtBeat(barBeat + beat),

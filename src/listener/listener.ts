@@ -1,4 +1,5 @@
-import type { BandInput, Chord, Key } from '../types';
+import type { BandInput, Chord, Dynamics, Key } from '../types';
+import { ActivityTracker } from './activity';
 import { TempoLock, bpmFromOnsets } from './tempoLock';
 import { TempoFollower } from './tempoFollower';
 import { KeyDetector } from './keyDetector';
@@ -26,6 +27,7 @@ const PENDING_MIN_ONSETS = 6;
 
 export class Listener {
   private tempo = new TempoLock();
+  private activity = new ActivityTracker();
   private keyDet = new KeyDetector();
   private chordDet = new ChordDetector();
   private chord: Chord | null = null;
@@ -81,6 +83,7 @@ export class Listener {
         this.followBpm = this.follower.push(t);
       }
       this.onsetCount++;
+      this.activity.onset(t);
       this.onsetTimes.push(t);
       if (this.onsetTimes.length > 24) this.onsetTimes.shift();
       if (n >= 0) {
@@ -92,7 +95,11 @@ export class Listener {
       }
       this.emit();
     };
-    const onLevel = (lvl: number) => { this.level = lvl; this.emit(); };
+    const onLevel = (lvl: number) => {
+      this.level = lvl;
+      this.activity.level(lvl, performance.now() / 1000);
+      this.emit();
+    };
     const onPitch = (p: StablePitch | null) => {
       this.pitch = p;
       const now = performance.now() / 1000;
@@ -154,7 +161,19 @@ export class Listener {
       inputLevel: this.level,
       onsets: this.onsetCount,
       pendingBpm: bpmFromOnsets(this.onsetTimes, PENDING_MIN_ONSETS)?.bpm ?? null,
+      dynamics: this.activity.dynamics,
     };
+  }
+
+  /**
+   * Folds the last beat of playing into a fresh `Dynamics` frame. Called by the app's beat
+   * clock (`beatIndex` is absolute beats since the band started), not per note — the band
+   * re-reads the player once a beat, the same rate it makes decisions at.
+   */
+  tickBeat(beatIndex: number, t = performance.now() / 1000): Dynamics {
+    const d = this.activity.tick(beatIndex, t);
+    this.emit();
+    return d;
   }
 
   /**

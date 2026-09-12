@@ -7,7 +7,7 @@ import { MidiSource } from './listener/midiSource';
 import { MicSource } from './listener/micSource';
 import { Players } from './players/players';
 import { PATTERNS } from './patterns';
-import { INSTRUMENTS } from './types';
+import { INSTRUMENTS, IDLE_DYNAMICS } from './types';
 import type { BandEngine } from './engines/engine';
 import { PatternEngine } from './engines/patternEngine';
 import { LyriaEngine } from './engines/lyriaEngine';
@@ -30,6 +30,20 @@ const players = new Players();
 let lastFollowedBpm: number | undefined;
 let disarmFallback: (() => void) | undefined;
 let halfBarTimer: ReturnType<typeof setTimeout> | undefined;
+let beatTimers: ReturnType<typeof setTimeout>[] = [];
+
+/** Re-reads the player's activity for one beat and hands the result to the band. Engines only
+ *  call back on the bar, so beats 1..3 come off timers re-armed from every downbeat — they
+ *  never drift more than a bar, and a bpm change lands on the next one. */
+function tickBeat(beat: number): void {
+  if (!listener) return;
+  band?.set({ dynamics: listener.tickBeat(beat) });
+}
+
+function clearBeatTimers(): void {
+  beatTimers.forEach(t => clearTimeout(t));
+  beatTimers = [];
+}
 
 /** Re-decides the chord from what the player just played and hands it to the band.
  *  Driven by the engine's bar callback plus a timer at the half bar, so the band gets a
@@ -53,10 +67,17 @@ function wireBand(b: BandEngine): void {
     store.update({ bar });
     setLatency(root, players.latencyMs());
     const beat = bar * BEATS_PER_BAR;
+    // The downbeat's dynamics have to be in the band's hands before it schedules this bar,
+    // and onBar runs ahead of scheduling, so tick the beat first.
+    tickBeat(beat);
     tickChord(beat);
     if (halfBarTimer !== undefined) clearTimeout(halfBarTimer);
+    clearBeatTimers();
     const bpm = lastFollowedBpm ?? store.state.input.bpm;
     if (bpm) halfBarTimer = setTimeout(() => tickChord(beat + BEATS_PER_BAR / 2), 120000 / bpm);
+    if (bpm)
+      for (let b = 1; b < BEATS_PER_BAR; b++)
+        beatTimers.push(setTimeout(() => tickBeat(beat + b), (b * 60000) / bpm));
   };
   b.onError = msg => store.update({ error: msg });
   b.onStats = s => {
@@ -174,6 +195,7 @@ function powerOff() {
   disarmFallback = undefined;
   if (halfBarTimer !== undefined) clearTimeout(halfBarTimer);
   halfBarTimer = undefined;
+  clearBeatTimers();
   band?.stop();
   listener?.stop();
   listener = undefined;
@@ -187,7 +209,7 @@ function powerOff() {
     error: null,
     loops: 0,
     loopsUpdatedAt: undefined,
-    input: { bpm: null, key: null, chord: null, notesNow: [], pitch: null, inputLevel: 0, onsets: 0, pendingBpm: null },
+    input: { bpm: null, key: null, chord: null, notesNow: [], pitch: null, inputLevel: 0, onsets: 0, pendingBpm: null, dynamics: { ...IDLE_DYNAMICS } },
   });
 }
 
@@ -297,7 +319,7 @@ if (new URLSearchParams(location.search).has('demo')) {
     locked: true,
     bar: 9,
     enabled: { drums: true, bass: true, keys: false, lead: true },
-    input: { bpm: 96, key: { root: 9, mode: 'minor' }, chord: { root: 9, quality: 'min' }, notesNow: [57, 60, 64], pitch: { midi: 64, cents: 3, stable: true }, inputLevel: 0.72, onsets: 12, pendingBpm: null },
+    input: { bpm: 96, key: { root: 9, mode: 'minor' }, chord: { root: 9, quality: 'min' }, notesNow: [57, 60, 64], pitch: { midi: 64, cents: 3, stable: true }, inputLevel: 0.72, onsets: 12, pendingBpm: null, dynamics: { intensity: 0.62, space: false, fillDue: false, silenceBeats: 0.25 } },
   });
   setLatency(root, 38);
 }

@@ -1,5 +1,5 @@
 import type { BandState, Chord, Instrument, Key } from '../types';
-import { INSTRUMENTS } from '../types';
+import { INSTRUMENTS, IDLE_DYNAMICS } from '../types';
 import { chordName } from '../listener/chordDetector';
 import type { BandEngine } from './engine';
 import { PcmPlayer } from './pcmPlayer';
@@ -31,6 +31,10 @@ interface BlockRequest {
   bars: number;
   /** the last few half-bar chords the player outlined, e.g. ['Am','F','G','C'] */
   chords: string[];
+  /** how hard the player is working, 0–1; the server turns it into prompt words */
+  intensity: number;
+  /** the player has left room, so the lead instrument may be prompted for */
+  space: boolean;
 }
 
 /** Streams bar-quantized blocks from the ACE-Step service and schedules them back-to-back
@@ -49,6 +53,7 @@ export class AceStepEngine implements BandEngine {
     chord: null,
     creativity: 0.3,
     enabled: { drums: false, bass: false, keys: false, lead: false },
+    dynamics: { ...IDLE_DYNAMICS },
   };
   private chords: string[] = [];
   private ws?: WebSocket;
@@ -131,8 +136,11 @@ export class AceStepEngine implements BandEngine {
     this.player = undefined;
   }
 
-  set(p: Partial<Pick<BandState, 'genre' | 'key' | 'chord' | 'creativity'>>): void {
+  set(p: Partial<Pick<BandState, 'genre' | 'key' | 'chord' | 'creativity' | 'dynamics'>>): void {
     let keyChanged = false;
+    // Dynamics ride along on the next block request — blocks are two bars long, so there is
+    // nothing to gain from restarting generation the moment they move.
+    if (p.dynamics !== undefined) this.state.dynamics = p.dynamics;
     if (p.genre !== undefined) this.state.genre = p.genre;
     if (p.key !== undefined && !sameKey(p.key, this.state.key)) {
       this.state.key = p.key;
@@ -203,6 +211,8 @@ export class AceStepEngine implements BandEngine {
       creativity: this.state.creativity,
       bars: BARS_PER_BLOCK,
       chords: [...this.chords],
+      intensity: this.state.dynamics.intensity,
+      space: this.state.dynamics.space,
     };
     this.send(req);
   }

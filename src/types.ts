@@ -8,6 +8,20 @@ export interface Key { root: number; mode: 'major' | 'minor' } // root 0=C … 1
 export type ChordQuality = 'maj' | 'min' | 'dom7' | 'min7' | 'maj7' | 'sus4' | 'dim';
 export interface Chord { root: number; quality: ChordQuality } // root 0=C … 11=B
 
+/** How the player is playing right now, measured per beat by the ActivityTracker. */
+export interface Dynamics {
+  /** 0 = not playing, 1 = playing flat out; attacks in a beat, releases over ~2 bars */
+  intensity: number;
+  /** the player has left a gap long enough for the band to answer in */
+  space: boolean;
+  /** this bar is the last of a four-bar group and the player is quiet enough for a fill */
+  fillDue: boolean;
+  /** beats since the player's last onset */
+  silenceBeats: number;
+}
+
+export const IDLE_DYNAMICS: Dynamics = { intensity: 0, space: false, fillDue: false, silenceBeats: 0 };
+
 export interface BandInput {
   bpm: number | null;
   key: Key | null;
@@ -20,6 +34,8 @@ export interface BandInput {
   onsets: number;
   /** read-only running estimate from the onsets so far, shown while still listening */
   pendingBpm: number | null;
+  /** the player's activity, updated on every beat */
+  dynamics: Dynamics;
 }
 
 export interface NoteEvent { time: number; note: number; duration: number; velocity: number }
@@ -32,6 +48,8 @@ export interface BarContext {
   chordAt?: (beat: number) => Chord;
   creativity: number;
   rng: () => number;
+  /** what the player is doing; absent means "no listener", and patterns play their static form */
+  dynamics?: Dynamics;
 }
 export interface Pattern { nextBar(ctx: BarContext): NoteEvent[] }
 
@@ -41,6 +59,7 @@ export interface BandState {
   chord: Chord | null;
   creativity: number;
   enabled: Record<Instrument, boolean>;
+  dynamics: Dynamics;
 }
 
 export const DRUM = { kick: 36, snare: 38, hat: 42, openHat: 46, crash: 49 } as const;

@@ -1,4 +1,5 @@
 import type { BandInput, Genre, Instrument } from '../types';
+import { IDLE_DYNAMICS } from '../types';
 import type { SourceStatus } from '../listener/listener';
 
 export type EngineChoice = 'lyria' | 'patterns' | 'acestep' | 'amt';
@@ -30,7 +31,7 @@ const defaults: AppState = {
   engine: 'acestep',
   creativity: 0.3,
   enabled: { drums: true, bass: false, keys: false, lead: false },
-  input: { bpm: null, key: null, chord: null, notesNow: [], pitch: null, inputLevel: 0, onsets: 0, pendingBpm: null },
+  input: { bpm: null, key: null, chord: null, notesNow: [], pitch: null, inputLevel: 0, onsets: 0, pendingBpm: null, dynamics: IDLE_DYNAMICS },
   locked: false,
   tempoMode: 'locked',
   bar: 0,
@@ -45,7 +46,7 @@ export class Store {
   state: AppState = {
     ...defaults,
     enabled: { ...defaults.enabled },
-    input: { ...defaults.input },
+    input: { ...defaults.input, dynamics: { ...defaults.input.dynamics } },
     sources: { ...defaults.sources },
     offlineEngines: [...defaults.offlineEngines],
   };

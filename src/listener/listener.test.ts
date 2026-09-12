@@ -195,3 +195,41 @@ describe('Listener chord following', () => {
   });
 });
 
+
+describe('Listener activity tracking', () => {
+  it('feeds onsets into the dynamics the band reads', async () => {
+    const a = new Fake();
+    const l = new Listener([a]);
+    await l.start();
+    expect(l.input.dynamics.intensity).toBe(0);
+
+    // four notes a beat for four beats at 120 bpm
+    let t = 1;
+    for (let beat = 1; beat <= 4; beat++) {
+      for (let i = 0; i < 4; i++) a.note(60, 0.8, t + i * 0.125 + 0.05);
+      t += 0.5;
+      l.tickBeat(beat, t);
+    }
+    expect(l.input.dynamics.intensity).toBeGreaterThan(0.5);
+    expect(l.input.dynamics.space).toBe(false);
+
+    // then two beats of silence
+    for (let beat = 5; beat <= 6; beat++) {
+      t += 0.5;
+      l.tickBeat(beat, t);
+    }
+    expect(l.input.dynamics.space).toBe(true);
+    expect(l.input.dynamics.silenceBeats).toBeGreaterThan(1.5);
+  });
+
+  it('emits on every beat tick, so the UI follows without polling', async () => {
+    const a = new Fake();
+    const l = new Listener([a]);
+    await l.start();
+    let emitted = 0;
+    l.onChange(() => { emitted++; });
+    l.tickBeat(1, 1);
+    l.tickBeat(2, 1.5);
+    expect(emitted).toBe(2);
+  });
+});

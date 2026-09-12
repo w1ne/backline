@@ -5,7 +5,7 @@ export interface BandEngine {
   stop(): void;
   /** `chordBeat` is the absolute beat the chord took effect on; engines that don't place
    *  notes on a beat grid ignore it. */
-  set(p: Partial<Pick<BandState, 'genre' | 'key' | 'chord' | 'creativity'>> & { chordBeat?: number }): void;
+  set(p: Partial<Pick<BandState, 'genre' | 'key' | 'chord' | 'creativity' | 'dynamics'>> & { chordBeat?: number }): void;
   setEnabled(i: Instrument, on: boolean): void;
   setBpm(bpm: number): void;
   /** smallest bpm change worth forwarding in follow mode */
