@@ -477,6 +477,10 @@ async function power() {
   });
 
   listener.onChange(input => {
+    // The strip's voice line: the continuous reading, not the snapped note, so a slide looks
+    // like a slide. Runs on every listener emit (~20 Hz from the mic's pitch poll).
+    const p = input.pitch;
+    viz?.addPitch(Tone.now(), p ? p.midi + p.cents / 100 : null, p?.stable ?? false);
     // The service's chord wins the display too while its plan is fresh — see planOverride.ts.
     const fresh = planFreshness.chordFresh(store.state.bar);
     store.update({ input: fresh ? { ...input, chord: chooseChord(store.state.engine, fresh, planChord, input.chord) } : input });
@@ -885,6 +889,20 @@ function runVizDemo(bpm: number, startBar: number): void {
     // the player, slightly behind the grid and only in bars already gone by
     for (let i = 0; i < you.length; i++)
       viz!.addNote('you', you[(i + bar) % you.length], at + i * 0.66 * beat + 0.02, 0.3 * beat, 0.9);
+    // and the voice line under those notes: a scoop into each note, a little vibrato on it,
+    // a breath between phrases
+    for (let i = 0; i < you.length; i++) {
+      const target = you[(i + bar) % you.length];
+      const start = at + i * 0.66 * beat + 0.02;
+      for (let k = 0; k <= 8; k++) {
+        const f = k / 8;
+        const t = start + f * 0.5 * beat;
+        const scoop = f < 0.25 ? -(0.25 - f) * 4 : 0;
+        const vib = Math.sin(f * Math.PI * 4) * 0.12;
+        viz!.addPitch(t, target + scoop + vib, f >= 0.25);
+      }
+      viz!.addPitch(start + 0.55 * beat, null, false);
+    }
   };
 
   // two bars behind the playhead, three ahead, topped up every bar
