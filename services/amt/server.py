@@ -44,7 +44,7 @@ from anticipation.vocab import TIME_OFFSET  # noqa: E402
 
 from amt import (  # noqa: E402
     MELODY_INSTR,
-    ACCOMP_INSTR,
+    STRING_ENSEMBLE_ACCOMP_INSTRS,
     ACCOMP_BIAS,
     make_event,
     parse_events,
@@ -114,21 +114,32 @@ class Session:
     stream), and the AMT scheduler's lookahead/commit bookkeeping.
 
     Reuses bench/amt's event encoding and generate_duet() directly; the
-    monophonic commit/trim logic is AccompanimentCommitter, unchanged from
-    live_duet.py.
+    monophonic-per-instrument commit/trim logic is AccompanimentCommitter,
+    imported unchanged from live_duet.py. The ensemble's different
+    instruments are independent voices and may sound together -- only a
+    single instrument overlapping itself gets trimmed -- and every
+    committed note still flattens into the one "keys" output voice below.
     """
 
     def __init__(self, model):
         self.model = model
         self.reset(bpm=100.0, lookahead_beats=4.0, commit_beats=2.0, listen_beats=8.0, top_p=0.95)
 
-    def reset(self, bpm, lookahead_beats, commit_beats, listen_beats, top_p):
+    def reset(self, bpm, lookahead_beats, commit_beats, listen_beats, top_p,
+              accomp_instrs=STRING_ENSEMBLE_ACCOMP_INSTRS):
         self.bpm = bpm
         self.beat_s = 60.0 / bpm
         self.lookahead_beats = lookahead_beats
         self.commit_beats = commit_beats
         self.listen_beats = listen_beats
         self.top_p = top_p
+        # Default to the validated string-ensemble preset rather than a lone violin: a single
+        # instrument was consistently too sparse against a real, densely-played performance to be
+        # heard at all (see bench/amt/SETUP.md in the Music repo this was ported from). The three
+        # instruments are independent voices that may overlap each other -- AccompanimentCommitter
+        # below only keeps each individual instrument monophonic -- and all three get flattened
+        # into the single "keys" output voice the client plays, same as before.
+        self.accomp_instrs = accomp_instrs
 
         self.history: list[int] = []
         self.committer = AccompanimentCommitter(self.history)
@@ -223,7 +234,7 @@ class Session:
         deadline_s = GENERATION_BUDGET * (commit_end_beat - start_beat) * self.beat_s
         t0 = time.monotonic()
         result = generate_duet(
-            self.model, start_s, end_s, history_before, self.top_p, ACCOMP_BIAS,
+            self.model, start_s, end_s, history_before, self.accomp_instrs, self.top_p, ACCOMP_BIAS,
             deadline_s=deadline_s,
             # The committed voice is monophonic and the app plays to a beat grid, so a
             # sixteenth note is the shortest onset gap worth sampling.
@@ -236,13 +247,18 @@ class Session:
         # exactly on one.
         start_tick = round(start_s * TIME_RESOLUTION)
         commit_end_tick = round(commit_end_s * TIME_RESOLUTION)
-        accomp = [(t, d, p) for (t, d, instr, p) in parse_events(result) if instr == ACCOMP_INSTR]
-        raw_notes = [
-            (t, d, p) for (t, d, p) in accomp if start_tick <= round(t * TIME_RESOLUTION) < commit_end_tick
+        accomp = [
+            (t, d, instr, p) for (t, d, instr, p) in parse_events(result) if instr in self.accomp_instrs
         ]
-        committed = self.committer.commit(raw_notes)  # (onset_s, dur_s, pitch), trimmed/monophonic
+        raw_notes = [
+            (t, d, instr, p) for (t, d, instr, p) in accomp
+            if start_tick <= round(t * TIME_RESOLUTION) < commit_end_tick
+        ]
+        # (onset_s, dur_s, instr, pitch), trimmed/monophonic per instrument; different instruments
+        # in the ensemble may still sound together, and all flatten into one "keys" voice below.
+        committed = self.committer.commit(raw_notes)
         self.committed_horizon_beats = commit_end_beat
-        self.last_accomp_notes = committed
+        self.last_accomp_notes = [(t, d, p) for (t, d, _, p) in committed]
 
         log.info(
             "bar %d: window [%.1f..%.1f) beats (generate to %.1f), human events in context=%d, "
@@ -253,7 +269,7 @@ class Session:
         )
 
         notes_out = []
-        for onset_s, dur_s, pitch in committed:
+        for onset_s, dur_s, _instr, pitch in committed:
             notes_out.append(
                 {
                     "beat": onset_s / self.beat_s,
@@ -264,7 +280,7 @@ class Session:
                 }
             )
 
-        root = ChordInference.root_below([(o, d, p) for o, d, p in committed])
+        root = ChordInference.root_below([(o, d, p) for o, d, _instr, p in committed])
         if root is not None and committed:
             # One held bass note per bar, an octave below the inferred root,
             # starting at the same commit window as the keys voice above.
