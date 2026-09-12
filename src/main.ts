@@ -8,6 +8,7 @@ import { MicSource } from './listener/micSource';
 import { Players } from './players/players';
 import { PATTERNS } from './patterns';
 import { INSTRUMENTS, IDLE_DYNAMICS } from './types';
+import { effectiveDynamics } from './listener/activity';
 import type { BandEngine } from './engines/engine';
 import { PatternEngine } from './engines/patternEngine';
 import { LyriaEngine } from './engines/lyriaEngine';
@@ -55,7 +56,12 @@ let beatTimers: ReturnType<typeof setTimeout>[] = [];
  *  never drift more than a bar, and a bpm change lands on the next one. */
 function tickBeat(beat: number): void {
   if (!listener) return;
-  band?.set({ dynamics: listener.tickBeat(beat) });
+  // Fold the manual INTENSITY knob into the auto activity before it reaches the band, so every
+  // consumer (patterns, Lyria density, ACE/AMT requests) sees the effective value. The store keeps
+  // the effective number too, for the INTENSITY bar to show what the band is actually playing at.
+  const eff = effectiveDynamics(listener.tickBeat(beat), store.state.intensity, beat);
+  band?.set({ dynamics: eff });
+  store.update({ effectiveIntensity: eff.intensity });
 }
 
 function clearBeatTimers(): void {
@@ -275,6 +281,7 @@ function powerOff() {
     error: null,
     loops: 0,
     loopsUpdatedAt: undefined,
+    effectiveIntensity: 0,
     input: { bpm: null, key: null, chord: null, notesNow: [], pitch: null, inputLevel: 0, onsets: 0, pendingBpm: null, dynamics: { ...IDLE_DYNAMICS } },
   });
 }
@@ -324,6 +331,11 @@ store.subscribe(s => {
     setCreativity: c => {
       band?.set({ creativity: c });
       store.update({ creativity: c });
+    },
+    setIntensity: i => {
+      // The knob only stores the manual setting; tickBeat folds it into the band's dynamics on
+      // the next beat. Nothing to push to the engine here.
+      store.update({ intensity: Math.min(1, Math.max(0, i)) });
     },
     powerOff,
     setBpmOverride: bpm => {
