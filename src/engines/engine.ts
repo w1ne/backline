@@ -24,4 +24,7 @@ export interface BandEngine {
    *  engines that render their own audio (Lyria, ACE) implement it — Patterns and AMT
    *  play through Players, where routing is per instrument. */
   routeBand?(route: MorphRoute, morphNode?: AudioNode): void;
+  /** Audio engines expose a tap on their output so the visualiser can draw a spectrum.
+   *  Only valid after start(); note-based engines don't implement it. */
+  getAnalyser?(): AnalyserNode | undefined;
 }

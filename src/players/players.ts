@@ -20,15 +20,20 @@ export class Players implements PlayersLike {
   /** the MORPH bus input, when an output device has been chosen */
   private morphNode?: AudioNode;
   private routes: Record<Instrument, MorphRoute> = { drums: 'main', bass: 'main', keys: 'main', lead: 'main' };
+  private analyser?: AnalyserNode;
   private genre: Genre = 'lofi';
+  /**
+   * Fires for every batch of notes that actually reaches a voice, with absolute times,
+   * so the visualiser can draw what the band is about to play. Notes dropped as stale or
+   * as mono-voice collisions are excluded — the hook reports what will be heard.
+   */
+  onSchedule?: (instrument: Instrument, events: NoteEvent[], barStartTime: number, bpm: number) => void;
   /** Count of note events dropped because they were stale (too close to/before now) or a
    * duplicate on the same monophonic voice within the merge window. Test/diagnostic hook. */
   dropped = 0;
   /** Last actually-triggered time per mono voice, so dedup also catches a note at the start
    * of one bar colliding with the tail of the previous bar's schedule() call. */
   private lastVoiceTime = new Map<string, number>();
-  /** Diagnostic tap: every schedule() call, after dropping/merging, as it goes to the synths. */
-  onSchedule?: (inst: Instrument, events: NoteEvent[], barStart: number, bpm: number) => void;
 
   async init() {
     if (!this.out) {
@@ -71,6 +76,16 @@ export class Players implements PlayersLike {
     bus.disconnect();
     if (to.main) bus.connect(this.out as never);
     if (to.morph && this.morphNode) bus.connect(this.morphNode as never);
+  }
+
+  /** An analyser on the Tone output bus, created on first use. */
+  getAnalyser(): AnalyserNode | undefined {
+    if (this.analyser) return this.analyser;
+    if (!this.out) return undefined;
+    const ctx = this.rawContext();
+    this.analyser = ctx.createAnalyser();
+    this.out.connect(this.analyser);
+    return this.analyser;
   }
 
   /** The AudioContext backing this Players' Tone context; shared with LyriaEngine's PcmPlayer. */
@@ -145,7 +160,7 @@ export class Players implements PlayersLike {
       kept.push(item);
     }
 
-    this.onSchedule?.(inst, kept.map(k => k.e), barStart, bpm);
+    if (this.onSchedule && kept.length) this.onSchedule(inst, kept.map(k => k.e), barStart, bpm);
 
     for (const { e, t, d } of kept) {
       const voice = inst === 'drums' ? `drums:${e.note}` : inst;

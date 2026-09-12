@@ -31,6 +31,10 @@ interface Scheduled {
  */
 export class PcmPlayer {
   private queue: Scheduled[] = [];
+  /** Every scheduled chunk goes through here rather than straight to the destination, so a
+   * visualiser can tap the mixed output with an analyser at any point. */
+  private out?: GainNode;
+  private analyser?: AnalyserNode;
   private lastEnd = 0;
   /** undefined = start at full gain; otherwise fade in from 0 over this many seconds. */
   private pendingFadeInSec?: number;
@@ -54,6 +58,10 @@ export class PcmPlayer {
   ) {
     this.nextLead = bufferAheadSec;
     this.morphNode = morphNode;
+    if (typeof ctx.createGain === 'function') {
+      this.out = ctx.createGain();
+      this.out.connect(ctx.destination);
+    }
     this.watchdog = setInterval(() => this.checkUnderrun(), 50);
   }
 
@@ -66,12 +74,28 @@ export class PcmPlayer {
     for (const s of this.queue) this.attach(s.gain);
   }
 
+  /** The shared main-output bus when the context can make one, the destination otherwise
+   * (test fakes). The visualiser taps this bus, so the 'main' route feeds it. */
+  private sink(): AudioNode {
+    return this.out ?? this.ctx.destination;
+  }
+
   /** Connects a chunk's gain to whichever outputs its route currently feeds. */
   private attach(gain: GainNode): void {
     gain.disconnect();
     const to = routeTargets(this.bandRoute, !!this.morphNode);
-    if (to.main) gain.connect(this.ctx.destination);
+    if (to.main) gain.connect(this.sink());
     if (to.morph && this.morphNode) gain.connect(this.morphNode);
+  }
+
+  /** An analyser on the mixed output, created on first use. Undefined if the context
+   * doesn't provide one. */
+  getAnalyser(): AnalyserNode | undefined {
+    if (this.analyser) return this.analyser;
+    if (!this.out || typeof this.ctx.createAnalyser !== 'function') return undefined;
+    this.analyser = this.ctx.createAnalyser();
+    this.out.connect(this.analyser);
+    return this.analyser;
   }
 
   /** Bar length in seconds (240 / bpm), used both for the loop segment length and ring capacity. */
