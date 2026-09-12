@@ -329,6 +329,31 @@ describe('AmtEngine', () => {
     expect(players.calls.every(c => c.i === 'keys')).toBe(true);
   });
 
+  it('schedules a polyphonic keys onset as one chord, not deduped down to one note', async () => {
+    const { engine, players } = mk();
+    now = 0;
+    await engine.start(120, 0);
+    startedSocket().open();
+    engine.setEnabled('keys', true);
+
+    // A single model onset voiced as a 3-note chord: same voice+beat, three different pitches.
+    startedSocket().receiveJson({
+      type: 'plan',
+      fromBeat: 0,
+      notes: [
+        { beat: 1, pitch: 60, dur: 1, vel: 0.6, voice: 'keys' },
+        { beat: 1, pitch: 64, dur: 1, vel: 0.6, voice: 'keys' },
+        { beat: 1, pitch: 67, dur: 1, vel: 0.6, voice: 'keys' },
+      ],
+    });
+
+    // All three land in a single schedule() call, so Players' PolySynth plays them together.
+    expect(players.calls).toHaveLength(1);
+    expect(players.calls[0].i).toBe('keys');
+    const pitches = players.calls[0].events.map(e => e.note).sort((a, b) => a - b);
+    expect(pitches).toEqual([60, 64, 67]);
+  });
+
   it('does not re-schedule a note a later plan repeats', async () => {
     const { engine, players } = mk();
     now = 0;
