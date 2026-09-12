@@ -30,7 +30,11 @@ package. Not on PyPI — install from GitHub (see below).
   which only `--commit-beats` is frozen. The rest is discarded and
   regenerated once more real melody has arrived. If the model doesn't
   finish before its own deadline, that's logged as a genuine underrun, not
-  hidden. Output is a MIDI file of exactly what was decided live.
+  hidden. Committed accompaniment notes are also kept monophonic (one
+  violin, one note at a time) by trimming a note's tail if the next one
+  starts before it ends -- the model has no such constraint on its own and
+  will happily commit overlapping notes. Output is a MIDI file of exactly
+  what was decided live.
 
 ## Run
 

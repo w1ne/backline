@@ -38,7 +38,9 @@ import torch
 from transformers import AutoModelForCausalLM
 
 from anticipation import ops
+from anticipation.config import TIME_RESOLUTION
 from anticipation.convert import events_to_midi
+from anticipation.vocab import DUR_OFFSET
 
 from amt import MELODY_INSTR, ACCOMP_INSTR, ACCOMP_BIAS, make_event, parse_events, generate_duet
 from melody import make_synthetic_melody
@@ -78,6 +80,14 @@ class LiveDuet:
         self.gen_stats = []          # (music_s_requested, wall_s_taken)
         self.underruns = 0
         self.t0 = None
+
+        # One violin can't double-stop across notes: the model has no such
+        # constraint and will happily commit overlapping accompaniment
+        # notes. Track the tail of the most recently committed note so
+        # _commit_accompaniment can trim it if the next one starts early.
+        self._accomp_last_end = None
+        self._accomp_prev_onset = None
+        self._accomp_dur_idx = None
 
     def log(self, msg):
         t = time.monotonic() - self.t0
@@ -156,10 +166,7 @@ class LiveDuet:
         collect_time = time.monotonic() - self.t0
         late = sum(1 for (t, _, _) in committed if t < collect_time)
 
-        for onset_s, dur_s, pitch in committed:
-            self.history.extend(make_event(onset_s, dur_s, ACCOMP_INSTR, pitch))
-            self.played.append((onset_s, dur_s, "accompaniment", pitch))
-
+        self._commit_accompaniment(committed)
         self.committed_horizon = commit_end
 
         tag = "ok" if not late else f"UNDERRUN ({late} note(s) arrived after their cue)"
@@ -168,6 +175,34 @@ class LiveDuet:
             f"model wrote [{gen_start:5.2f}s..{gen_end:5.2f}s) in {wall_dt:4.2f}s wall time, "
             f"committed {len(committed)} note(s) up to {commit_end:5.2f}s -- {tag}"
         )
+
+    def _commit_accompaniment(self, notes):
+        """Append accompaniment notes to history/played, one voice at a time.
+
+        If a note starts before the previous one has finished ringing, trim
+        the previous note's duration down to meet it -- same as note-stealing
+        on a monophonic synth. This only ever shortens a note that's already
+        committed; it never moves an onset or changes a pitch, so it doesn't
+        revisit the musical decisions the scheduler already froze. Two notes
+        landing on the exact same 10ms tick (the model's finest time
+        resolution) can't be told apart at all -- keep the earlier, drop
+        the rest, rather than emit a technically-nonzero but inaudible sliver.
+        """
+        for onset_s, dur_s, pitch in sorted(notes):
+            onset_s = round(onset_s * TIME_RESOLUTION) / TIME_RESOLUTION  # same tick grid as make_event
+
+            if self._accomp_last_end is not None:
+                if onset_s <= self._accomp_prev_onset:
+                    continue
+                if onset_s < self._accomp_last_end:
+                    trimmed_s = onset_s - self._accomp_prev_onset
+                    self.history[self._accomp_dur_idx] = DUR_OFFSET + round(trimmed_s * TIME_RESOLUTION)
+
+            self.history.extend(make_event(onset_s, dur_s, ACCOMP_INSTR, pitch))
+            self._accomp_dur_idx = len(self.history) - 2  # the triple's middle (duration) slot
+            self._accomp_prev_onset = onset_s
+            self._accomp_last_end = onset_s + dur_s
+            self.played.append((onset_s, dur_s, "accompaniment", pitch))
 
     def _announce_due(self, playhead):
         while self.announced < len(self.played) and self.played[self.announced][0] <= playhead:
