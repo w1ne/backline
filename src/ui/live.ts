@@ -188,8 +188,8 @@ function skeleton(): string {
             <button type="button" class="morph-key wide" id="morph-band" data-morph="band"
                     aria-label="Morph route for the band engine">Band &rarr; Morph<span class="morph-led"></span></button>
           </div>
-          <small class="hint" id="tempoMode-note" hidden>Follow needs the Patterns engine</small>
-          <small class="hint" id="morph-note" hidden>Output picking needs Chrome or Edge</small>
+          <small class="hint" id="tempoMode-note" hidden>Follow needs Patterns</small>
+          <small class="hint" id="morph-note" hidden>Morph out needs Chrome</small>
         </div>
       </div>
       <div class="bottom">
