@@ -13,11 +13,33 @@ interface Routable {
   disconnect(): unknown;
 }
 
+/** Master bus: a shared reverb return (fed by a per-instrument send off each bus, more on
+ *  keys/lead, less on drums/bass), a gentle compressor to even out the band, and a limiter
+ *  so nothing clips. No lookahead effects — this must not add scheduling latency. */
+interface MixBus {
+  reverb: Tone.Reverb;
+  sends: Record<Instrument, Tone.Gain>;
+}
+
+/** Reverb send amount per instrument — a light room ambience overall, with keys and lead
+ *  sitting further back in it than the low, percussive drums/bass. Exported for a
+ *  construction-free unit test; real wiring happens in Players.init(). */
+export const REVERB_SEND: Record<Instrument, number> = { drums: 0.06, bass: 0.05, keys: 0.22, lead: 0.15 };
+
+/** Master chain settings, exported for the same reason — Players.init() needs a live
+ *  AudioContext to actually build these nodes, so this is what a unit test can check. */
+export const MASTER_CHAIN = {
+  reverbDecay: 1.4,
+  compressor: { threshold: -18, ratio: 3, attack: 0.01, release: 0.2 },
+  limiterCeilingDb: -1,
+} as const;
+
 export class Players implements PlayersLike {
   private set?: SoundSet;
   private out!: Tone.Volume;
   /** one gain per instrument, between its synths and the outputs — the re-routing point */
   private busses?: Record<Instrument, Tone.Gain>;
+  private mix?: MixBus;
   /** the MORPH bus input, when an output device has been chosen */
   private morphNode?: AudioNode;
   private routes: Record<Instrument, MorphRoute> = { drums: 'main', bass: 'main', keys: 'main', lead: 'main' };
@@ -40,7 +62,20 @@ export class Players implements PlayersLike {
   async init() {
     if (!this.out) {
       Tone.setContext(new Tone.Context({ latencyHint: 'interactive' }));
-      this.out = new Tone.Volume(-6).toDestination();
+      this.out = new Tone.Volume(-6);
+      // Master chain: out -> compressor -> limiter -> speakers. Both are plain dynamics
+      // nodes (no lookahead delay beyond what DynamicsCompressorNode always has), so this
+      // adds no scheduling latency.
+      const compressor = new Tone.Compressor(MASTER_CHAIN.compressor);
+      const limiter = new Tone.Limiter(MASTER_CHAIN.limiterCeilingDb);
+      this.out.chain(compressor, limiter, Tone.getDestination());
+      // Reverb is a send effect (100% wet): each instrument's bus feeds it at its own level
+      // via `sends`, and its output joins the same compressor/limiter chain as the dry signal.
+      const reverb = new Tone.Reverb({ decay: MASTER_CHAIN.reverbDecay, wet: 1 }).connect(compressor);
+      const sends = Object.fromEntries(
+        INSTRUMENTS.map(i => [i, new Tone.Gain(REVERB_SEND[i]).connect(reverb)]),
+      ) as Record<Instrument, Tone.Gain>;
+      this.mix = { reverb, sends };
       this.busses = {
         drums: new Tone.Gain(),
         bass: new Tone.Gain(),
@@ -103,6 +138,7 @@ export class Players implements PlayersLike {
     const to = routeTargets(this.routes[inst], !!this.morphNode);
     bus.disconnect();
     if (to.main) bus.connect(this.out as never);
+    if (to.main && this.mix) bus.connect(this.mix.sends[inst] as never);
     if (to.morph && this.morphNode) bus.connect(this.morphNode as never);
   }
 
