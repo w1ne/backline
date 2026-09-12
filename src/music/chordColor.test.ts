@@ -51,6 +51,9 @@ describe('colorChord', () => {
   });
 
   describe('funk', () => {
+    it('keeps a minor tonic minor: Am in A minor becomes Am7, never A7', () => {
+      expect(colorChord(c(9, 'min'), 'funk', { root: 9, mode: 'minor' })).toEqual(c(9, 'min7'));
+    });
     it('gives I and IV dom7', () => {
       expect(colorChord(c(0, 'maj'), 'funk', CMAJ)).toEqual(c(0, 'dom7')); // I
       expect(colorChord(c(5, 'maj'), 'funk', CMAJ)).toEqual(c(5, 'dom7')); // IV

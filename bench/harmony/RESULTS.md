@@ -10,14 +10,14 @@
 | A minor (Am F C G Am Dm Em Am) | lofi | Am->Dm | 3 | 2 | 6 | Dm7 |
 | A minor (Am F C G Am Dm Em Am) | lofi | Dm->Em | 5 | 2 | 7 | Em7 |
 | A minor (Am F C G Am Dm Em Am) | lofi | Em->Am | 2 | 1 | 7 | Am7 |
-| A minor (Am F C G Am Dm Em Am) | funk | (start) Am | 0 | 0 | 1 | A7 |
-| A minor (Am F C G Am Dm Em Am) | funk | Am->F | 4 | 2 | 2 | F |
+| A minor (Am F C G Am Dm Em Am) | funk | (start) Am | 0 | 0 | 1 | Am7 |
+| A minor (Am F C G Am Dm Em Am) | funk | Am->F | 3 | 2 | 2 | F |
 | A minor (Am F C G Am Dm Em Am) | funk | F->C | 3 | 2 | 3 | C |
 | A minor (Am F C G Am Dm Em Am) | funk | C->G | 3 | 2 | 4 | G |
-| A minor (Am F C G Am Dm Em Am) | funk | G->Am | 3 | 2 | 5 | A7 |
-| A minor (Am F C G Am Dm Em Am) | funk | Am->Dm | 2 | 1 | 6 | D7 |
-| A minor (Am F C G Am Dm Em Am) | funk | Dm->Em | 6 | 2 | 7 | Em7 |
-| A minor (Am F C G Am Dm Em Am) | funk | Em->Am | 4 | 2 | 8 | A7 |
+| A minor (Am F C G Am Dm Em Am) | funk | G->Am | 3 | 2 | 4 | Am7 |
+| A minor (Am F C G Am Dm Em Am) | funk | Am->Dm | 4 | 2 | 5 | Dm7 |
+| A minor (Am F C G Am Dm Em Am) | funk | Dm->Em | 4 | 2 | 6 | Em7 |
+| A minor (Am F C G Am Dm Em Am) | funk | Em->Am | 4 | 2 | 7 | Am7 |
 | A minor (Am F C G Am Dm Em Am) | rock | (start) Am | 0 | 0 | 1 | Am |
 | A minor (Am F C G Am Dm Em Am) | rock | Am->F | 1 | 1 | 2 | F |
 | A minor (Am F C G Am Dm Em Am) | rock | F->C | 3 | 2 | 3 | C |

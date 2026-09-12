@@ -49,7 +49,8 @@ export function colorChord(chord: Chord, genre: Genre, key: Key): Chord {
   // V already reads as the funk "one" when it lands there, and over-coloring every chord
   // starts to sound more like lounge jazz than funk.
   if (genre === 'funk') {
-    if (TONIC_SUBDOMINANT.has(degree)) return { ...chord, quality: 'dom7' };
+    // only a major I/IV takes the dominant seventh; a minor tonic (Am in A minor) stays minor
+    if (TONIC_SUBDOMINANT.has(degree) && chord.quality === 'maj') return { ...chord, quality: 'dom7' };
     if (chord.quality === 'min') return { ...chord, quality: 'min7' };
     return chord;
   }
