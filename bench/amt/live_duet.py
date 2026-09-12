@@ -276,7 +276,7 @@ def main():
                      help="use both empirically-verified companion voices (violin + steel "
                           "guitar) instead of one violin; each stays independently "
                           "monophonic, but the two voices may sound together")
-    ap.add_argument("--outdir", default=str(Path(__file__).resolve().parent.parent / "output"))
+    ap.add_argument("--outdir", default=str(Path(__file__).resolve().parent.parent.parent / "output"))
     args = ap.parse_args()
 
     accomp_instrs = ENSEMBLE_ACCOMP_INSTRS if args.ensemble else SOLO_ACCOMP_INSTRS
