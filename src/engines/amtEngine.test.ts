@@ -71,8 +71,12 @@ class FakeNoteSource {
 
 class FakePlayers {
   calls: { i: Instrument; events: NoteEvent[]; barStart: number; bpm: number }[] = [];
+  accompCalls: { gmProgram: number; events: NoteEvent[]; barStart: number; bpm: number }[] = [];
   schedule(i: Instrument, events: NoteEvent[], barStart: number, bpm: number) {
     this.calls.push({ i, events, barStart, bpm });
+  }
+  scheduleAccompaniment(gmProgram: number, events: NoteEvent[], barStart: number, bpm: number) {
+    this.accompCalls.push({ gmProgram, events, barStart, bpm });
   }
 }
 
@@ -365,6 +369,26 @@ describe('AmtEngine', () => {
     expect(players.calls[0].events).toEqual([{ time: 1, note: 64, duration: 1, velocity: 0.7 }]);
   });
 
+  it('routes a keys note with gmInstr to scheduleAccompaniment, grouped separately per instrument', async () => {
+    const { engine, players } = mk();
+    now = 0;
+    await engine.start(120, 0);
+    startedSocket().open();
+    engine.setEnabled('keys', true);
+
+    startedSocket().receiveJson({
+      type: 'plan',
+      notes: [
+        { beat: 1, pitch: 64, dur: 1, vel: 0.7, voice: 'keys', gmInstr: 65 },
+        { beat: 1.5, pitch: 60, dur: 0.5, vel: 0.5, voice: 'keys', gmInstr: 56 },
+      ],
+    });
+
+    expect(players.calls).toHaveLength(0);
+    expect(players.accompCalls).toHaveLength(2);
+    expect(players.accompCalls.map(c => c.gmProgram).sort()).toEqual([56, 65]);
+  });
+
   it('schedules a plan note a full bar ahead straight away, bar-relative', async () => {
     const { engine, players } = mk();
     now = 0;
@@ -550,5 +574,56 @@ describe('AmtEngine', () => {
     ws.open();
     engine.stop();
     expect(ws.closed).toBe(true);
+  });
+
+  it('calls onChord with the parsed chord and fromBeat when a plan carries one', async () => {
+    const { engine } = mk();
+    const onChord = vi.fn(); engine.onChord = onChord;
+    await engine.start(120, 0);
+    const ws = startedSocket(); ws.open();
+    ws.receiveJson({ type: 'plan', notes: [], chord: 'F', chordFrom: 8 });
+    expect(onChord).toHaveBeenCalledTimes(1);
+    expect(onChord).toHaveBeenCalledWith({ root: 5, quality: 'maj' }, 8);
+    engine.stop();
+  });
+
+  it('ignores an unparseable chord name safely', async () => {
+    const { engine } = mk();
+    const onChord = vi.fn(); engine.onChord = onChord;
+    await engine.start(120, 0);
+    const ws = startedSocket(); ws.open();
+    ws.receiveJson({ type: 'plan', notes: [], chord: 'nonsense', chordFrom: 8 });
+    expect(onChord).not.toHaveBeenCalled();
+    engine.stop();
+  });
+
+  it('does not call onChord when the plan carries no chord', async () => {
+    const { engine } = mk();
+    const onChord = vi.fn(); engine.onChord = onChord;
+    await engine.start(120, 0);
+    const ws = startedSocket(); ws.open();
+    ws.receiveJson({ type: 'plan', notes: [] });
+    expect(onChord).not.toHaveBeenCalled();
+    engine.stop();
+  });
+
+  it('calls onSection when a plan carries a section', async () => {
+    const { engine } = mk();
+    const onSection = vi.fn(); engine.onSection = onSection;
+    await engine.start(120, 0);
+    const ws = startedSocket(); ws.open();
+    ws.receiveJson({ type: 'plan', notes: [], section: 'lift' });
+    expect(onSection).toHaveBeenCalledWith('lift');
+    engine.stop();
+  });
+
+  it('does not call onSection when the plan carries no section', async () => {
+    const { engine } = mk();
+    const onSection = vi.fn(); engine.onSection = onSection;
+    await engine.start(120, 0);
+    const ws = startedSocket(); ws.open();
+    ws.receiveJson({ type: 'plan', notes: [] });
+    expect(onSection).not.toHaveBeenCalled();
+    engine.stop();
   });
 });
