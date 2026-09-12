@@ -74,7 +74,7 @@ export class AmtEngine implements BandEngine {
     clock: ClockLike = new ToneClock(),
     /** Returns "now" in the same time base as `firstBarAt`/note timestamps. Defaults to
      *  Tone's clock; tests inject a fake for determinism. */
-    private now: () => number = () => Tone.now(),
+    private now: () => number = () => Tone.getContext().currentTime,
   ) {
     this.clock = clock;
   }

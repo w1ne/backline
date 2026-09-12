@@ -447,7 +447,8 @@ export default {
     const url = new URL(req.url);
 
     if (url.pathname === "/health") {
-      return new Response("ok", { status: 200 });
+      // The app probes this cross-origin to light the engine LEDs.
+      return new Response("ok", { status: 200, headers: corsHeaders(req, env) });
     }
     if (url.pathname === "/auth/login") {
       return handleLogin(req, env);

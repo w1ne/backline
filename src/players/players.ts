@@ -46,7 +46,7 @@ export class Players implements PlayersLike {
     if (!(bpm > 0)) return;
     if (!this.set) return;
     const spb = 60 / bpm;
-    const minT = Tone.now() + 0.005;
+    const minT = Tone.getContext().currentTime + 0.005;
 
     const items = events
       .map((e) => ({ e, t: barStart + e.time * spb, d: Math.max(0.05, e.duration * spb) }))

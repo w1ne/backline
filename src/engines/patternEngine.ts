@@ -12,7 +12,7 @@ export class PatternEngine implements BandEngine {
   onBar?: (bar: number) => void;
 
   constructor(players: PlayersLike, patterns: Record<Genre, Record<Instrument, Pattern>>) {
-    this.band = new Bandleader(new ToneClock(), players, patterns, Date.now(), () => Tone.now());
+    this.band = new Bandleader(new ToneClock(), players, patterns, Date.now(), () => Tone.getContext().currentTime);
     this.band.onBarCb = bar => this.onBar?.(bar);
   }
 
