@@ -85,25 +85,11 @@ function skeleton(): string {
           <button type="button" class="morph-key" id="mic-mute" aria-label="Mute the mic from the listener">MIC<span class="morph-led"></span></button>
         </div>
         <span class="lcd" id="lcd"></span>
-      </div>
-      <section class="instrument-section" aria-labelledby="instrument-heading">
-        <div class="section-heading"><div><h2 id="instrument-heading">Your instrument</h2></div><button type="button" id="enable-audio" class="audio-start">Enable sound</button></div>
-        <p class="connection-line" id="input-status"></p>
-        <div class="instrument-controls">          <div class="field">
-            <label for="sound">Keyboard sound</label>
-            <select id="sound">
-              ${SOUND_GROUPS.map(
-                g =>
-                  `<optgroup label="${g}">${SOUNDS.filter(s => s.group === g)
-                    .map(s => `<option value="${s.id}">${s.label}</option>`)
-                    .join('')}</optgroup>`,
-              ).join('')}
-            </select>
-          </div>
-          <div class="field"><label for="noise-volume">White noise <output id="noise-value"></output></label><input id="noise-volume" type="range" min="0" max="1" step="0.01" /></div>
-          <div class="field"><label for="drone-volume">Drone <output id="drone-value"></output></label><input id="drone-volume" type="range" min="0" max="1" step="0.01" /></div>
+        <div class="bar-input">
+          <p class="connection-line" id="input-status"></p>
+          <button type="button" id="enable-audio" class="audio-start">Enable sound</button>
         </div>
-      </section>
+      </div>
       <div class="section-heading band-heading"><div><h2>Your band</h2><p id="band-status" role="status"></p></div><span id="model-latency"></span></div>
       <div class="readout">
         <div class="ro-tempo"><small>Tempo</small><strong id="ro-tempo">&mdash;</strong></div>
@@ -200,9 +186,35 @@ function skeleton(): string {
             </button>
           </div>
         </div>
-<p id="engine-status" role="status"></p></details>
+<p id="engine-status" role="status"></p>
+        <div class="zone zone--orange instrument-zone">
+          <span class="zone-label">Your instrument</span>
+        <p class="connection-line" id="midi-status"></p>
+        <div class="instrument-controls">          <div class="field">
+            <label for="sound">Keyboard sound</label>
+            <select id="sound">
+              ${SOUND_GROUPS.map(
+                g =>
+                  `<optgroup label="${g}">${SOUNDS.filter(s => s.group === g)
+                    .map(s => `<option value="${s.id}">${s.label}</option>`)
+                    .join('')}</optgroup>`,
+              ).join('')}
+            </select>
+          </div>
+          <div class="field"><label for="noise-volume">White noise <output id="noise-value"></output></label><input id="noise-volume" type="range" min="0" max="1" step="0.01" /></div>
+          <div class="field"><label for="drone-volume">Drone <output id="drone-value"></output></label><input id="drone-volume" type="range" min="0" max="1" step="0.01" /></div>
+        </div>
+        </div>
+      </details>
     </div>
   `;
+}
+
+/** what the mic hears right now, so a singer sees the app react before the band does */
+function hearingLabel(s: AppState): string {
+  const p = s.input.pitch;
+  if (!p || s.micMuted) return '';
+  return ` · HEARING ${KEY_NAMES[((p.midi % 12) + 12) % 12]}${Math.floor(p.midi / 12) - 1}`;
 }
 
 function wireControls(screen: HTMLElement, store: Store): void {
@@ -339,7 +351,8 @@ function update(screen: HTMLElement, s: AppState, changeLatencyMs: number): void
   updateTiles(screen, s, changeLatencyMs);
   const audio = screen.querySelector<HTMLButtonElement>('#enable-audio')!;
   audio.hidden = !s.audioSuspended && s.power === 'on';
-  screen.querySelector<HTMLElement>('#input-status')!.textContent = `${midiLabel(s)}${s.audioSuspended ? ' · TAP TO ENABLE SOUND' : ''}`;
+  screen.querySelector<HTMLElement>('#input-status')!.textContent = `${midiLabel(s)}${hearingLabel(s)}${s.audioSuspended ? ' · TAP TO ENABLE SOUND' : ''}`;
+  screen.querySelector<HTMLElement>('#midi-status')!.textContent = midiLabel(s);
   screen.querySelector<HTMLElement>('#band-status')!.textContent = s.accompanimentStatus;
   screen.querySelector<HTMLElement>('#model-latency')!.textContent = s.modelLatencyMs == null ? '' : `${Math.round(s.modelLatencyMs)} ms`;
   screen.querySelector<HTMLElement>('#engine-status')!.textContent = s.engineConnecting ? `${ENGINE_NAMES[s.engine]} · connecting…` : s.offlineEngines.includes(s.engine) ? `${ENGINE_NAMES[s.engine]} · offline` : '';

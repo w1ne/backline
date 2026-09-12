@@ -50,3 +50,20 @@ describe('PitchTracker', () => {
     expect(r).toBeNull();
   });
 });
+
+describe('PitchTracker voice profile', () => {
+  const voice = { holdFrames: 3, minClarity: 0.7, minAgree: 2 };
+  const breathy = (v: number) => ({ hz: v, clarity: 0.75, t: 0 });
+  it('accepts a hummed note after three breathy frames', () => {
+    const tr = new PitchTracker(voice);
+    tr.push(breathy(A3)); tr.push(breathy(A3));
+    const r = tr.push(breathy(A3));
+    expect(r?.stable).toBe(true);
+    expect(r?.midi).toBe(57);
+  });
+  it('the default profile still rejects the same breathy frames', () => {
+    const tr = new PitchTracker();
+    for (let i = 0; i < 6; i++) tr.push(breathy(A3));
+    expect(tr.push(breathy(A3))).toBeNull();
+  });
+});

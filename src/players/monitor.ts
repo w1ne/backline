@@ -86,7 +86,13 @@ export class MidiMonitor {
     const lifecycle = this.lifecycle;
     await this.setSound(this.sound);
     if (lifecycle !== this.lifecycle) return;
-    this.access = await navigator.requestMIDIAccess();
+    // iOS Safari has no Web MIDI: the sound still loads for the on-screen keys,
+    // there is just no controller to listen to.
+    if (typeof navigator.requestMIDIAccess !== 'function') return;
+    // A denied Web MIDI permission is no reason to alarm a singer: the sound is loaded,
+    // there is simply no controller to listen to.
+    try { this.access = await navigator.requestMIDIAccess(); }
+    catch { return; }
     if (lifecycle !== this.lifecycle) return;
     this.handler = e => {
       const m = parseNote(e.data!);

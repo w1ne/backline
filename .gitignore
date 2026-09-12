@@ -4,3 +4,6 @@ dist-pi
 __pycache__/
 
 .pi-samples/
+
+# local relay secrets written by scripts/run-local.sh
+relay/.dev.vars
