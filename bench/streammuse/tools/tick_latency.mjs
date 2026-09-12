@@ -115,11 +115,12 @@ console.log(`notes per plan: ${plans.map(p => p.notes?.length ?? 0).join(' ')}`)
 console.log(`chord per plan:  ${plans.map(p => p.chord ?? '-').join(' ')}`);
 const sections = [...new Set(plans.map(p => p.section ?? '-'))];
 console.log(`sections seen:   ${sections.join(' -> ')}`);
-// Chord in force at each bar start: the latest plan whose chordFrom <= bar start (as bench/voice/output.ts).
+// Chord in force at each bar start: the latest plan whose chordFrom <= bar start (as
+// bench/voice/output.ts); before the first plan the client plays the chord it `set` (Am).
 const chordAt = t => {
-  let c;
+  let c = 'Am';
   for (const p of plans) if (typeof p.chord === 'string' && p.chordFrom <= t + 0.01) c = p.chord;
-  return c ?? '-';
+  return c;
 };
 const atStart = [];
 for (let bar = 0; bar < BARS; bar++) atStart.push(chordAt(bar * 4));

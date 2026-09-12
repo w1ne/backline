@@ -174,7 +174,7 @@ class Session:
         self.chord = None
         self.section = "intro"
         self.space = False
-        self.brain = HarmonyBrain(key=key, genre=genre, lookahead_beats=PLAN_LOOKAHEAD_BEATS)
+        self.brain = HarmonyBrain(key=key, genre=genre, lookahead_beats=PLAN_LOOKAHEAD_BEATS, bpm=bpm)
 
     def set_controls(self, msg):
         self.key = msg.get("key", self.key)

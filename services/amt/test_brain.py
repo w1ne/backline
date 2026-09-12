@@ -2,13 +2,14 @@ import re
 
 import pytest
 
-from bench_harmony import ARPEGGIO, BEATS_PER_BAR, HALF_BAR, arpeggio_events, score
+from bench_harmony import ARPEGGIO, BEATS_PER_BAR, BPM, HALF_BAR, arpeggio_events, run, score
 from brain import HarmonyBrain, sampling_for
 from form import ENDING_SILENCE_BEATS
 
 
 def replay(brain: HarmonyBrain, chords=ARPEGGIO):
-    """Feed the bench's arpeggio (with detection latency) through the brain, one tick per half bar,
+    """Feed the bench's arpeggio through the brain the way the client does -- the note arrives
+    after the detection latency but is timestamped with its onset beat -- one tick per half bar,
     and return chord events the way the service emits them: (chord_from, chord, '')."""
     events = arpeggio_events(chords)
     fed = 0
@@ -16,8 +17,8 @@ def replay(brain: HarmonyBrain, chords=ARPEGGIO):
     n_beats = len(chords) * BEATS_PER_BAR
     for tick in range(0, n_beats + 1, HALF_BAR):
         while fed < len(events) and events[fed][2] <= tick:
-            midi, _onset, arrival = events[fed]
-            brain.on_note(midi, arrival)
+            midi, onset, _arrival = events[fed]
+            brain.on_note(midi, onset)
             fed += 1
         r = brain.on_tick(float(tick))
         out.append((r["chord_from"], _chord(r["chord"]), ""))
@@ -33,9 +34,17 @@ def _chord(name):
 class TestChordDecision:
     @pytest.mark.parametrize("lookahead", [0.0, 2.0, 4.0])
     def test_arpeggio_bar_start_accuracy_at_least_half(self, lookahead):
-        brain = HarmonyBrain(key="A minor", lookahead_beats=lookahead)
+        brain = HarmonyBrain(key="A minor", lookahead_beats=lookahead, bpm=BPM)
         s = score(replay(brain), ARPEGGIO)
         assert s["bar_start"] >= 0.5, s["names"]
+
+    def test_onset_timestamps_decide_like_the_bench_arrival_replay(self):
+        """The brain ticks the harmonizer DETECTION_LATENCY_S behind the cue, so onset-stamped
+        notes weigh exactly as the bench's arrival-stamped ones: same chords at every bar start."""
+        brain = HarmonyBrain(key="A minor", lookahead_beats=0.0, bpm=BPM)
+        ours = score(replay(brain), ARPEGGIO)["names"]
+        bench = score(run(ARPEGGIO, use_predictor=True, lookahead=0.0), ARPEGGIO)["names"]
+        assert ours == bench
 
     def test_chord_from_is_the_window_start(self):
         brain = HarmonyBrain(key="A minor", lookahead_beats=4.0)

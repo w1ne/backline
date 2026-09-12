@@ -20,6 +20,10 @@ CLIENT_CHORD_MAX_NOTES = 4
 # The client's IDLE_DYNAMICS equivalents, used until the first `set` carries the fields.
 DEFAULT_INTENSITY = 0.5
 DEFAULT_SILENCE_BEATS = 0.0
+# The browser's pitch detector reports a note this long after its onset, but the `notes`
+# message carries the onset beat. The harmonizer is ticked this much behind the cue so a note
+# weighs what it would had it been timestamped on arrival (bench_harmony.py replays the same).
+DETECTION_LATENCY_S = 0.125
 # Creativity knee (CREATIVITY_BENCH.md): linear ramp to 0.8, then the wild zone opens up.
 CREATIVITY_KNEE = 0.8
 
@@ -41,9 +45,10 @@ def sampling_for(creativity: float) -> tuple[float, float]:
 
 class HarmonyBrain:
     def __init__(self, key: Optional[str] = None, genre: Optional[str] = None,
-                 lookahead_beats: float = 4.0, beats_per_bar: float = BEATS_PER_BAR):
+                 lookahead_beats: float = 4.0, beats_per_bar: float = BEATS_PER_BAR, bpm: float = 90.0):
         self.lookahead_beats = lookahead_beats
         self.beats_per_bar = beats_per_bar
+        self.latency_beats = DETECTION_LATENCY_S * bpm / 60.0
         self.reset(key, genre)
 
     def reset(self, key: Optional[str] = None, genre: Optional[str] = None) -> None:
@@ -110,7 +115,7 @@ class HarmonyBrain:
         key = self.key
         if key is None:
             return self.client_chord
-        self.harmonizer.tick(tick_beat, key)
+        self.harmonizer.tick(tick_beat - self.latency_beats, key)
         reading = self.harmonizer.reading
         chord, _source = decide(key, self.genre, reading, self.recent_chords,
                                 reading.coverage if reading else 0.0,
