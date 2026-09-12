@@ -370,3 +370,23 @@ describe('Listener preserves performer pitches', () => {
     expect(heard).toEqual([61]);
   });
 });
+
+it('closes mic lifecycle at captured transition, silence and mute times with stable IDs', async () => {
+  const mic = new Fake(); let now = 20;
+  const listener = new Listener([mic], ['mic'], () => now);
+  const seen: import('./performanceEvent').PerformanceEvent[] = [];
+  listener.onPerformance(e => seen.push(e));
+  await listener.start();
+  const pitch = mic.pitch as (p: import('./pitchTracker').StablePitch | null, t?: number) => void;
+  pitch({ midi: 60, cents: 0, stable: true, confidence: .9 }, 10);
+  pitch({ midi: 60, cents: 0, stable: true }, 10.5);
+  pitch({ midi: 64, cents: 0, stable: true }, 11);
+  pitch(null, 12);
+  expect(seen.map(e => e.type)).toEqual(['note_on', 'note_off', 'note_on', 'note_off']);
+  expect(seen[0]).toMatchObject({ source: 'mic', confidence: .9, timeSec: 10 });
+  expect(seen[1]).toMatchObject({ id: seen[0].id, durationSec: 1, timeSec: 11 });
+  expect(seen[3]).toMatchObject({ id: seen[2].id, durationSec: 1, timeSec: 12 });
+  pitch({ midi: 67, cents: 0, stable: true }, 19);
+  listener.setMicMuted(true);
+  expect(seen.at(-1)).toMatchObject({ type: 'note_off', durationSec: 1 });
+});

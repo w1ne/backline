@@ -3,8 +3,8 @@ import * as Tone from 'tone';
 import type { Source } from './listener';
 import { OnsetDetector } from './onset';
 import { FFT_SIZE, HOP_SIZE, magnitudeSpectrum } from './fft';
-import { detectPitch } from './pitch';
-import { PitchTracker, VOICE_PROFILE, type StablePitch } from './pitchTracker';
+import { PitchWorkerClient, createPitchWorker } from './pitchWorkerClient';
+import { type StablePitch } from './pitchTracker';
 import { micConstraints } from './micConstraints';
 
 const WORKLET_URL = `${import.meta.env.BASE_URL}worklet/onset-processor.js`;
@@ -15,6 +15,8 @@ const PITCH_POLL_MS = 50;
 
 
 export class MicSource implements Source {
+  private pitchWorker?: PitchWorkerClient;
+  private generation = 0;
   private stream?: MediaStream;
   private timer = 0;
   private pitchTimer = 0;
@@ -29,7 +31,7 @@ export class MicSource implements Source {
   private cbs?: {
     onNote: (m: number, v: number, t: number) => void;
     onLevel: (l: number) => void;
-    onPitch?: (p: StablePitch | null) => void;
+    onPitch?: (p: StablePitch | null, timeSec?: number) => void;
   };
 
   constructor(deviceId: string | null = null) {
@@ -80,6 +82,8 @@ export class MicSource implements Source {
   setMuted(muted: boolean): void {
     if (this.muted === muted) return;
     this.muted = muted;
+    this.pitchWorker?.stop();
+    this.pitchWorker = undefined;
     if (muted) {
       this.cbs?.onLevel(0);
       this.cbs?.onPitch?.(null);
@@ -89,11 +93,14 @@ export class MicSource implements Source {
   async start(
     onNote: (m: number, v: number, t: number) => void,
     onLevel: (l: number) => void,
-    onPitch?: (p: StablePitch | null) => void,
+    onPitch?: (p: StablePitch | null, timeSec?: number) => void,
   ) {
+    const generation = ++this.generation;
     this.cbs = { onNote, onLevel, onPitch };
     const ctx = Tone.getContext().rawContext as AudioContext;
-    this.stream = await navigator.mediaDevices.getUserMedia({ audio: micConstraints(this.deviceId) });
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: micConstraints(this.deviceId) });
+    if (generation !== this.generation) { stream.getTracks().forEach(t => t.stop()); return; }
+    this.stream = stream;
     const src = ctx.createMediaStreamSource(this.stream);
     this.srcNode = src;
     audioRecorder.addSource(src);
@@ -104,8 +111,7 @@ export class MicSource implements Source {
     src.connect(an);
     const pitchBuf = new Float32Array(an.fftSize);
     const onset = new OnsetDetector({ sampleRate: ctx.sampleRate });
-    // the mic is mostly a voice at a duet.ai session; instruments still pass, just a little sooner
-    const tracker = new PitchTracker(VOICE_PROFILE);
+
 
     // onsets now only drive tempo; note pitch comes from the continuous tracker below
     const fire = (t: number) => {
@@ -118,12 +124,16 @@ export class MicSource implements Source {
       // Gate on this full pitch frame inside detectPitch, rather than an unrelated
       // short onset hop that cuts off quiet notes and decaying guitar strings.
       an.getFloatTimeDomainData(pitchBuf);
-      const est = detectPitch(pitchBuf, ctx.sampleRate);
-      onPitch?.(tracker.push(est ? { hz: est.hz, clarity: est.clarity, t: ctx.currentTime } : null));
+      this.pitchWorker ??= new PitchWorkerClient(createPitchWorker(), (pitch, timeSec) => {
+        if (!this.muted && generation === this.generation) onPitch?.(pitch, timeSec);
+      });
+      this.pitchWorker.submit({ samples: pitchBuf.slice(), sampleRate: ctx.sampleRate,
+        timeSec: performance.now() / 1000 });
     }, PITCH_POLL_MS);
 
     try {
       await ctx.audioWorklet.addModule(WORKLET_URL);
+      if (generation !== this.generation) return;
       const node = new AudioWorkletNode(ctx, 'onset-processor', { numberOfOutputs: 0 });
       this.node = node;
       src.connect(node);
@@ -140,7 +150,7 @@ export class MicSource implements Source {
       // No AudioWorklet (or the module failed to load): poll the analyser instead.
       // Frames then overlap unevenly, which costs some timing precision, but the
       // flux detector itself works the same.
-      this.pollAnalyser(ctx, an, onset, onLevel, fire);
+      if (generation === this.generation) this.pollAnalyser(ctx, an, onset, onLevel, fire);
     }
   }
 
@@ -174,6 +184,11 @@ export class MicSource implements Source {
   }
 
   stop() {
+    ++this.generation;
+    this.pitchWorker?.stop();
+    this.pitchWorker = undefined;
+    this.cbs?.onPitch?.(null);
+    this.cbs?.onLevel(0);
     if (this.timer) clearInterval(this.timer);
     this.timer = 0;
     if (this.pitchTimer) clearInterval(this.pitchTimer);

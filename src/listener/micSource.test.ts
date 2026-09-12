@@ -8,6 +8,21 @@ vi.mock('tone', () => ({
 
 import { OnsetDetector } from './onset';
 import { MicSource } from './micSource';
+import { detectPitch } from './pitch';
+import { PitchTracker, VOICE_PROFILE } from './pitchTracker';
+// Execute the same estimator in a worker double; production never runs it on the UI thread.
+vi.mock('./pitchWorkerClient', async importOriginal => {
+  const original = await importOriginal<typeof import('./pitchWorkerClient')>();
+  return { ...original, createPitchWorker: () => {
+    const tracker = new PitchTracker(VOICE_PROFILE);
+    const worker = { onmessage: null as null | ((e: unknown) => void), onerror: null,
+      terminate() {}, postMessage(job: { samples: Float32Array; sampleRate: number; timeSec: number }) {
+        const estimate = detectPitch(job.samples, job.sampleRate);
+        worker.onmessage?.({ data: { pitch: tracker.push(estimate ? { ...estimate, t: job.timeSec } : null), timeSec: job.timeSec } });
+      } };
+    return worker;
+  } };
+});
 
 /** Analyser stub whose time-domain buffer changes on every call so the poll
  *  fallback's "has the analyser refilled" hash check never skips a frame. */

@@ -8,6 +8,8 @@ export interface StablePitch {
   midi: number;
   cents: number;
   stable: boolean;
+  confidence?: number;
+  timeSec?: number;
 }
 
 /** consecutive silent/unclear frames (50 ms each) a held note survives */

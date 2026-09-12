@@ -1,3 +1,4 @@
+import { performanceNoteId, type PerformanceEvent } from './performanceEvent';
 import type { BandInput, Chord, Dynamics, Key } from '../types';
 import { ActivityTracker } from './activity';
 import { TempoLock, bpmFromOnsets } from './tempoLock';
@@ -10,8 +11,9 @@ export interface Source {
   start(
     onNote: (midi: number, velocity: number, timeSec: number) => void,
     onLevel: (level: number) => void,
-    onPitch?: (p: StablePitch | null) => void,
+    onPitch?: (p: StablePitch | null, timeSec?: number) => void,
   ): Promise<void>;
+  onPerformance?(cb: (e: PerformanceEvent) => void): () => void;
   stop(): void;
 }
 
@@ -30,6 +32,19 @@ const PROVISIONAL_WAIT_SEC = 8;
 const MAX_PITCH_FRAME_SEC = 0.1;
 
 export class Listener {
+  private performanceCbs = new Set<(e: PerformanceEvent) => void>();
+  private sourceDetaches: (() => void)[] = [];
+  private micHeld?: PerformanceEvent;
+  onPerformance(cb: (e: PerformanceEvent) => void): () => void {
+    this.performanceCbs.add(cb);
+    return () => { this.performanceCbs.delete(cb); };
+  }
+  private emitPerformance(e: PerformanceEvent): void { this.performanceCbs.forEach(cb => cb(e)); }
+  private closeMic(timeSec: number): void {
+    const e = this.micHeld;
+    this.micHeld = undefined;
+    if (e) this.emitPerformance({ ...e, type: 'note_off', timeSec, durationSec: Math.max(0, timeSec - e.timeSec) });
+  }
   private tempo = new TempoLock();
   private activity = new ActivityTracker();
   private keyDet = new KeyDetector();
@@ -130,9 +145,9 @@ export class Listener {
       this.activity.level(lvl, this.now());
       this.emit();
     };
-    const onPitch = (p: StablePitch | null) => {
+    const onPitch = (p: StablePitch | null, timeSec = p?.timeSec ?? this.now()) => {
       this.pitch = p;
-      const now = this.now();
+      const now = timeSec;
       if (p && p.stable) {
         // The key detector hears the pitch as sung. It weighs a pitch by how long it is held
         // (frames are ~50 ms apart; a gap after silence is capped so it does not count), and
@@ -146,12 +161,17 @@ export class Listener {
         // Send the actual performance to accompaniment; do not quantize input harmony.
         const midi = p.midi;
         if (midi !== this.lastStableMidi) {
+          this.closeMic(now);
+          this.micHeld = { type: 'note_on', id: performanceNoteId('mic'), source: 'mic',
+            midi, velocity: 0.8, confidence: p.confidence ?? 1, timeSec: now };
+          this.emitPerformance(this.micHeld);
           this.lastStableMidi = midi;
           this.chordDet.addNote(midi, now, 0.8);
           this.pitchNotes.push({ n: midi, t: now });
           this.noteCbs.forEach(cb => cb({ midi, velocity: 0.8, timeSec: now }));
         }
       } else {
+        this.closeMic(now);
         this.lastStableMidi = null;
         this.lastSungMidi = null;
         this.lastPitchAt = null;
@@ -164,6 +184,7 @@ export class Listener {
       this.sources.map(async (source, i) => {
         const kind = this.kinds[i];
         try {
+          if (source.onPerformance) this.sourceDetaches.push(source.onPerformance(e => this.emitPerformance(e)));
           await source.start((n, v, t) => onNote(n, v, t, kind), onLevel, onPitch);
           const getStatus = (source as { getStatus?(): SourceState }).getStatus;
           this.status = { ...this.status, [kind]: getStatus ? getStatus.call(source) : 'on' };
@@ -177,7 +198,12 @@ export class Listener {
     this.emitStatus();
   }
 
-  stop() { this.sources.forEach(s => s.stop()); }
+  stop() {
+    this.sources.forEach(s => s.stop());
+    this.closeMic(this.now());
+    this.lastStableMidi = null;
+    this.sourceDetaches.splice(0).forEach(detach => detach());
+  }
 
   /** Records a source that came up (or failed) after start(), e.g. a mic retried on the first tap. */
   setSourceState(kind: SourceKind, state: SourceState) {
@@ -187,6 +213,7 @@ export class Listener {
 
   /** Gates the mic source(s) only; MIDI sources are untouched. */
   setMicMuted(muted: boolean): void {
+    if (muted) { this.closeMic(this.now()); this.lastStableMidi = null; }
     this.sources.forEach((s, i) => {
       if (this.kinds[i] !== 'mic') return;
       (s as { setMuted?(m: boolean): void }).setMuted?.(muted);

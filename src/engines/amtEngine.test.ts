@@ -117,7 +117,7 @@ describe('AmtEngine', () => {
     engine.stop();
   });
 
-  it('plays the rhythm section with AMT and keeps lead out of busy phrases', async () => {
+  it('plays local drums while leaving all melodic lead to AMT', async () => {
     const { engine, clock, players } = mk();
     engine.setEnabled('drums', true); engine.setEnabled('lead', true);
     await engine.start(100, 0);
@@ -126,7 +126,7 @@ describe('AmtEngine', () => {
     expect(players.calls.some(c => c.i === 'lead')).toBe(false);
     engine.set({ dynamics: {intensity:.3,space:true,fillDue:true,silenceBeats:2} });
     clock.tick(3, 8);
-    expect(players.calls.some(c => c.i === 'lead' && c.events.length)).toBe(true);
+    expect(players.calls.some(c => c.i === 'lead' && c.events.length)).toBe(false);
     engine.stop();
   });
 
@@ -251,14 +251,14 @@ describe('AmtEngine', () => {
       ws.receiveJson({ type: 'ready', tick: true });
       now = 2;
       clock.tick(1, 2);
-      expect(cues(ws)).toEqual([{ type: 'tick', beat: 4 }]);
+      expect(cues(ws)).toEqual([{ type: 'tick', beat: 4, cueId: 1 }]);
       vi.advanceTimersByTime(999);
       expect(cues(ws)).toHaveLength(1);
       vi.advanceTimersByTime(2);
-      expect(cues(ws)).toEqual([{ type: 'tick', beat: 4 }, { type: 'tick', beat: 6 }]);
+      expect(cues(ws)).toEqual([{ type: 'tick', beat: 4, cueId: 1 }, { type: 'tick', beat: 6, cueId: 2 }]);
       now = 4;
       clock.tick(2, 4);
-      expect(cues(ws).at(-1)).toEqual({ type: 'tick', beat: 8 });
+      expect(cues(ws).at(-1)).toEqual({ type: 'tick', beat: 8, cueId: 3 });
       engine.stop();
       vi.advanceTimersByTime(5000);
       expect(cues(ws)).toHaveLength(3); // no half-bar cue after stop
@@ -277,7 +277,7 @@ describe('AmtEngine', () => {
       now = 2;
       clock.tick(1, 2);
       vi.advanceTimersByTime(1500);
-      expect(cues(ws)).toEqual([{ type: 'bar', bar: 1 }]);
+      expect(cues(ws)).toEqual([{ type: 'bar', bar: 1, cueId: 1 }]);
       engine.stop();
     } finally {
       vi.useRealTimers();
@@ -626,4 +626,39 @@ describe('AmtEngine', () => {
     expect(onSection).not.toHaveBeenCalled();
     engine.stop();
   });
+});
+
+it('sends lifecycle onset immediately and releases by stable ID, with cue correlation', async () => {
+  let fire!: (e: import('../listener/performanceEvent').PerformanceEvent) => void;
+  const notes = { onNote: vi.fn(), onPerformance: (cb: typeof fire) => { fire = cb; return vi.fn(); } };
+  const clock = new FakeClock();
+  const engine = new AmtEngine(new FakePlayers(), notes, clock, () => 10, () => 100);
+  await engine.start(120, 10);
+  const ws = startedSocket(); ws.open();
+  ws.receiveJson({ type: 'ready', performanceEvents: true });
+  const onset = { type: 'note_on' as const, id: 'test-1', source: 'midi' as const, midi: 61, velocity: .7, confidence: 1, timeSec: 100.25 };
+  fire(onset);
+  expect(notes.onNote).not.toHaveBeenCalled();
+  expect(ws.sent).toContainEqual({ type: 'notes', notes: [{ id: 'test-1', beat: .5, pitch: 61, vel: .7, dur: .5, source: 'midi', confidence: 1, captureTimeSec: 100.25, held: true }] });
+  fire({ ...onset, type: 'note_off', timeSec: 102.25, durationSec: 2 });
+  expect(ws.sent).toContainEqual({ type: 'note_updates', notes: [{ id: 'test-1', dur: 4, captureTimeSec: 102.25 }] });
+  clock.tick(1, 12);
+  expect(ws.sent).toContainEqual({ type: 'bar', bar: 1, cueId: 1, latestCaptureTimeSec: 102.25 });
+  engine.stop();
+});
+
+it('plays server lead and distinct model instruments without a second local melody', async () => {
+  const players = new FakePlayers(); const clock = new FakeClock();
+  const engine = new AmtEngine(players, new FakeNoteSource(), clock, () => 0, () => 0);
+  engine.setEnabled('lead', true); engine.setEnabled('keys', true);
+  await engine.start(120, 0);
+  const ws = startedSocket(); ws.open();
+  ws.receiveJson({ type: 'plan', notes: [
+    { voice: 'lead', gmInstr: 24, beat: 4, pitch: 60, dur: 1, vel: .5 },
+    { voice: 'keys', gmInstr: 0, beat: 4, pitch: 60, dur: 1, vel: .5 },
+    { voice: 'keys', gmInstr: 11, beat: 4, pitch: 60, dur: 1, vel: .5 },
+  ] });
+  expect(players.accompCalls.map(c => c.gmProgram)).toEqual([24, 0, 11]);
+  expect(players.calls).toHaveLength(0);
+  engine.stop();
 });
