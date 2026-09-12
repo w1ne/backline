@@ -63,6 +63,24 @@ class AccompanimentCommitter:
         self._prev_onset = None
         self._dur_idx = None
 
+    def drop_prefix(self, n_tokens):
+        """Tell the committer that `n_tokens` tokens were removed from the front of the
+        shared history list, so the index it keeps into that list stays valid.
+
+        A caller that prunes its context window (the WebSocket service does, to keep the
+        model's prompt -- and so its per-bar latency -- from growing all session) would
+        otherwise leave `_dur_idx` pointing at the wrong triple, and the next trim would
+        rewrite an unrelated note's duration. If the note it pointed at was itself pruned
+        there is nothing left to trim against, so the trim state is simply dropped.
+        """
+        if self._dur_idx is None:
+            return
+        self._dur_idx -= n_tokens
+        if self._dur_idx < 0:
+            self._dur_idx = None
+            self._prev_onset = None
+            self._last_end = None
+
     def commit(self, notes):
         """Append accompaniment notes (onset_s, dur_s, pitch) to self.history.
 

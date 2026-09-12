@@ -40,6 +40,7 @@ sys.path.insert(0, str(BENCH_AMT_DIR))
 
 from anticipation import ops  # noqa: E402
 from anticipation.config import TIME_RESOLUTION  # noqa: E402
+from anticipation.vocab import TIME_OFFSET  # noqa: E402
 
 from amt import (  # noqa: E402
     MELODY_INSTR,
@@ -58,6 +59,12 @@ PORT = int(os.environ.get("PORT", "8080"))
 MODEL_NAME = "stanford-crfm/music-small-800k"
 # Fraction of the committed window's own duration that generation may spend in wall time.
 GENERATION_BUDGET = 0.8
+# Beats of past music kept as context for the next window. generate_duet() prompts the model
+# with the whole prior token stream, so an unpruned session makes every bar's prompt longer
+# than the last and per-bar latency climbs linearly with the length of the take (measured in
+# the browser: 121 ms at bar 1, 936 ms at bar 20, still rising). Four bars of melody plus the
+# accompaniment already committed over them is more than the model needs to continue one bar.
+CONTEXT_BEATS = 16.0
 
 app = FastAPI()
 _model = None
@@ -139,6 +146,30 @@ class Session:
                 make_event(onset_beat * self.beat_s, dur_beat * self.beat_s, MELODY_INSTR, pitch)
             )
 
+    def prune_context(self, start_beat: float) -> int:
+        """Drop events that start more than CONTEXT_BEATS before `start_beat` from the token
+        history, and return how many tokens went.
+
+        History is a flat stream of (time, duration, note) triples appended in arrival order,
+        which is time-ordered to within one bar (accompaniment for the next bar is committed
+        while the melody of the current one is still coming in). Deleting the longest prefix
+        whose onsets are all older than the cutoff therefore keeps at most one extra bar --
+        near enough, and it never reorders or rewrites anything still in the window.
+        """
+        cutoff_beat = start_beat - CONTEXT_BEATS
+        if cutoff_beat <= 0:
+            return 0
+        cutoff_token = TIME_OFFSET + max(0, round(cutoff_beat * self.beat_s * TIME_RESOLUTION))
+        n = 0
+        while n < len(self.history) and self.history[n] < cutoff_token:
+            n += 3
+        if n == 0:
+            return 0
+        del self.history[:n]
+        self.committer.drop_prefix(n)
+        self.human_notes = [note for note in self.human_notes if note[0] >= cutoff_beat]
+        return n
+
     def generate_next_bar_plan(self, bar: int) -> dict:
         """Generate the accompaniment plan covering bar `bar + 1` (4 beats,
         4/4 assumed -- matches the app's Players.schedule bar granularity).
@@ -184,6 +215,7 @@ class Session:
         end_s = end_beat * self.beat_s
         commit_end_s = commit_end_beat * self.beat_s
 
+        self.prune_context(start_beat)
         history_before = list(self.history)
         human_in_context = sum(1 for (onset_beat, _, _) in self.human_notes if onset_beat <= start_beat)
         # The plan for bar N+1 is asked for at the downbeat of bar N, so there is one bar of
@@ -214,9 +246,9 @@ class Session:
 
         log.info(
             "bar %d: window [%.1f..%.1f) beats (generate to %.1f), human events in context=%d, "
-            "accompaniment generated=%d, in window=%d, committed=%d, %.0f ms%s",
+            "context tokens=%d, accompaniment generated=%d, in window=%d, committed=%d, %.0f ms%s",
             bar, start_beat, commit_end_beat, end_beat, human_in_context,
-            len(accomp), len(raw_notes), len(committed), latency_ms,
+            len(history_before), len(accomp), len(raw_notes), len(committed), latency_ms,
             " (hit generation budget)" if latency_ms >= deadline_s * 1000.0 else "",
         )
 
@@ -324,17 +356,18 @@ async def websocket_endpoint(websocket: WebSocket):
         log.info("connection closed")
 
 
-def run_bench():
-    """--bench: simulate a 100 BPM melody from bench/amt/melody.py for 16
-    bars and print per-bar generation ms and beats-of-accompaniment per
-    second on this machine."""
+def run_bench(n_bars=16):
+    """--bench: simulate a 100 BPM melody from bench/amt/melody.py for
+    `n_bars` bars and print per-bar generation ms and beats-of-accompaniment
+    per second on this machine. Long runs are the ones worth watching: the
+    number to check is that per-bar latency stays flat rather than climbing
+    with the length of the take."""
     from melody import make_synthetic_melody
 
     model = load_model()
     bpm = 100.0
     beat_s = 60.0 / bpm
     beats_per_bar = 4.0
-    n_bars = 16
     n_notes = n_bars * 4  # ~1 note/beat
 
     melody, melody_len_s = make_synthetic_melody(key="C", mode="major", n_notes=n_notes, beat_s=beat_s, seed=0)
@@ -372,6 +405,7 @@ def run_bench():
             f"bar {bar:2d}: generation {wall_s * 1000:7.1f} ms, "
             f"latencyMs={out['status']['latencyMs']:.1f}, "
             f"tokensPerSec={out['status']['tokensPerSec']:.1f}, "
+            f"context={len(session.history)}, "
             f"notes={len(out['plan']['notes'])}"
         )
 
@@ -385,11 +419,12 @@ def run_bench():
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--bench", action="store_true", help="run the 16-bar bench and exit")
+    ap.add_argument("--bench", action="store_true", help="run the bench and exit")
+    ap.add_argument("--bars", type=int, default=16, help="bars to simulate with --bench")
     args = ap.parse_args()
 
     if args.bench:
-        run_bench()
+        run_bench(args.bars)
         return
 
     uvicorn.run(app, host="0.0.0.0", port=PORT)

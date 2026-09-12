@@ -13,6 +13,12 @@ const COMMIT_BEATS = 2;
 const LISTEN_BEATS = 8;
 const NOTE_BATCH_MS = 100;
 const DEFAULT_NOTE_DUR_BEATS = 0.5;
+/** How far in the future a plan note has to land to be worth handing to Players: Tone needs a
+ *  strictly future start time, and Players itself drops anything inside 5 ms of now. */
+const MIN_LEAD_SEC = 0.02;
+/** Beats of scheduling history kept for the dedupe key set. Two bars of slack past the
+ *  server's own commit horizon is plenty; the rest is just memory. */
+const DEDUPE_WINDOW_BEATS = 32;
 /** Upper bound on how often a `set` frame goes out, however fast the store churns. */
 const SET_THROTTLE_MS = 250;
 
@@ -35,11 +41,16 @@ export interface NoteSource {
 }
 
 /** Follows the player's notes through the AMT relay and plays the model's accompaniment
- *  plan back through the existing Tone.js Players (keys/bass voices). The server keeps a
- *  rolling lookahead/commit window; plan notes inside the commit window are frozen and are
- *  scheduled here only once they enter it (`lookahead - commit` beats early at most) — the
- *  simpler alternative to cancelling already-scheduled Tone events, which Players has no API
- *  for. */
+ *  plan back through the existing Tone.js Players (keys/bass voices).
+ *
+ *  Every note in a `plan` frame is already committed server-side: the window it covers starts
+ *  at the server's monotonic commit horizon and is never rewritten by a later plan. So the
+ *  client schedules each plan note as soon as it arrives, as long as its absolute time is at
+ *  least `MIN_LEAD_SEC` in the future, and de-duplicates by voice+beat+pitch instead of
+ *  re-deriving a commit window of its own. Gating on `currentBeat + commitBeats` the way this
+ *  used to meant a plan that arrived less than `commitBeats` before its own first note had the
+ *  front of that plan handed to Players in the past, where Players dropped it — so the slower
+ *  the server got, the more of each bar went silent. */
 export class AmtEngine implements BandEngine {
   readonly bpmStep = 2;
   onBar?: (bar: number) => void;
@@ -68,11 +79,14 @@ export class AmtEngine implements BandEngine {
   private pendingSet?: string;
   private setTimer?: ReturnType<typeof setTimeout>;
   private lastSetAt = 0;
-  /** Plan notes not yet scheduled, keyed by bar they land in. */
+  /** Plan notes held back because their voice is muted — kept so that un-muting mid-bar picks
+   *  the rest of the bar up instead of playing into a hole. */
   private pending: PlanNote[] = [];
-  /** bar -> voice -> scheduled beats, so a later plan for the same bar doesn't re-schedule
-   *  notes already committed to Players. */
-  private scheduled = new Map<number, Set<'keys' | 'bass'>>();
+  /** voice:beat:pitch -> beat, so a plan note already handed to Players is never scheduled
+   *  twice. Pruned to `DEDUPE_WINDOW_BEATS` behind the playhead. */
+  private scheduled = new Map<string, number>();
+  /** Plan notes that arrived too late to play (their time was already past). Diagnostic. */
+  tooLate = 0;
   private detach?: () => void;
 
   constructor(
@@ -99,6 +113,7 @@ export class AmtEngine implements BandEngine {
     this.firstBarAt = firstBarAt;
     this.pending = [];
     this.scheduled.clear();
+    this.tooLate = 0;
     // A fresh socket means a fresh server session, so nothing has been told to it yet.
     this.lastSetPayload = undefined;
     this.lastSetAt = 0;
@@ -252,27 +267,41 @@ export class AmtEngine implements BandEngine {
     this.send({ type: 'notes', notes: this.noteBuf.splice(0, this.noteBuf.length) });
   }
 
-  /** Moves plan notes that have entered the commit window (beat < now + commit) from
-   *  `pending` into Players.schedule. Notes further out stay pending until a later tick. */
+  private static noteKey(n: PlanNote): string {
+    return `${n.voice}:${n.beat.toFixed(4)}:${n.pitch}`;
+  }
+
+  /** Hands every pending plan note that can still be played to Players, grouped by the bar it
+   *  lands in (Players schedules bar-relative). A note whose voice is muted stays pending; a
+   *  note whose absolute time has already gone by is counted and dropped, because Players
+   *  would drop it anyway and it would otherwise be retried on every tick. */
   private scheduleDue(): void {
     if (!this.pending.length || !this.bpm) return;
-    const boundary = this.currentBeat() + COMMIT_BEATS;
-    const due = this.pending.filter(n => n.beat < boundary);
-    if (!due.length) return;
-    this.pending = this.pending.filter(n => n.beat >= boundary);
+    const spb = 60 / this.bpm;
+    const barSeconds = spb * BEATS_PER_BAR;
+    const minTime = this.now() + MIN_LEAD_SEC;
 
-    const barSeconds = (60 / this.bpm) * BEATS_PER_BAR;
+    const keep: PlanNote[] = [];
     const byBarVoice = new Map<string, PlanNote[]>();
-    for (const n of due) {
+    for (const n of this.pending) {
+      if (this.firstBarAt + n.beat * spb < minTime) {
+        this.tooLate++;
+        continue;
+      }
+      if (!this.state.enabled[n.voice]) {
+        keep.push(n);
+        continue;
+      }
       const barNum = Math.floor(n.beat / BEATS_PER_BAR);
       const key = `${barNum}:${n.voice}`;
       const list = byBarVoice.get(key) ?? [];
       list.push(n);
       byBarVoice.set(key, list);
     }
+    this.pending = keep;
+
     for (const [key, list] of byBarVoice) {
       const [barNumStr, voice] = key.split(':') as [string, 'keys' | 'bass'];
-      if (!this.state.enabled[voice]) continue;
       const barNum = Number(barNumStr);
       const barStart = this.firstBarAt + barNum * barSeconds;
       const events: NoteEvent[] = list.map(n => ({
@@ -282,9 +311,16 @@ export class AmtEngine implements BandEngine {
         velocity: n.vel,
       }));
       this.players.schedule(voice, events, barStart, this.bpm);
-      const voices = this.scheduled.get(barNum) ?? new Set();
-      voices.add(voice);
-      this.scheduled.set(barNum, voices);
+      for (const n of list) this.scheduled.set(AmtEngine.noteKey(n), n.beat);
+    }
+  }
+
+  /** Keeps the dedupe key set from growing for the length of the session. */
+  private pruneScheduled(): void {
+    const cutoff = this.currentBeat() - DEDUPE_WINDOW_BEATS;
+    if (cutoff <= 0) return;
+    for (const [key, beat] of this.scheduled) {
+      if (beat < cutoff) this.scheduled.delete(key);
     }
   }
 
@@ -313,12 +349,14 @@ export class AmtEngine implements BandEngine {
     if (msg.type === 'plan') {
       const notes = (msg.notes as PlanNote[] | undefined) ?? [];
       for (const n of notes) {
-        const barNum = Math.floor(n.beat / BEATS_PER_BAR);
-        // A bar already committed for this voice keeps whatever was scheduled for it —
-        // Players has no way to cancel already-triggered Tone events.
-        if (this.scheduled.get(barNum)?.has(n.voice)) continue;
+        // Already handed to Players (or already queued): Tone has no way to cancel a
+        // triggered event, so the first scheduling of a note is the one that stands.
+        const key = AmtEngine.noteKey(n);
+        if (this.scheduled.has(key)) continue;
+        if (this.pending.some(p => AmtEngine.noteKey(p) === key)) continue;
         this.pending.push(n);
       }
+      this.pruneScheduled();
       if (!this.gotFirstNotes) {
         this.gotFirstNotes = true;
         this.onFirstBlock?.();

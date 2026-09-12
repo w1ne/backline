@@ -137,7 +137,7 @@ describe('AmtEngine', () => {
     ]);
   });
 
-  it('schedules plan notes bar-relative once inside the commit window, on the right voice', async () => {
+  it('schedules plan notes bar-relative, on the right voice', async () => {
     const { engine, players } = mk();
     now = 0;
     await engine.start(120, 0); // barSeconds = 2s, 4 beats/bar
@@ -158,27 +158,88 @@ describe('AmtEngine', () => {
     expect(players.calls[0].events).toEqual([{ time: 1, note: 64, duration: 1, velocity: 0.7 }]);
   });
 
-  it('does not schedule (yet) a plan note beyond the commit boundary, then schedules it once time advances', async () => {
+  it('schedules a plan note a full bar ahead straight away, bar-relative', async () => {
     const { engine, players } = mk();
     now = 0;
-    await engine.start(120, 0); // 0.5s/beat, commit=2 beats -> boundary at beat 2
+    await engine.start(120, 0); // 0.5s/beat
     startedSocket().open();
     engine.setEnabled('bass', true);
 
     startedSocket().receiveJson({
       type: 'plan',
-      fromBeat: 0,
+      fromBeat: 4,
       notes: [{ beat: 5, pitch: 40, dur: 1, vel: 0.9, voice: 'bass' }],
     });
-    expect(players.calls).toHaveLength(0);
 
-    // Advance time so currentBeat + commit passes beat 5 (need currentBeat >= 3 -> t >= 1.5s)
-    now = 1.6;
-    engine.pollScheduleForTest();
     expect(players.calls).toHaveLength(1);
     expect(players.calls[0].i).toBe('bass');
     expect(players.calls[0].barStart).toBe(2); // bar 1 (beats 4-8) at 120bpm barSeconds=2
     expect(players.calls[0].events[0].time).toBeCloseTo(1); // beat 5 - bar*4(=4) = 1
+  });
+
+  // The regression this file exists for: the plan for the bar that has just started arrives
+  // a fraction of a bar late, so most of it sits inside `currentBeat + commitBeats`. The old
+  // commit-window gate handed exactly the notes in that span to Players (where the ones
+  // already in the past were dropped) and made the rest wait — so the slower the server got,
+  // the more of every bar went silent.
+  it('schedules every still-playable note of a plan anchored at the current bar', async () => {
+    const { engine, players } = mk();
+    now = 4.2; // bar 2 started at beat 8 = t=4.0s; we are 0.4 beats into it
+    await engine.start(120, 0);
+    startedSocket().open();
+    engine.setEnabled('keys', true);
+
+    // A full bar of keys, anchored at the bar that just started (beats 8..12).
+    const beats = [8, 8.5, 9, 9.5, 10, 10.5, 11, 11.5];
+    startedSocket().receiveJson({
+      type: 'plan',
+      fromBeat: 8,
+      toBeat: 12,
+      notes: beats.map(beat => ({ beat, pitch: 60, dur: 0.5, vel: 0.8, voice: 'keys' as const })),
+    });
+
+    const scheduled = players.calls.flatMap(c => c.events.map(e => c.barStart + e.time * 0.5));
+    // beat 8 is at t=4.0, already 200ms in the past — unplayable, and counted as such.
+    expect(engine.tooLate).toBe(1);
+    // Everything from beat 8.5 (t=4.25) on is still in the future and must be scheduled now,
+    // not left to a later poll.
+    expect(scheduled).toEqual([4.25, 4.5, 4.75, 5, 5.25, 5.5, 5.75]);
+    expect(players.calls.every(c => c.i === 'keys')).toBe(true);
+  });
+
+  it('does not re-schedule a note a later plan repeats', async () => {
+    const { engine, players } = mk();
+    now = 0;
+    await engine.start(120, 0);
+    startedSocket().open();
+    engine.setEnabled('keys', true);
+
+    const note = { beat: 5, pitch: 62, dur: 0.5, vel: 0.8, voice: 'keys' as const };
+    startedSocket().receiveJson({ type: 'plan', fromBeat: 4, notes: [note] });
+    startedSocket().receiveJson({ type: 'plan', fromBeat: 4, notes: [{ ...note }] });
+
+    expect(players.calls.flatMap(c => c.events)).toHaveLength(1);
+  });
+
+  it('holds a muted voice pending and plays it when the voice comes back before its time', async () => {
+    const { engine, players } = mk();
+    now = 0;
+    await engine.start(120, 0);
+    startedSocket().open();
+    // keys stays off for now.
+
+    startedSocket().receiveJson({
+      type: 'plan',
+      fromBeat: 4,
+      notes: [{ beat: 6, pitch: 67, dur: 0.5, vel: 0.8, voice: 'keys' }],
+    });
+    expect(players.calls).toHaveLength(0);
+
+    now = 1.0; // beat 2, the note at beat 6 (t=3.0s) is still ahead
+    engine.setEnabled('keys', true);
+    engine.pollScheduleForTest();
+    expect(players.calls).toHaveLength(1);
+    expect(players.calls[0].events[0].note).toBe(67);
   });
 
   function setFrames(ws: FakeWebSocket) {
