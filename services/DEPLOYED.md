@@ -153,3 +153,23 @@ curl -s -X POST "https://api.runpod.io/graphql?api_key=${RUNPOD_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{"query": "mutation { podTerminate(input: {podId: \"51midnuq8qqmuz\"}) }"}'
 ```
+
+## Verified (Pi instruments, drone, and public web, 2026-09-12)
+
+Merged through `3357860` to main. Public build and Pi build pass; 385 frontend
+tests pass. Public hosting remains the web edition, using the cloud relay.
+The pod was fast-forwarded to `f26190b` (the later commit changes only keyboard
+volume) and both music services restarted. ACE prompt tests (2) and AMT
+arrangement tests (4) passed in their deployed environments.
+
+Through the public relay with the website Origin, AMT returned keys and bass
+notes in 164 ms; ACE returned 768,004 bytes (four seconds of stereo PCM plus
+sequence header), generation 2,375 ms. Both health endpoints responded OK.
+
+The Pi has 231 local sample assets, including Splendid Grand's velocity layers
+and five Musyng Kite instruments. Live MIDI CC71=48 produced droneVolume
+48/127; CC71=0 silenced it. The performer confirmed Arturia screen text.
+After samples were ready, 100 notes at 25 notes/second produced continuous
+recorded audio during the burst, peak 0.567 full scale, without clipping.
+This is a short smoke test, not a guarantee against every overload. Local
+AMT remains selected; fast tempos use two-bar future plans.

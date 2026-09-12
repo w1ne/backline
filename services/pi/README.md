@@ -2,7 +2,7 @@
 
 One codebase produces two editions. `npm run build` creates the public web app
 in `dist/`; its existing relay settings and hosting workflow are unchanged.
-`npm run build:pi` creates `dist-pi/` with `.env.pi`: offline synth sounds,
+`npm run build:pi` creates `dist-pi/` with `.env.pi`: local sampled keyboard sounds,
 local AMT by default, physical LYDIA audio, and a local AMT endpoint.
 Never upload `dist-pi/` to public hosting.
 
