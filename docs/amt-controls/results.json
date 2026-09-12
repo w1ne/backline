@@ -1,0 +1,814 @@
+{
+  "summary": [
+    {
+      "creativity": 0,
+      "amount": 0.15,
+      "trials": 12,
+      "nonempty": 8,
+      "meanNotes": 1.0833333333333333,
+      "medianMs": 87.08980865776539,
+      "maxMs": 478.7907600402832,
+      "passingNotes": 0
+    },
+    {
+      "creativity": 0,
+      "amount": 1,
+      "trials": 12,
+      "nonempty": 8,
+      "meanNotes": 1.5833333333333333,
+      "medianMs": 87.36537769436836,
+      "maxMs": 101.81568190455437,
+      "passingNotes": 0
+    },
+    {
+      "creativity": 1,
+      "amount": 1,
+      "trials": 12,
+      "nonempty": 12,
+      "meanNotes": 2.8333333333333335,
+      "medianMs": 91.60189144313335,
+      "maxMs": 146.67198807001114,
+      "passingNotes": 6
+    }
+  ],
+  "rows": [
+    {
+      "bpm": 100,
+      "seed": 0,
+      "creativity": 0,
+      "amount": 0.15,
+      "latencyMs": 478.7907600402832,
+      "notes": [
+        {
+          "beat": 14.000000000000002,
+          "pitch": 43,
+          "dur": 1.5,
+          "vel": 0.5,
+          "voice": "keys"
+        }
+      ]
+    },
+    {
+      "bpm": 100,
+      "seed": 0,
+      "creativity": 0,
+      "amount": 1,
+      "latencyMs": 86.16925776004791,
+      "notes": [
+        {
+          "beat": 14.000000000000002,
+          "pitch": 43,
+          "dur": 1.5,
+          "vel": 0.5,
+          "voice": "keys"
+        }
+      ]
+    },
+    {
+      "bpm": 100,
+      "seed": 0,
+      "creativity": 1,
+      "amount": 1,
+      "latencyMs": 66.71580299735069,
+      "notes": [
+        {
+          "beat": 13.25,
+          "pitch": 72,
+          "dur": 2.750000000000001,
+          "vel": 0.5,
+          "voice": "keys"
+        }
+      ]
+    },
+    {
+      "bpm": 100,
+      "seed": 1,
+      "creativity": 0,
+      "amount": 0.15,
+      "latencyMs": 86.6156853735447,
+      "notes": [
+        {
+          "beat": 13.0,
+          "pitch": 72,
+          "dur": 1.5,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 15.0,
+          "pitch": 76,
+          "dur": 0.9999999999999994,
+          "vel": 0.5,
+          "voice": "keys"
+        }
+      ]
+    },
+    {
+      "bpm": 100,
+      "seed": 1,
+      "creativity": 0,
+      "amount": 1,
+      "latencyMs": 88.56149762868881,
+      "notes": [
+        {
+          "beat": 13.0,
+          "pitch": 72,
+          "dur": 1.5,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 15.0,
+          "pitch": 76,
+          "dur": 0.9999999999999994,
+          "vel": 0.5,
+          "voice": "keys"
+        }
+      ]
+    },
+    {
+      "bpm": 100,
+      "seed": 1,
+      "creativity": 1,
+      "amount": 1,
+      "latencyMs": 112.72326111793518,
+      "notes": [
+        {
+          "beat": 12.0,
+          "pitch": 64,
+          "dur": 0.4999999999999997,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 12.5,
+          "pitch": 65,
+          "dur": 0.4999999999999997,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 13.0,
+          "pitch": 67,
+          "dur": 1.5,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 15.0,
+          "pitch": 72,
+          "dur": 0.9999999999999994,
+          "vel": 0.5,
+          "voice": "keys"
+        }
+      ]
+    },
+    {
+      "bpm": 100,
+      "seed": 2,
+      "creativity": 0,
+      "amount": 0.15,
+      "latencyMs": 70.21750509738922,
+      "notes": []
+    },
+    {
+      "bpm": 100,
+      "seed": 2,
+      "creativity": 0,
+      "amount": 1,
+      "latencyMs": 70.17253339290619,
+      "notes": []
+    },
+    {
+      "bpm": 100,
+      "seed": 2,
+      "creativity": 1,
+      "amount": 1,
+      "latencyMs": 112.68207430839539,
+      "notes": [
+        {
+          "beat": 14.5,
+          "pitch": 57,
+          "dur": 0.5000000000000012,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 15.0,
+          "pitch": 67,
+          "dur": 0.4999999999999982,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 15.500000000000002,
+          "pitch": 65,
+          "dur": 0.5,
+          "vel": 0.5,
+          "voice": "keys"
+        }
+      ]
+    },
+    {
+      "bpm": 100,
+      "seed": 3,
+      "creativity": 0,
+      "amount": 0.15,
+      "latencyMs": 91.69125556945801,
+      "notes": [
+        {
+          "beat": 14.000000000000002,
+          "pitch": 64,
+          "dur": 1.0,
+          "vel": 0.5,
+          "voice": "keys"
+        }
+      ]
+    },
+    {
+      "bpm": 100,
+      "seed": 3,
+      "creativity": 0,
+      "amount": 1,
+      "latencyMs": 91.90627560019493,
+      "notes": [
+        {
+          "beat": 14.000000000000002,
+          "pitch": 64,
+          "dur": 1.0,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 15.0,
+          "pitch": 64,
+          "dur": 0.9999999999999994,
+          "vel": 0.5,
+          "voice": "keys"
+        }
+      ]
+    },
+    {
+      "bpm": 100,
+      "seed": 3,
+      "creativity": 1,
+      "amount": 1,
+      "latencyMs": 91.33430570363998,
+      "notes": [
+        {
+          "beat": 12.0,
+          "pitch": 72,
+          "dur": 1.5,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 13.5,
+          "pitch": 69,
+          "dur": 0.4999999999999982,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 14.000000000000002,
+          "pitch": 67,
+          "dur": 2.0,
+          "vel": 0.5,
+          "voice": "keys"
+        }
+      ]
+    },
+    {
+      "bpm": 100,
+      "seed": 4,
+      "creativity": 0,
+      "amount": 0.15,
+      "latencyMs": 91.15910530090332,
+      "notes": [
+        {
+          "beat": 12.0,
+          "pitch": 64,
+          "dur": 1.0,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 14.000000000000002,
+          "pitch": 67,
+          "dur": 1.0,
+          "vel": 0.5,
+          "voice": "keys"
+        }
+      ]
+    },
+    {
+      "bpm": 100,
+      "seed": 4,
+      "creativity": 0,
+      "amount": 1,
+      "latencyMs": 90.89023992419243,
+      "notes": [
+        {
+          "beat": 12.0,
+          "pitch": 64,
+          "dur": 0.9999999999999994,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 13.0,
+          "pitch": 67,
+          "dur": 0.9999999999999994,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 14.000000000000002,
+          "pitch": 67,
+          "dur": 1.0,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 15.0,
+          "pitch": 72,
+          "dur": 0.9999999999999994,
+          "vel": 0.5,
+          "voice": "keys"
+        }
+      ]
+    },
+    {
+      "bpm": 100,
+      "seed": 4,
+      "creativity": 1,
+      "amount": 1,
+      "latencyMs": 146.67198807001114,
+      "notes": [
+        {
+          "beat": 12.0,
+          "pitch": 64,
+          "dur": 0.25,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 12.5,
+          "pitch": 64,
+          "dur": 0.25,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 13.5,
+          "pitch": 64,
+          "dur": 0.75,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 14.5,
+          "pitch": 59,
+          "dur": 0.75,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 15.500000000000002,
+          "pitch": 50,
+          "dur": 0.5000000000000012,
+          "vel": 0.5,
+          "voice": "keys"
+        }
+      ]
+    },
+    {
+      "bpm": 100,
+      "seed": 5,
+      "creativity": 0,
+      "amount": 0.15,
+      "latencyMs": 87.56393194198608,
+      "notes": [
+        {
+          "beat": 13.0,
+          "pitch": 60,
+          "dur": 1.0,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 15.0,
+          "pitch": 64,
+          "dur": 0.9999999999999994,
+          "vel": 0.5,
+          "voice": "keys"
+        }
+      ]
+    },
+    {
+      "bpm": 100,
+      "seed": 5,
+      "creativity": 0,
+      "amount": 1,
+      "latencyMs": 93.79098191857338,
+      "notes": [
+        {
+          "beat": 13.0,
+          "pitch": 60,
+          "dur": 0.9999999999999994,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 14.000000000000002,
+          "pitch": 64,
+          "dur": 1.0,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 15.0,
+          "pitch": 64,
+          "dur": 0.9999999999999994,
+          "vel": 0.5,
+          "voice": "keys"
+        }
+      ]
+    },
+    {
+      "bpm": 100,
+      "seed": 5,
+      "creativity": 1,
+      "amount": 1,
+      "latencyMs": 91.86947718262672,
+      "notes": [
+        {
+          "beat": 12.0,
+          "pitch": 64,
+          "dur": 3.0,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 15.0,
+          "pitch": 64,
+          "dur": 0.4999999999999982,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 15.500000000000002,
+          "pitch": 67,
+          "dur": 0.5000000000000012,
+          "vel": 0.5,
+          "voice": "keys"
+        }
+      ]
+    },
+    {
+      "bpm": 150,
+      "seed": 0,
+      "creativity": 0,
+      "amount": 0.15,
+      "latencyMs": 91.60146117210388,
+      "notes": [
+        {
+          "beat": 13.0,
+          "pitch": 72,
+          "dur": 1.0,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 15.0,
+          "pitch": 76,
+          "dur": 0.9999999999999987,
+          "vel": 0.5,
+          "voice": "keys"
+        }
+      ]
+    },
+    {
+      "bpm": 150,
+      "seed": 0,
+      "creativity": 0,
+      "amount": 1,
+      "latencyMs": 92.86659955978394,
+      "notes": [
+        {
+          "beat": 13.0,
+          "pitch": 72,
+          "dur": 0.9999999999999987,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 13.999999999999998,
+          "pitch": 76,
+          "dur": 1.0,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 15.0,
+          "pitch": 76,
+          "dur": 0.9999999999999987,
+          "vel": 0.5,
+          "voice": "keys"
+        }
+      ]
+    },
+    {
+      "bpm": 150,
+      "seed": 0,
+      "creativity": 1,
+      "amount": 1,
+      "latencyMs": 49.62896928191185,
+      "notes": [
+        {
+          "beat": 11.999999999999998,
+          "pitch": 40,
+          "dur": 1.0,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 13.5,
+          "pitch": 40,
+          "dur": 2.5,
+          "vel": 0.5,
+          "voice": "keys"
+        }
+      ]
+    },
+    {
+      "bpm": 150,
+      "seed": 1,
+      "creativity": 0,
+      "amount": 0.15,
+      "latencyMs": 49.61700737476349,
+      "notes": []
+    },
+    {
+      "bpm": 150,
+      "seed": 1,
+      "creativity": 0,
+      "amount": 1,
+      "latencyMs": 49.37521740794182,
+      "notes": []
+    },
+    {
+      "bpm": 150,
+      "seed": 1,
+      "creativity": 1,
+      "amount": 1,
+      "latencyMs": 49.843333661556244,
+      "notes": [
+        {
+          "beat": 11.999999999999998,
+          "pitch": 72,
+          "dur": 1.5000000000000002,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 13.999999999999998,
+          "pitch": 84,
+          "dur": 1.9999999999999996,
+          "vel": 0.5,
+          "voice": "keys"
+        }
+      ]
+    },
+    {
+      "bpm": 150,
+      "seed": 2,
+      "creativity": 0,
+      "amount": 0.15,
+      "latencyMs": 70.34754380583763,
+      "notes": [
+        {
+          "beat": 13.0,
+          "pitch": 43,
+          "dur": 2.9999999999999982,
+          "vel": 0.5,
+          "voice": "keys"
+        }
+      ]
+    },
+    {
+      "bpm": 150,
+      "seed": 2,
+      "creativity": 0,
+      "amount": 1,
+      "latencyMs": 70.95946371555328,
+      "notes": [
+        {
+          "beat": 13.0,
+          "pitch": 43,
+          "dur": 2.9999999999999982,
+          "vel": 0.5,
+          "voice": "keys"
+        }
+      ]
+    },
+    {
+      "bpm": 150,
+      "seed": 2,
+      "creativity": 1,
+      "amount": 1,
+      "latencyMs": 71.22717052698135,
+      "notes": [
+        {
+          "beat": 13.0,
+          "pitch": 67,
+          "dur": 2.9999999999999982,
+          "vel": 0.5,
+          "voice": "keys"
+        }
+      ]
+    },
+    {
+      "bpm": 150,
+      "seed": 3,
+      "creativity": 0,
+      "amount": 0.15,
+      "latencyMs": 49.44358393549919,
+      "notes": []
+    },
+    {
+      "bpm": 150,
+      "seed": 3,
+      "creativity": 0,
+      "amount": 1,
+      "latencyMs": 50.08072033524513,
+      "notes": []
+    },
+    {
+      "bpm": 150,
+      "seed": 3,
+      "creativity": 1,
+      "amount": 1,
+      "latencyMs": 71.68842479586601,
+      "notes": [
+        {
+          "beat": 13.999999999999998,
+          "pitch": 72,
+          "dur": 0.7500000000000001,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 15.0,
+          "pitch": 84,
+          "dur": 0.9999999999999987,
+          "vel": 0.5,
+          "voice": "keys"
+        }
+      ]
+    },
+    {
+      "bpm": 150,
+      "seed": 4,
+      "creativity": 0,
+      "amount": 0.15,
+      "latencyMs": 54.02907729148865,
+      "notes": []
+    },
+    {
+      "bpm": 150,
+      "seed": 4,
+      "creativity": 0,
+      "amount": 1,
+      "latencyMs": 57.454392313957214,
+      "notes": []
+    },
+    {
+      "bpm": 150,
+      "seed": 4,
+      "creativity": 1,
+      "amount": 1,
+      "latencyMs": 119.04283612966537,
+      "notes": [
+        {
+          "beat": 11.999999999999998,
+          "pitch": 64,
+          "dur": 0.25,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 12.5,
+          "pitch": 64,
+          "dur": 0.25,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 13.0,
+          "pitch": 60,
+          "dur": 0.25,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 13.75,
+          "pitch": 43,
+          "dur": 0.5,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 15.0,
+          "pitch": 43,
+          "dur": 0.5,
+          "vel": 0.5,
+          "voice": "keys"
+        }
+      ]
+    },
+    {
+      "bpm": 150,
+      "seed": 5,
+      "creativity": 0,
+      "amount": 0.15,
+      "latencyMs": 93.36831793189049,
+      "notes": [
+        {
+          "beat": 13.0,
+          "pitch": 60,
+          "dur": 1.0,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 15.0,
+          "pitch": 64,
+          "dur": 0.9999999999999987,
+          "vel": 0.5,
+          "voice": "keys"
+        }
+      ]
+    },
+    {
+      "bpm": 150,
+      "seed": 5,
+      "creativity": 0,
+      "amount": 1,
+      "latencyMs": 101.81568190455437,
+      "notes": [
+        {
+          "beat": 13.0,
+          "pitch": 60,
+          "dur": 0.9999999999999987,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 13.999999999999998,
+          "pitch": 60,
+          "dur": 1.0,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 15.0,
+          "pitch": 64,
+          "dur": 0.9999999999999987,
+          "vel": 0.5,
+          "voice": "keys"
+        }
+      ]
+    },
+    {
+      "bpm": 150,
+      "seed": 5,
+      "creativity": 1,
+      "amount": 1,
+      "latencyMs": 93.72889250516891,
+      "notes": [
+        {
+          "beat": 13.0,
+          "pitch": 60,
+          "dur": 0.9999999999999987,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 13.999999999999998,
+          "pitch": 72,
+          "dur": 0.7500000000000001,
+          "vel": 0.5,
+          "voice": "keys"
+        },
+        {
+          "beat": 15.0,
+          "pitch": 72,
+          "dur": 0.7500000000000001,
+          "vel": 0.5,
+          "voice": "keys"
+        }
+      ]
+    }
+  ]
+}

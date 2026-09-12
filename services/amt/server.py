@@ -147,7 +147,7 @@ class Session:
         self.top_p = top_p
         self.creativity = .3
         self.amount = .5
-        self.temperature = .85
+        self.temperature = 1.02
         # Default to the validated string-ensemble preset rather than a lone violin: a single
         # instrument was consistently too sparse against a real, densely-played performance to be
         # heard at all (see bench/amt/SETUP.md in the Music repo this was ported from). The three
@@ -170,8 +170,8 @@ class Session:
         self.chord = msg.get("chord", self.chord)
         self.space = bool(msg.get("space", self.space))
         self.creativity = max(0.0, min(1.0, float(msg.get("creativity", self.creativity))))
-        self.top_p = 0.70 + self.creativity * 0.29
-        self.temperature = 0.65 + self.creativity * 0.65
+        self.top_p = 0.85 + self.creativity * 0.14
+        self.temperature = 0.9 + self.creativity * 0.4
         self.amount = max(0.0, min(1.0, float(msg.get("amount", self.amount))))
 
     def add_human_notes(self, notes):
