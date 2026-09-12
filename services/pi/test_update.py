@@ -10,6 +10,7 @@ import tempfile
 import unittest
 
 SCRIPT = Path(__file__).with_name('update.sh').resolve()
+INSTALL_RUNNER = Path(__file__).with_name('install-update-runner.sh').resolve()
 OLD, NEW = 'a' * 40, 'b' * 40
 
 class UpdateTest(unittest.TestCase):
@@ -131,6 +132,49 @@ exit "$DUET_INSTALL_RESULT"
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assert_old()
         self.assertFalse((self.home / '.updates/pending.json').exists())
+
+    def test_recovery_timer_is_never_stopped_during_failed_transaction(self):
+        self.env['DUET_INSTALL_RESULT'] = '1'
+        self.assertNotEqual(self.run_update().returncode, 0)
+        self.assert_old()
+        commands = (self.root / 'systemctl.log').read_text().splitlines()
+        self.assertNotIn('stop duet-update.timer', commands)
+        self.assertNotIn('disable duet-update.timer', commands)
+        self.assertIn('stop duet-web.service', commands)
+
+    def test_manual_install_refreshes_existing_stable_runner(self):
+        (self.home / 'services/pi/update.py').write_text('# redeployed runner\n')
+        result = subprocess.run(['bash', str(INSTALL_RUNNER), str(self.home)], capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.home / '.updates/update-runner.py').read_text(), '# redeployed runner\n')
+
+    def test_transaction_installer_skips_runner_without_waiting_on_own_lock(self):
+        (self.home / '.updates/pending.json').write_text('{}')
+        with (self.home / '.updates/lock').open('w') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            result = subprocess.run(['bash', str(INSTALL_RUNNER), str(self.home)],
+                                    capture_output=True, timeout=3)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.home / '.updates/update-runner.py').read_text(), '# old runner\n')
+
+    def test_manual_runner_refresh_waits_for_update_lock(self):
+        (self.home / 'services/pi/update.py').write_text('# redeployed runner\n')
+        with (self.home / '.updates/lock').open('w') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            process = subprocess.Popen(['bash', str(INSTALL_RUNNER), str(self.home)],
+                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            try:
+                with self.assertRaises(subprocess.TimeoutExpired):
+                    process.communicate(timeout=.2)
+                self.assertEqual((self.home / '.updates/update-runner.py').read_text(), '# old runner\n')
+                fcntl.flock(lock, fcntl.LOCK_UN)
+                _, stderr = process.communicate(timeout=3)
+                self.assertEqual(process.returncode, 0, stderr)
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.communicate()
+        self.assertEqual((self.home / '.updates/update-runner.py').read_text(), '# redeployed runner\n')
 
     def test_concurrent_run_defers(self):
         with (self.home / '.updates/lock').open('w') as lock:

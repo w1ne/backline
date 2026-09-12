@@ -29,11 +29,15 @@ Installation must return success, then web and browser units must be active and
 fresh renderer status must report `online: true` and `audioSuspended: false`.
 Only then does COMMIT advance. Any failure restores the prior assets, COMMIT, unit
 files and service state. Failed recovery retains its journal for the next retry.
-An interrupted transaction is recovered before checking performance status on the
-next invocation. Recovery deliberately precedes deferral because the runtime may
+The update timer stays active throughout installation and recovery, so an
+interrupted updater process still has an automatic retry. An interrupted transaction
+is recovered before checking performance status on the next invocation. Recovery deliberately precedes deferral because the runtime may
 already be partially replaced or stopped.
 
-The installer bootstraps `.updates/update-runner.py`, and the update service executes
+The installer atomically refreshes `.updates/update-runner.py` under the update lock
+on bootstrap/manual redeploy. During a pending transaction it skips that refresh
+without taking the already-held lock; the updater publishes it after health passes.
+The update service executes
 that stable path so interrupted replacement of `services/pi` cannot remove its next
 recovery entry point. A validated update replaces the stable runner. The shell entry
 point remains available for manual invocation. Initial installation of these changes

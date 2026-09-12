@@ -98,8 +98,11 @@ def snapshot(backup):
 
 
 def stop_services():
-    # Never stop this updater's service: its executing process owns recovery.
+    # Keep recovery scheduled even if this process dies during replacement/rollback.
+    # systemd and our flock already prevent overlapping updater executions.
     for name in SERVICES:
+        if name == 'duet-update.timer':
+            continue
         if run('systemctl', 'is-active', '--quiet', name, check=False).returncode == 0:
             run('systemctl', 'stop', name)
 
@@ -109,7 +112,8 @@ def rollback(backup):
     stop_services()
     # Remove enablement links the failed installer may have introduced.
     for name in SERVICES:
-        run('systemctl', 'disable', name, check=False)
+        if name != 'duet-update.timer':
+            run('systemctl', 'disable', name, check=False)
     for name in PATHS:
         replace(backup / name, HOME / name)
     for name in UNIT_FILES:
