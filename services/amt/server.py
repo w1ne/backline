@@ -61,6 +61,11 @@ _model = None
 _device = None
 
 
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
 def load_model():
     global _model, _device
     if _model is not None:
