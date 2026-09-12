@@ -135,3 +135,20 @@ it('preserves polyphony, velocity, captured timestamps and channel-scoped sustai
   expect(events.at(-1)).toMatchObject({ type: 'note_off', midi: 67 });
   src.stop();
 });
+
+it('clears only disconnected port sustain so reconnected keys release normally', async () => {
+  const port = new FakePort('a', 'Keyboard');
+  const access = fakeAccess([port]);
+  vi.stubGlobal('navigator', { requestMIDIAccess: () => Promise.resolve(access) });
+  const source = new MidiSource();
+  const events: import('./performanceEvent').PerformanceEvent[] = [];
+  source.onPerformance(e => events.push(e));
+  await source.start(() => {}, () => {});
+  const send = (data: number[]) => port.handlers.forEach(h => h({ data: new Uint8Array(data), timeStamp: 1000, target: port } as unknown as MIDIMessageEvent));
+  send([0xb0, 64, 127]);
+  const stateChange = vi.mocked(access.addEventListener).mock.calls[0][1] as (e: unknown) => void;
+  stateChange({ port: { id: 'a', state: 'disconnected' } });
+  send([0x90, 60, 100]); send([0x80, 60, 0]);
+  expect(events.map(e => e.type)).toEqual(['note_on', 'note_off']);
+  source.stop();
+});

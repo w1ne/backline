@@ -143,6 +143,7 @@ export class MidiSource implements Source {
         this.state = 'on';
       }
       if (port?.state === 'disconnected') {
+        for (const channel of this.sustain) if (channel.startsWith(`${port.id}:`)) this.sustain.delete(channel);
         for (const key of this.held.keys()) if (key.startsWith(`${port.id}:`)) this.release(key, performance.now() / 1000);
       }
       this.inputsCb?.(this.inputs());

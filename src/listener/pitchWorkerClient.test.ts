@@ -19,3 +19,18 @@ it('bounds work to one running and latest pending frame, preserving capture time
   expect(worker.terminate).toHaveBeenCalledTimes(1);
   expect(worker.postMessage).toHaveBeenCalledTimes(2);
 });
+
+it('reports worker errors once, drops queued work and ignores late results', () => {
+  const worker = { onmessage: null as null | ((e: unknown) => void), onerror: null as null | (() => void), postMessage: vi.fn(), terminate: vi.fn() };
+  const pitch = vi.fn(); const failure = vi.fn();
+  const client = new PitchWorkerClient(worker as unknown as Worker, pitch, failure);
+  client.submit({ samples: new Float32Array(4), sampleRate: 48000, timeSec: 1 });
+  client.submit({ samples: new Float32Array(4), sampleRate: 48000, timeSec: 2 });
+  const late = worker.onmessage!; const error = worker.onerror!;
+  error(); error(); late({ data: { pitch: null, timeSec: 1 } });
+  expect(failure).toHaveBeenCalledTimes(1);
+  expect(pitch).toHaveBeenCalledTimes(1);
+  expect(pitch.mock.calls[0][0]).toBeNull();
+  expect(worker.terminate).toHaveBeenCalledTimes(1);
+  expect(worker.postMessage).toHaveBeenCalledTimes(1);
+});

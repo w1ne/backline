@@ -686,3 +686,18 @@ describe('AMT response timing', () => {
     engine.stop();
   });
 });
+
+it('retains a short note release before ready and sends it only after capability negotiation', async () => {
+  let fire!: (e: import('../listener/performanceEvent').PerformanceEvent) => void;
+  const source = { onNote() {}, onPerformance(cb: typeof fire) { fire = cb; } };
+  const engine = new AmtEngine(new FakePlayers(), source, new FakeClock(), () => 0, () => 0);
+  await engine.start(120, 0);
+  const ws = startedSocket(); ws.open();
+  const note = { type: 'note_on' as const, id: 'short', source: 'midi' as const, midi: 60, velocity: .5, confidence: 1, timeSec: .1 };
+  fire(note); fire({ ...note, type: 'note_off', timeSec: .2, durationSec: .1 });
+  engine.flushNotesForTest();
+  expect(ws.sent.some(m => (m as {type:string}).type === 'note_updates')).toBe(false);
+  ws.receiveJson({ type: 'ready', performanceEvents: true });
+  expect(ws.sent).toContainEqual({ type: 'note_updates', notes: [{ id: 'short', dur: .2, captureTimeSec: .2 }] });
+  engine.stop();
+});

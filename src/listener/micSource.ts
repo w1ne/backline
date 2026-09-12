@@ -12,10 +12,15 @@ const WORKLET_URL = `${import.meta.env.BASE_URL}worklet/onset-processor.js`;
 const LEVEL_EVERY = 3;
 /** continuous pitch poll period, independent of onsets */
 const PITCH_POLL_MS = 50;
+const MAX_PITCH_RESTARTS = 2;
 
 
 export class MicSource implements Source {
   private pitchWorker?: PitchWorkerClient;
+  private pitchFailures = 0;
+  /** Exposed for UI diagnostics; retry() re-enables analysis after exhausted retries. */
+  pitchError: string | null = null;
+  onPitchError?: (message: string) => void;
   private generation = 0;
   private stream?: MediaStream;
   private timer = 0;
@@ -58,6 +63,13 @@ export class MicSource implements Source {
    * Returns false when there is nothing to retry (never started, or already live).
    */
   async retry(): Promise<boolean> {
+    if (this.stream && this.pitchError) {
+      this.pitchFailures = 0;
+      this.pitchError = null;
+      this.pitchWorker?.stop();
+      this.pitchWorker = undefined;
+      return true;
+    }
     if (!this.cbs || this.stream) return false;
     await this.start(this.cbs.onNote, this.cbs.onLevel, this.cbs.onPitch);
     return true;
@@ -95,6 +107,8 @@ export class MicSource implements Source {
     onLevel: (l: number) => void,
     onPitch?: (p: StablePitch | null, timeSec?: number) => void,
   ) {
+    this.pitchFailures = 0;
+    this.pitchError = null;
     const generation = ++this.generation;
     this.cbs = { onNote, onLevel, onPitch };
     const ctx = Tone.getContext().rawContext as AudioContext;
@@ -124,11 +138,26 @@ export class MicSource implements Source {
       // Gate on this full pitch frame inside detectPitch, rather than an unrelated
       // short onset hop that cuts off quiet notes and decaying guitar strings.
       an.getFloatTimeDomainData(pitchBuf);
-      this.pitchWorker ??= new PitchWorkerClient(createPitchWorker(), (pitch, timeSec) => {
-        if (!this.muted && generation === this.generation) onPitch?.(pitch, timeSec);
-      });
-      this.pitchWorker.submit({ samples: pitchBuf.slice(), sampleRate: ctx.sampleRate,
-        timeSec: performance.now() / 1000 });
+      if (this.pitchFailures > MAX_PITCH_RESTARTS) return;
+      const fail = (message: string) => {
+        this.pitchWorker = undefined;
+        this.pitchFailures++;
+        this.pitchError = `${message}. ${this.pitchFailures > MAX_PITCH_RESTARTS ? 'Retry microphone analysis to resume.' : 'Restarting analysis.'}`;
+        this.onPitchError?.(this.pitchError);
+      };
+      try {
+        this.pitchWorker ??= new PitchWorkerClient(createPitchWorker(), (pitch, timeSec) => {
+          if (!this.muted && generation === this.generation) {
+            if (pitch) this.pitchError = null;
+            onPitch?.(pitch, timeSec);
+          }
+        }, fail);
+        this.pitchWorker.submit({ samples: pitchBuf.slice(), sampleRate: ctx.sampleRate,
+          timeSec: performance.now() / 1000 });
+      } catch {
+        onPitch?.(null);
+        fail('Pitch analysis worker could not start');
+      }
     }, PITCH_POLL_MS);
 
     try {

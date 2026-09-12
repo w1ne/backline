@@ -233,7 +233,7 @@ export class AmtEngine implements BandEngine {
       if (this.stopping || session !== this.inputSession) return;
       this.latestCaptureTimeSec = e.timeSec;
       if (e.type === 'note_off') {
-        if (this.performanceCapable && e.durationSec !== undefined) {
+        if (e.durationSec !== undefined) {
           this.releaseBuf.push({ id: e.id, dur: e.durationSec * this.bpm / 60, captureTimeSec: e.timeSec });
           this.flushNotes();
         }
@@ -395,7 +395,7 @@ export class AmtEngine implements BandEngine {
     if (this.noteBuf.length > MAX_BUFFERED_NOTES) this.noteBuf.splice(0, this.noteBuf.length - MAX_BUFFERED_NOTES);
     if (this.releaseBuf.length > MAX_BUFFERED_NOTES) this.releaseBuf.splice(0, this.releaseBuf.length - MAX_BUFFERED_NOTES);
     if (this.noteBuf.length && this.sendRaw(JSON.stringify({ type: 'notes', notes: this.noteBuf }))) this.noteBuf = [];
-    if (this.releaseBuf.length && this.sendRaw(JSON.stringify({ type: 'note_updates', notes: this.releaseBuf }))) this.releaseBuf = [];
+    if (this.performanceCapable && this.releaseBuf.length && this.sendRaw(JSON.stringify({ type: 'note_updates', notes: this.releaseBuf }))) this.releaseBuf = [];
   }
 
   /** Asks the server for the next plan: `tick {beat}` at every half bar when it has said it
@@ -523,6 +523,7 @@ export class AmtEngine implements BandEngine {
     if (msg.type === 'ready') {
       this.tickCapable = msg.tick === true;
       this.performanceCapable = msg.performanceEvents === true;
+      this.flushNotes();
       return;
     }
     if (msg.type === 'plan' || msg.type === 'status') {
