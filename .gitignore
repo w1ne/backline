@@ -9,3 +9,4 @@ __pycache__/
 relay/.dev.vars
 COMMIT.pi
 .claude/
+pull.log
