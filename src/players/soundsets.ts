@@ -1,13 +1,14 @@
 import * as Tone from 'tone';
 import type { Genre, Instrument } from '../types';
+import { makeSampledDrums, DEFAULT_DRUM_KIT, type DrumKit, type Voice } from './sampledVoices';
 
 export interface SoundSet {
   drums: {
-    kick: Tone.MembraneSynth;
-    snare: Tone.NoiseSynth;
-    hat: Tone.MetalSynth;
-    openHat: Tone.MetalSynth;
-    crash: Tone.MetalSynth;
+    kick: Voice;
+    snare: Voice;
+    hat: Voice;
+    openHat: Voice;
+    crash: Voice;
   };
   bass: Tone.MonoSynth;
   keys: Tone.PolySynth;
@@ -19,10 +20,19 @@ export interface SoundSet {
  *  can be re-routed (main / morph / both) without touching the others. */
 export type SoundOuts = Record<Instrument, Tone.ToneAudioNode>;
 
-export function makeSoundSet(genre: Genre, outs: SoundOuts): SoundSet {
+/** A native GainNode wired into `out`'s Tone graph, for handing to a smplr instrument as
+ *  its `destination` — smplr writes to a plain AudioNode, Tone nodes are not one. */
+function nativeDestination(out: Tone.ToneAudioNode): { ctx: AudioContext; node: AudioNode } {
+  const ctx = out.context.rawContext as unknown as AudioContext;
+  const node = ctx.createGain();
+  Tone.connect(node, out);
+  return { ctx, node };
+}
+
+export function makeSoundSet(genre: Genre, outs: SoundOuts, drumKit: DrumKit = DEFAULT_DRUM_KIT): SoundSet {
   const out = outs.drums;
-  const kick = new Tone.MembraneSynth({ pitchDecay: 0.04, octaves: 6 }).connect(out);
-  const snare = new Tone.NoiseSynth({
+  const kickSynth = new Tone.MembraneSynth({ pitchDecay: 0.04, octaves: 6 }).connect(out);
+  const snareSynth = new Tone.NoiseSynth({
     noise: { type: genre === 'lofi' ? 'brown' : 'white' },
     envelope: { attack: 0.001, decay: 0.15, sustain: 0 },
   }).connect(out);
@@ -34,6 +44,9 @@ export function makeSoundSet(genre: Genre, outs: SoundOuts): SoundSet {
       resonance: 4000,
       octaves: 1.5,
     }).connect(out);
+  const hatSynth = mkHat(0.05);
+  const openHatSynth = mkHat(0.3);
+  const crashSynth = mkHat(1.2);
   const bass = new Tone.MonoSynth({
     oscillator: { type: genre === 'funk' ? 'sawtooth' : 'triangle' },
     filter: { Q: 2, frequency: 400 },
@@ -50,15 +63,22 @@ export function makeSoundSet(genre: Genre, outs: SoundOuts): SoundSet {
       ? { attackNoise: 4, dampening: 3000, resonance: 0.85, release: 0.4 }
       : { attackNoise: 1, dampening: 5000, resonance: 0.95, release: 1.2 },
   ).connect(outs.lead);
+
+  // Sampled drums, falling back to the synths above until the kit has loaded from the CDN —
+  // so the band is never silent while it fetches.
+  const drumsOut = nativeDestination(out);
+  const drums = makeSampledDrums(drumsOut.ctx, drumsOut.node, drumKit, {
+    kick: kickSynth, snare: snareSynth, hat: hatSynth, openHat: openHatSynth, crash: crashSynth,
+  });
+
   const set = {
-    drums: { kick, snare, hat: mkHat(0.05), openHat: mkHat(0.3), crash: mkHat(1.2) },
+    drums,
     bass,
     keys,
     lead,
     dispose() {
-      [kick, snare, set.drums.hat, set.drums.openHat, set.drums.crash, bass, keys, lead].forEach((n) =>
-        n.dispose(),
-      );
+      [bass, keys, lead].forEach((n) => n.dispose());
+      Object.values(drums).forEach(d => d.dispose());
     },
   };
   return set;

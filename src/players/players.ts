@@ -2,6 +2,7 @@ import * as Tone from 'tone';
 import type { Genre, Instrument, NoteEvent } from '../types';
 import { DRUM, INSTRUMENTS } from '../types';
 import { makeSoundSet, type SoundOuts, type SoundSet } from './soundsets';
+import { DEFAULT_DRUM_KIT, type DrumKit } from './sampledVoices';
 import type { PlayersLike } from '../band/bandleader';
 import { routeTargets, type MorphRoute } from '../audio/routing';
 
@@ -22,6 +23,7 @@ export class Players implements PlayersLike {
   private routes: Record<Instrument, MorphRoute> = { drums: 'main', bass: 'main', keys: 'main', lead: 'main' };
   private analyser?: AnalyserNode;
   private genre: Genre = 'lofi';
+  private drumKit: DrumKit = DEFAULT_DRUM_KIT;
   /**
    * Fires for every batch of notes that actually reaches a voice, with absolute times,
    * so the visualiser can draw what the band is about to play. Notes dropped as stale or
@@ -64,7 +66,18 @@ export class Players implements PlayersLike {
   cancelScheduled(): void {
     if (!this.set) return;
     this.set.dispose();
-    this.set = makeSoundSet(this.genre, (this.busses ?? this.fallbackOuts()) as SoundOuts);
+    this.set = makeSoundSet(this.genre, (this.busses ?? this.fallbackOuts()) as SoundOuts, this.drumKit);
+    this.lastVoiceTime.clear();
+  }
+
+  /** Switch drum kits (e.g. from the default acoustic kit to the electronic one). Rebuilds
+   *  the current SoundSet so the new kit takes effect immediately. */
+  setDrumKit(kit: DrumKit): void {
+    if (kit === this.drumKit) return;
+    this.drumKit = kit;
+    if (!this.set) return;
+    this.set.dispose();
+    this.set = makeSoundSet(this.genre, (this.busses ?? this.fallbackOuts()) as SoundOuts, this.drumKit);
     this.lastVoiceTime.clear();
   }
 
@@ -117,7 +130,7 @@ export class Players implements PlayersLike {
     if (this.set && g === this.genre) return;
     this.set?.dispose();
     this.genre = g;
-    this.set = makeSoundSet(g, (this.busses ?? this.fallbackOuts()) as SoundOuts);
+    this.set = makeSoundSet(g, (this.busses ?? this.fallbackOuts()) as SoundOuts, this.drumKit);
     this.lastVoiceTime.clear();
   }
 
