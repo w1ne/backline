@@ -67,7 +67,7 @@ npx wrangler deploy
 ```
 
 `GITHUB_TOKEN` must be a personal access token with read access to
-`w1ne/backline` (classic PAT with `repo` scope, or a fine-grained PAT with
+`w1ne/duet.ai` (classic PAT with `repo` scope, or a fine-grained PAT with
 "Collaborators" read permission on the repo) — it is used server-side to call
 the GitHub collaborators API and is never exposed to clients.
 
