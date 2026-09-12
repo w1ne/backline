@@ -10,6 +10,7 @@ import { Listener } from './listener/listener';
 import { MidiSource } from './listener/midiSource';
 import { TapTempo } from './listener/tapTempo';
 import { countInClicks } from './band/countIn';
+import { outputLatencyMs } from './audio/outputLatency';
 import { Drone } from './players/drone';
 import { WhiteNoise } from './players/whiteNoise';
 import { LOCAL_SOUNDS } from './device/arturia';
@@ -308,7 +309,16 @@ async function power() {
   drone.setEnabled(true);
   const ctx = players.rawContext();
   store.update({ audioSuspended: ctx.state !== 'running' });
-  ctx.addEventListener('statechange', () => store.update({ audioSuspended: ctx.state !== 'running' }));
+  // outputLatency is only meaningful (and on some browsers only populated) once the
+  // context is actually running, so read it now and again on every state change.
+  const readOutputLatency = () => {
+    if (ctx.state === 'running') store.update({ outputLatencyMs: outputLatencyMs(ctx) });
+  };
+  readOutputLatency();
+  ctx.addEventListener('statechange', () => {
+    store.update({ audioSuspended: ctx.state !== 'running' });
+    readOutputLatency();
+  });
   players.setGenre(store.state.genre);
   await applyMorph();
 
@@ -319,7 +329,14 @@ async function power() {
   midi.onInputs(inputs => store.update({ midiInputs: inputs }));
   // MIDI times are performance.now-based. Read at use, not at boot: the AudioContext clock
   // stands still until the first gesture resumes it.
-  const perfOffset = (): number => Tone.now() - performance.now() / 1000;
+  //
+  // A note scheduled at audio-clock time T is not actually audible until T + outputLatency
+  // (on phones this can be tens of ms) — so a band scheduled straight off this offset would
+  // always drag behind the singer by that much. Subtracting outputLatency here shifts every
+  // downstream schedule time (firstBarAt, count-in clicks) earlier by the same amount, so
+  // what comes out of the speaker lines up with the listener's wall-clock timestamps instead
+  // of lagging behind them.
+  const perfOffset = (): number => Tone.now() - performance.now() / 1000 - (store.state.outputLatencyMs ?? 0) / 1000;
 
   listener = new Listener([midi, mic], ['midi', 'mic']);
   listener.setMicMuted(store.state.micMuted);

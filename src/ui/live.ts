@@ -228,6 +228,7 @@ function skeleton(): string {
           </div>
         </div>
 <p id="engine-status" role="status"></p>
+<p id="output-latency" role="status"></p>
       </details>
     </div>
   `;
@@ -404,6 +405,7 @@ function update(screen: HTMLElement, s: AppState, changeLatencyMs: number): void
   screen.querySelector<HTMLElement>('#record-label')!.textContent = s.recording ? 'Save' : 'Rec';
   rec.title = s.recording ? 'Recording… tap to save the MIDI' : 'Tap to record you + the band, tap again to save the MIDI';
   screen.querySelector<HTMLElement>('#model-latency')!.textContent = s.modelLatencyMs == null ? '' : `${Math.round(s.modelLatencyMs)} ms`;
+  screen.querySelector<HTMLElement>('#output-latency')!.textContent = s.outputLatencyMs == null ? '' : `Output latency: ${Math.round(s.outputLatencyMs)} ms`;
   screen.querySelector<HTMLElement>('#engine-status')!.textContent = s.engineConnecting ? `${ENGINE_NAMES[s.engine]} · connecting…` : s.offlineEngines.includes(s.engine) ? `${ENGINE_NAMES[s.engine]} · offline` : '';
   for (const [id, value] of [['noise', s.noiseVolume], ['drone', s.droneVolume]] as const) {
     const input = screen.querySelector<HTMLInputElement>(`#${id}-volume`)!;

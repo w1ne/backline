@@ -256,6 +256,14 @@ describe('instrument controls and model feedback', () => {
     expect(calls).toEqual(['wake', 0.3, 0.3]);
   });
 
+  it('shows the output latency next to the model latency', () => {
+    const store = new Store();
+    store.update({ power: 'on', outputLatencyMs: 42 });
+    const root = document.createElement('div');
+    renderLive(root, store, { wake: () => {}, toggle: () => {}, setGenre: () => {}, setEngine: () => {}, setCreativity: () => {} });
+    expect(root.querySelector('#output-latency')!.textContent).toBe('Output latency: 42 ms');
+  });
+
   it('shows model status and latency without inventing activity', () => {
     const store = new Store();
     store.update({ power: 'on', locked: true, accompanimentStatus: 'Waiting for a model phrase', modelLatencyMs: 1234, activeParts: {} });
