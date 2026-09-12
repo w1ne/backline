@@ -1,7 +1,12 @@
-import type { BandState, Genre, Instrument, NoteEvent, Pattern } from '../types';
+import type { BandState, Chord, Genre, Instrument, NoteEvent, Pattern } from '../types';
 import { INSTRUMENTS } from '../types';
+import { tonicTriad } from '../listener/chordDetector';
 import { mulberry32 } from '../rng';
 import type { ClockLike } from './clockTypes';
+
+const BEATS_PER_BAR = 4;
+/** chord-timeline entries kept; two bars of half-bar ticks is plenty to voice a bar from */
+const CHORD_LOG_MAX = 8;
 
 export interface PlayersLike {
   schedule(instrument: Instrument, events: NoteEvent[], barStartTime: number, bpm: number): void;
@@ -11,11 +16,14 @@ export class Bandleader {
   state: BandState = {
     genre: 'lofi',
     key: { root: 0, mode: 'major' },
+    chord: null,
     creativity: 0.3,
     enabled: { drums: false, bass: false, keys: false, lead: false },
   };
   onBarCb?: (bar: number) => void;
   private rng: () => number;
+  /** chord changes stamped with the absolute beat they took effect on, ascending */
+  private chordLog: { beat: number; chord: Chord }[] = [];
   constructor(
     readonly clock: ClockLike,
     private players: PlayersLike,
@@ -29,8 +37,30 @@ export class Bandleader {
     this.rng = mulberry32(seed);
     clock.onBar((bar, t) => this.onBar(bar, t));
   }
-  set(p: Partial<Pick<BandState, 'genre' | 'key' | 'creativity'>>) {
-    Object.assign(this.state, p);
+  set(p: Partial<Pick<BandState, 'genre' | 'key' | 'chord' | 'creativity'>> & { chordBeat?: number }) {
+    const { chordBeat, ...rest } = p;
+    Object.assign(this.state, rest);
+    if (p.chord) this.pushChord(p.chord, chordBeat);
+  }
+
+  private pushChord(chord: Chord, beat = 0) {
+    const last = this.chordLog[this.chordLog.length - 1];
+    if (last && last.beat >= beat) {
+      // Same tick re-reported (or an out-of-order one): replace rather than append, so
+      // chordAt() never has to reason about a non-monotonic log.
+      last.chord = chord;
+      return;
+    }
+    if (last && last.chord.root === chord.root && last.chord.quality === chord.quality) return;
+    this.chordLog.push({ beat, chord });
+    if (this.chordLog.length > CHORD_LOG_MAX) this.chordLog.shift();
+  }
+
+  /** Chord in force at an absolute beat, falling back to the key's tonic triad. */
+  chordAtBeat(beat: number): Chord {
+    for (let i = this.chordLog.length - 1; i >= 0; i--)
+      if (this.chordLog[i].beat <= beat) return this.chordLog[i].chord;
+    return this.state.chord ?? tonicTriad(this.state.key);
   }
   setEnabled(i: Instrument, on: boolean) {
     this.state.enabled[i] = on;
@@ -48,13 +78,17 @@ export class Bandleader {
     // instrument simply joins on the next bar.
     if (t < this.now()) return;
     const { genre, key, creativity, enabled } = this.state;
+    const barBeat = bar * BEATS_PER_BAR;
+    const ctx = {
+      bar,
+      key,
+      creativity,
+      rng: this.rng,
+      chord: this.chordAtBeat(barBeat),
+      chordAt: (beat: number) => this.chordAtBeat(barBeat + beat),
+    };
     for (const i of INSTRUMENTS)
       if (enabled[i])
-        this.players.schedule(
-          i,
-          this.patterns[genre][i].nextBar({ bar, key, creativity, rng: this.rng }),
-          t,
-          this.clock.bpm,
-        );
+        this.players.schedule(i, this.patterns[genre][i].nextBar(ctx), t, this.clock.bpm);
   }
 }

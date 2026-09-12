@@ -11,6 +11,23 @@ Relay upstream secrets on the `backline-relay` Worker:
 `ACESTEP_UPSTREAM` (unchanged, same pod) and `AMT_UPSTREAM` (set this
 session).
 
+## Redeploying a server change
+
+`pod-bootstrap.sh` pulls `main` into `/opt/backline`, so a change to
+`services/acestep/server.py` needs main pushed first, then on the pod:
+
+```bash
+git -C /opt/backline pull --no-rebase origin main
+tmux kill-session -t ace
+tmux new-session -d -s ace "cd /opt/backline/services/acestep && \
+  ACESTEP_CHECKPOINTS_DIR=/opt/ace-step/checkpoints ACE_REPO_DIR=/opt/ace-step \
+  PORT=8080 /opt/ace-step/.venv/bin/python server.py 2>&1 | tee /var/log/ace.log"
+curl -s http://127.0.0.1:8080/health
+```
+
+Model load takes a couple of minutes, so `/health` stays unreachable for
+a while after the restart.
+
 ## Resume wipes the disk -- rerun pod-bootstrap.sh
 
 `podResume` on this pod does not preserve the container's ephemeral
