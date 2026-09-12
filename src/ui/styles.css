@@ -480,6 +480,47 @@ body {
   animation: engine-led-blink 0.9s steps(2, start) infinite;
 }
 
+/* Record: a small round key in the readout; a slow red breath while armed. */
+.ro-rec {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.rec-btn {
+  width: clamp(26px, 5vw, 40px);
+  height: clamp(26px, 5vw, 40px);
+  border-radius: 50%;
+  border: 2px solid var(--led);
+  background: #0f2418;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.rec-dot {
+  width: 40%;
+  height: 40%;
+  border-radius: 50%;
+  background: #ff3b30;
+  opacity: 0.55;
+}
+.rec-btn.recording {
+  border-color: #ff3b30;
+  box-shadow: 0 0 12px rgba(255, 59, 48, 0.7);
+  animation: rec-fade 2.4s ease-in-out infinite;
+}
+.rec-btn.recording .rec-dot {
+  width: 60%;
+  height: 60%;
+  opacity: 1;
+}
+@keyframes rec-fade {
+  50% {
+    box-shadow: 0 0 2px rgba(255, 59, 48, 0.15);
+    border-color: #6b1a14;
+  }
+}
+
 @keyframes engine-led-blink {
   50% {
     opacity: 0.15;
