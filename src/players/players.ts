@@ -1,12 +1,25 @@
 import * as Tone from 'tone';
 import type { Genre, Instrument, NoteEvent } from '../types';
-import { DRUM } from '../types';
-import { makeSoundSet, type SoundSet } from './soundsets';
+import { DRUM, INSTRUMENTS } from '../types';
+import { makeSoundSet, type SoundOuts, type SoundSet } from './soundsets';
 import type { PlayersLike } from '../band/bandleader';
+import { routeTargets, type MorphRoute } from '../audio/routing';
+
+/** The bit of a Tone/Web Audio node the routing actually uses. Keeps `route()` testable
+ *  with plain fakes instead of a real audio graph. */
+interface Routable {
+  connect(destination: never): unknown;
+  disconnect(): unknown;
+}
 
 export class Players implements PlayersLike {
   private set?: SoundSet;
   private out!: Tone.Volume;
+  /** one gain per instrument, between its synths and the outputs — the re-routing point */
+  private busses?: Record<Instrument, Tone.Gain>;
+  /** the MORPH bus input, when an output device has been chosen */
+  private morphNode?: AudioNode;
+  private routes: Record<Instrument, MorphRoute> = { drums: 'main', bass: 'main', keys: 'main', lead: 'main' };
   private genre: Genre = 'lofi';
   /** Count of note events dropped because they were stale (too close to/before now) or a
    * duplicate on the same monophonic voice within the merge window. Test/diagnostic hook. */
@@ -21,9 +34,43 @@ export class Players implements PlayersLike {
     if (!this.out) {
       Tone.setContext(new Tone.Context({ latencyHint: 'interactive' }));
       this.out = new Tone.Volume(-6).toDestination();
+      this.busses = {
+        drums: new Tone.Gain(),
+        bass: new Tone.Gain(),
+        keys: new Tone.Gain(),
+        lead: new Tone.Gain(),
+      };
+      INSTRUMENTS.forEach(i => this.applyRoute(i));
     }
     await Tone.start();
     this.setGenre(this.genre);
+  }
+
+  /** Hands the players the MORPH bus input (or undefined when the output is off).
+   *  Every instrument's route is re-applied, so "morph" pads become audible on the box
+   *  and fall back to the main output when it goes away. */
+  setMorphBus(node: AudioNode | undefined): void {
+    this.morphNode = node;
+    INSTRUMENTS.forEach(i => this.applyRoute(i));
+  }
+
+  /** Sends one instrument to the main output, the MORPH output, or both. */
+  route(inst: Instrument, route: MorphRoute): void {
+    this.routes[inst] = route;
+    this.applyRoute(inst);
+  }
+
+  routeOf(inst: Instrument): MorphRoute {
+    return this.routes[inst];
+  }
+
+  private applyRoute(inst: Instrument): void {
+    const bus = this.busses?.[inst] as Routable | undefined;
+    if (!bus || !this.out) return;
+    const to = routeTargets(this.routes[inst], !!this.morphNode);
+    bus.disconnect();
+    if (to.main) bus.connect(this.out as never);
+    if (to.morph && this.morphNode) bus.connect(this.morphNode as never);
   }
 
   /** The AudioContext backing this Players' Tone context; shared with LyriaEngine's PcmPlayer. */
@@ -40,8 +87,14 @@ export class Players implements PlayersLike {
     if (this.set && g === this.genre) return;
     this.set?.dispose();
     this.genre = g;
-    this.set = makeSoundSet(g, this.out);
+    this.set = makeSoundSet(g, (this.busses ?? this.fallbackOuts()) as SoundOuts);
     this.lastVoiceTime.clear();
+  }
+
+  /** setGenre() before init() (tests, and the demo state) has no busses yet: everything
+   *  goes straight to the main output, exactly as it did before routing existed. */
+  private fallbackOuts(): SoundOuts {
+    return { drums: this.out, bass: this.out, keys: this.out, lead: this.out };
   }
 
   schedule(inst: Instrument, events: NoteEvent[], barStart: number, bpm: number) {

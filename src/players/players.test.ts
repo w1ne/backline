@@ -143,3 +143,79 @@ describe('Players.schedule', () => {
     expect(players.dropped).toBe(before + 1);
   });
 });
+
+/** A node that records what it was wired to, standing in for a Tone.Gain / Volume. */
+class FakeNode {
+  connected: unknown[] = [];
+  disconnects = 0;
+  connect(dest: unknown) {
+    this.connected.push(dest);
+    return this;
+  }
+  disconnect() {
+    this.disconnects++;
+    this.connected = [];
+    return this;
+  }
+}
+
+/** Players builds its busses in init(), which needs a real AudioContext; tests wire the
+ *  same shape by hand so routing can be checked without starting audio. */
+function withFakeBusses(players: Players) {
+  const out = new FakeNode();
+  const busses = { drums: new FakeNode(), bass: new FakeNode(), keys: new FakeNode(), lead: new FakeNode() };
+  Object.assign(players as unknown as Record<string, unknown>, { out, busses });
+  return { out, busses };
+}
+
+describe('Players.route', () => {
+  it('leaves every instrument on the main output until a morph bus exists', () => {
+    const players = new Players();
+    const { out, busses } = withFakeBusses(players);
+    players.route('keys', 'morph');
+    expect(busses.keys.connected).toEqual([out]);
+    expect(players.routeOf('keys')).toBe('morph');
+  });
+
+  it('moves one instrument to the morph bus and leaves the others alone', () => {
+    const players = new Players();
+    const { out, busses } = withFakeBusses(players);
+    const morph = new FakeNode() as unknown as AudioNode;
+    players.setMorphBus(morph);
+    players.route('keys', 'morph');
+    expect(busses.keys.connected).toEqual([morph]);
+    expect(busses.drums.connected).toEqual([out]);
+    expect(busses.bass.connected).toEqual([out]);
+  });
+
+  it('feeds both outputs in "both", and disconnects before every re-wire', () => {
+    const players = new Players();
+    const { out, busses } = withFakeBusses(players);
+    const morph = new FakeNode() as unknown as AudioNode;
+    players.setMorphBus(morph);
+    const before = busses.lead.disconnects;
+    players.route('lead', 'both');
+    expect(busses.lead.connected).toEqual([out, morph]);
+    expect(busses.lead.disconnects).toBe(before + 1);
+  });
+
+  it('falls back to the main output when the morph device goes away', () => {
+    const players = new Players();
+    const { out, busses } = withFakeBusses(players);
+    players.setMorphBus(new FakeNode() as unknown as AudioNode);
+    players.route('lead', 'morph');
+    players.setMorphBus(undefined);
+    expect(busses.lead.connected).toEqual([out]);
+    // the pad keeps its setting, so plugging the box back in restores the route
+    expect(players.routeOf('lead')).toBe('morph');
+  });
+
+  it('applies a route chosen before the audio graph existed, once the busses appear', () => {
+    const players = new Players();
+    players.route('bass', 'morph'); // no busses yet — nothing to wire
+    const { busses } = withFakeBusses(players);
+    const morph = new FakeNode() as unknown as AudioNode;
+    players.setMorphBus(morph);
+    expect(busses.bass.connected).toEqual([morph]);
+  });
+});

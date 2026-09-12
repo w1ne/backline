@@ -2,6 +2,8 @@ import type { MonitorSound } from '../players/monitor';
 import type { BandInput, Genre, Instrument } from '../types';
 import { IDLE_DYNAMICS } from '../types';
 import type { SourceStatus } from '../listener/listener';
+import { MAIN_ROUTING, type RoutingState } from '../audio/routing';
+import type { DeviceOption } from '../audio/devices';
 
 export type EngineChoice = 'lyria' | 'patterns' | 'acestep' | 'amt';
 
@@ -25,6 +27,19 @@ export interface AppState {
   offlineEngines: EngineChoice[];
   /** true while the current engine is waiting on its 8s connect/first-block watchdog */
   engineConnecting: boolean;
+  /** where each part goes: the main output, the MORPH output (Neutone/LYDIA), or both */
+  routing: RoutingState;
+  /** chosen MORPH output device, or null when the morph bus is off */
+  morphOut: string | null;
+  /** false where setSinkId() is missing (Firefox/Safari): the picker says so instead of lying */
+  morphSupported: boolean;
+  audioOutputs: DeviceOption[];
+  /** chosen mic input, or null for the system default */
+  micIn: string | null;
+  audioInputs: DeviceOption[];
+  /** chosen MIDI input id, or null for "all" */
+  midiIn: string | null;
+  midiInputs: DeviceOption[];
 }
 
 const defaults: AppState = {
@@ -44,6 +59,14 @@ const defaults: AppState = {
   loopsUpdatedAt: undefined,
   offlineEngines: [],
   engineConnecting: false,
+  routing: { ...MAIN_ROUTING },
+  morphOut: null,
+  morphSupported: true,
+  audioOutputs: [],
+  micIn: null,
+  audioInputs: [],
+  midiIn: null,
+  midiInputs: [],
 };
 
 export class Store {
@@ -53,6 +76,7 @@ export class Store {
     input: { ...defaults.input, dynamics: { ...defaults.input.dynamics } },
     sources: { ...defaults.sources },
     offlineEngines: [...defaults.offlineEngines],
+    routing: { ...defaults.routing },
   };
   private cbs: ((s: AppState) => void)[] = [];
 

@@ -648,7 +648,7 @@ body {
   gap: 12px;
 }
 
-.inst button {
+.inst .pad-btn {
   --c: var(--panel);
   position: relative;
   min-height: 128px;
@@ -674,7 +674,7 @@ body {
 }
 
 /* the colour fill sweeps in from the LED corner */
-.inst button::before {
+.inst .pad-btn::before {
   content: '';
   position: absolute;
   top: -60%;
@@ -688,16 +688,16 @@ body {
   transition: transform 220ms cubic-bezier(0.3, 0.9, 0.3, 1);
 }
 
-.inst button.on::before {
+.inst .pad-btn.on::before {
   transform: scale(1);
 }
 
-.inst button > * {
+.inst .pad-btn > * {
   position: relative;
   z-index: 1;
 }
 
-.inst button:active {
+.inst .pad-btn:active {
   transform: translate(3px, 3px);
   box-shadow: 2px 2px 0 var(--ink);
   transition:
@@ -705,31 +705,31 @@ body {
     box-shadow 60ms ease-out;
 }
 
-.inst button:focus-visible {
+.inst .pad-btn:focus-visible {
   outline: 4px solid var(--ink);
   outline-offset: 3px;
 }
 
-.inst button.drums {
+.inst .pad-btn.drums {
   --c: var(--drums);
 }
-.inst button.bass {
+.inst .pad-btn.bass {
   --c: var(--bass);
 }
-.inst button.keys {
+.inst .pad-btn.keys {
   --c: var(--keys);
 }
-.inst button.lead {
+.inst .pad-btn.lead {
   --c: var(--lead);
 }
 
-.inst button.on {
+.inst .pad-btn.on {
   border-color: var(--ink);
 }
 
 /* not locked yet (or stopping): pads sit dim until the band catches the tempo */
-.screen[data-live]:not(.locked) .inst button,
-.screen.stopping .inst button {
+.screen[data-live]:not(.locked) .inst .pad-btn,
+.screen.stopping .inst .pad-btn {
   opacity: 0.5;
   filter: grayscale(0.35);
 }
@@ -743,7 +743,7 @@ body {
   color: var(--c);
 }
 
-.inst button.on .name {
+.inst .pad-btn.on .name {
   color: var(--ink);
 }
 
@@ -768,7 +768,7 @@ body {
   overflow: hidden;
 }
 
-.inst button.on .meter {
+.inst .pad-btn.on .meter {
   background: rgba(16, 16, 16, 0.28);
 }
 
@@ -789,7 +789,7 @@ body {
   background: transparent;
 }
 
-.inst button.on .dot {
+.inst .pad-btn.on .dot {
   background: var(--panel);
 }
 
@@ -1194,7 +1194,7 @@ body {
   .inst {
     grid-template-columns: 1fr 1fr;
   }
-  .inst button {
+  .inst .pad-btn {
     min-height: 128px;
   }
   .readout {
@@ -1260,7 +1260,7 @@ body {
   }
 
   /* 2 — "joining…"/"leaving…" LED blinks at the beat rate */
-  .inst button.pending .dot {
+  .inst .pad-btn.pending .dot {
     animation: blink var(--beat, 0.5s) steps(1, end) infinite;
   }
 
@@ -1420,4 +1420,75 @@ body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
   }
+}
+
+/* ---------- live: morph routing ---------- */
+
+.inst .pad {
+  position: relative;
+  display: flex;
+}
+
+.inst .pad-btn {
+  flex: 1;
+  min-width: 0;
+}
+
+/* the M key sits in the pad's free corner, opposite the on/off LED */
+.morph-key {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: var(--panel);
+  border: 2px solid var(--ink);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.morph-key.wide {
+  position: static;
+  width: 100%;
+  justify-content: space-between;
+}
+
+.morph-key:active {
+  transform: translate(1px, 1px);
+}
+
+.morph-key:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.morph-key .morph-led {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--ink);
+  background: rgba(16, 16, 16, 0.18); /* grey: main output */
+}
+
+.morph-key.on .morph-led {
+  background: var(--pink); /* pink: going to the morph box */
+}
+
+/* both: half dry, half morphed — the LED says so */
+.morph-key.both .morph-led {
+  background: linear-gradient(90deg, rgba(16, 16, 16, 0.18) 0 50%, var(--pink) 50% 100%);
+}
+
+.morph-key.on {
+  background: var(--panel);
+  box-shadow: inset 0 0 0 2px var(--pink);
 }

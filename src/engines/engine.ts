@@ -1,4 +1,5 @@
 import type { BandState, Instrument } from '../types';
+import type { MorphRoute } from '../audio/routing';
 
 export interface BandEngine {
   start(bpm: number, firstBarAt: number): Promise<void>;
@@ -19,4 +20,8 @@ export interface BandEngine {
   onStats?: (s: { loops: number; starvedSec: number }) => void;
   /** ms until a control change is audible; UI shows "joining…" for this long */
   readonly changeLatencyMs: number;
+  /** Routes the engine's own audio stream to the main and/or MORPH output. Only the
+   *  engines that render their own audio (Lyria, ACE) implement it — Patterns and AMT
+   *  play through Players, where routing is per instrument. */
+  routeBand?(route: MorphRoute, morphNode?: AudioNode): void;
 }

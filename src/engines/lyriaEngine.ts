@@ -5,6 +5,7 @@ import { IDLE_DYNAMICS } from '../types';
 import type { BandEngine } from './engine';
 import { promptsFor, configFor } from './lyriaMap';
 import { PcmPlayer } from './pcmPlayer';
+import type { MorphRoute } from '../audio/routing';
 import { RELAY_URL } from '../config';
 
 const MODEL = 'models/lyria-realtime-exp';
@@ -50,13 +51,25 @@ export class LyriaEngine implements BandEngine {
   private bpmResetTimer?: ReturnType<typeof setTimeout>;
   private lastBpmResetAt = 0;
 
+  private bandRoute: MorphRoute = 'main';
+  private morphNode?: AudioNode;
+
   constructor(private ctx: AudioContext) {}
+
+  /** Sends the generated stream to the main output, the MORPH output, or both. */
+  routeBand(route: MorphRoute, morphNode?: AudioNode): void {
+    this.bandRoute = route;
+    this.morphNode = morphNode;
+    this.player?.routeBand(route, morphNode);
+  }
+
 
   async start(bpm: number, firstBarAt: number): Promise<void> {
     this.stopping = false;
     this.bpm = bpm;
     this.gotFirstBlock = false;
-    this.player = new PcmPlayer(this.ctx);
+    this.player = new PcmPlayer(this.ctx, undefined, this.morphNode);
+    this.player.routeBand(this.bandRoute, this.morphNode);
     this.player.setBarSeconds(240 / bpm);
 
     try {
