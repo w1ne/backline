@@ -295,7 +295,7 @@ function wireBand(b: BandEngine): void {
   INSTRUMENTS.forEach(i => b.setEnabled(i, store.state.enabled[i]));
   b.routeBand?.(store.state.routing.band, morph?.input);
   b.onBar = bar => {
-    store.update({ bar });
+    store.update({ bar, barStartedAt: Date.now() });
     const beat = bar * BEATS_PER_BAR;
     // The downbeat's dynamics have to be in the band's hands before it schedules this bar,
     // and onBar runs ahead of scheduling, so tick the beat first.

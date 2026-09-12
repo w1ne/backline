@@ -37,6 +37,8 @@ export interface AppState {
   /** AudioContext still waiting for the first user gesture */
   audioSuspended: boolean;
   bar: number;
+  /** wall-clock ms when the current bar started; drives external beat displays (UNO Q hearts) */
+  barStartedAt: number | null;
   error: string | null;
   /** the Record button is armed: notes are being collected for the MIDI download */
   recording: boolean;
@@ -95,6 +97,7 @@ const defaults: AppState = {
   outputLatencyMs: null,
   audioSuspended: false,
   bar: 0,
+  barStartedAt: null,
   error: null,
   recording: false,
   paused: false,
