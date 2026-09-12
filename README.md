@@ -1,6 +1,6 @@
-# Backline
+# duet.ai
 
-A band in the browser that plays along with you. Play into the mic or a MIDI keyboard; after four bars Backline locks onto your tempo and key and plays drums, bass, keys and lead in that key. Toggle instruments, switch genre, turn the Creativity knob. Everything runs from one panel.
+A band in the browser that plays along with you. Play into the mic or a MIDI keyboard; after four bars duet.ai locks onto your tempo and key and plays drums, bass, keys and lead in that key. Toggle instruments, switch genre, turn the Creativity knob. Everything runs from one panel.
 
 Live: https://shylenko.com/backline/ (soon https://soundofthe.world). Spec with mockups: https://shylenko.com/backline/spec/
 

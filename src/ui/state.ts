@@ -23,6 +23,8 @@ export interface AppState {
   input: BandInput;
   locked: boolean;
   tempoMode: 'locked' | 'follow';
+  /** AudioContext still waiting for the first user gesture */
+  audioSuspended: boolean;
   bar: number;
   error: string | null;
   loops: number;
@@ -61,6 +63,7 @@ const defaults: AppState = {
   input: { bpm: null, key: null, chord: null, notesNow: [], pitch: null, inputLevel: 0, onsets: 0, pendingBpm: null, dynamics: IDLE_DYNAMICS },
   locked: false,
   tempoMode: 'locked',
+  audioSuspended: false,
   bar: 0,
   error: null,
   loops: 0,

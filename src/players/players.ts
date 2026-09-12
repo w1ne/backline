@@ -47,7 +47,8 @@ export class Players implements PlayersLike {
       };
       INSTRUMENTS.forEach(i => this.applyRoute(i));
     }
-    await Tone.start();
+    // Resolves only after a user gesture in every browser; never block boot on it.
+    void Tone.start().catch(() => undefined);
     this.setGenre(this.genre);
   }
 

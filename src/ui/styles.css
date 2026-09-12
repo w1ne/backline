@@ -1,4 +1,4 @@
-/* Backline — hardware panel UI.
+/* duet.ai — hardware panel UI.
    Saturated full-bleed colour zones, hard black outlines, chunky pressable keys. */
 
 :root {
@@ -342,18 +342,6 @@ body {
   color: var(--panel);
   font-size: 20px;
   padding: 16px 34px;
-}
-
-#power-key,
-#power-off-key {
-  font-size: clamp(16px, 2.4vw, 22px);
-  padding: 14px 28px;
-  flex: 0 0 auto;
-}
-
-#power-off-key {
-  background: #ff2d2d;
-  color: var(--ink);
 }
 
 .dimmed {
@@ -1456,7 +1444,7 @@ body {
 }
 
 @keyframes dropin {
-  /* transform-only: an opacity fade here leaves controls (e.g. #power-key)
+  /* transform-only: an opacity fade here leaves controls
      briefly un-hit-testable by real input during the animation, dropping any
      click that lands in that window (opacity: 0 is not just invisible, it is
      excluded from hit-testing until the animation clears it). */

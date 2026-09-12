@@ -1,13 +1,12 @@
 import { GENRES, INSTRUMENTS } from '../types';
-import { SOUNDS, SOUND_GROUPS, type MonitorSound } from '../players/monitor';
 import type { Genre, Instrument } from '../types';
+import { SOUNDS, SOUND_GROUPS, type MonitorSound } from '../players/monitor';
 import { keyName } from '../music/scales';
 import { chordName } from '../listener/chordDetector';
 import { DEBUG } from '../debug';
 import type { AppState, Store } from './state';
 import type { SourceState } from '../listener/listener';
-import { anyMorph, ROUTE_TARGETS, type MorphRoute, type RouteTarget } from '../audio/routing';
-import { shortDeviceName, type DeviceOption } from '../audio/devices';
+import { shortDeviceName } from '../audio/devices';
 
 const KEY_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const ALL_KEYS: { root: number; mode: 'major' | 'minor' }[] = [
@@ -16,8 +15,8 @@ const ALL_KEYS: { root: number; mode: 'major' | 'minor' }[] = [
 ];
 
 export interface LiveActions {
-  power(): void;
-  powerOff(): void;
+  /** first user gesture: resume the AudioContext the page booted with */
+  wake(): void;
   toggle(i: Instrument): void;
   setGenre(g: Genre): void;
   setEngine(e: 'lyria' | 'patterns' | 'acestep' | 'amt'): void;
@@ -26,18 +25,10 @@ export interface LiveActions {
   setIntensity?(i: number): void;
   setBpmOverride?(bpm: number | undefined): void;
   setKeyOverride?(key: { root: number; mode: 'major' | 'minor' } | undefined): void;
-  setTempoMode?(m: 'locked' | 'follow'): void;
+  /** which sound your MIDI keyboard plays through */
   setSound?(s: MonitorSound): void;
-  /** advance one part's route: main -> morph -> both -> main */
-  cycleMorph?(target: RouteTarget): void;
-  /** pick the MORPH output device, or null to switch the morph bus off */
-  setMorphOutput?(deviceId: string | null): void;
-  /** pick the mic input device, or null for the system default */
-  setMicInput?(deviceId: string | null): void;
   /** gate the mic out of the listener (onsets/pitch/level); MIDI keeps working */
   setMicMuted?(muted: boolean): void;
-  /** pick the MIDI input by id, or null to listen to every connected one */
-  setMidiInput?(id: string | null): void;
   /** ms a toggled instrument spends showing "joining…"/"leaving…" before it settles */
   changeLatencyMs?: number;
 }
@@ -73,8 +64,9 @@ function skeleton(): string {
     <div class="screen" data-live>
       <div class="bar">
         <div class="bar-top">
-          <h1 class="logo">Back<i>line</i></h1>
+          <h1 class="logo">duet<i>.ai</i></h1>
           <span class="pill" id="live-pill"></span>
+          <button type="button" class="morph-key" id="mic-mute" aria-label="Mute the mic from the listener">MIC<span class="morph-led"></span></button>
         </div>
         <span class="lcd" id="lcd"></span>
       </div>
@@ -100,8 +92,6 @@ function skeleton(): string {
                 <span class="name">${displayLabel(i)}</span>
                 <span class="st"><span class="st-text"></span><span class="meter"><i style="width:0"></i></span></span>
               </button>
-              <button type="button" class="morph-key" id="morph-${i}" data-morph="${i}"
-                      aria-label="Morph route for ${i}">M<span class="morph-led"></span></button>
             </div>`,
         ).join('')}
       </div>
@@ -139,28 +129,24 @@ function skeleton(): string {
             <button type="button" class="engine-key" id="engine-patterns" data-engine="patterns">
               <span class="engine-key-text">
                 <span class="engine-key-name">Patterns</span>
-                <span class="engine-key-desc">offline · instant</span>
               </span>
               <span class="engine-led" data-engine-led="patterns"></span>
             </button>
             <button type="button" class="engine-key" id="engine-lyria" data-engine="lyria">
               <span class="engine-key-text">
                 <span class="engine-key-name">Lyria</span>
-                <span class="engine-key-desc">Google API · ~0.5 s</span>
               </span>
               <span class="engine-led" data-engine-led="lyria"></span>
             </button>
             <button type="button" class="engine-key" id="engine-acestep" data-engine="acestep">
               <span class="engine-key-text">
                 <span class="engine-key-name">Ace</span>
-                <span class="engine-key-desc">GPU · 2-bar blocks</span>
               </span>
               <span class="engine-led" data-engine-led="acestep"></span>
             </button>
             <button type="button" class="engine-key" id="engine-amt" data-engine="amt">
               <span class="engine-key-text">
                 <span class="engine-key-name">AMT</span>
-                <span class="engine-key-desc">follows your notes · MIDI</span>
               </span>
               <span class="engine-led" data-engine-led="amt"></span>
             </button>
@@ -168,13 +154,6 @@ function skeleton(): string {
         </div>
         <div class="zone zone--yellow manual">
           <span class="zone-label">Manual</span>
-          <div class="field">
-            <span class="fl">Tempo</span>
-            <span class="switch" id="tempoMode">
-              <button type="button" data-mode="locked">Locked</button>
-              <button type="button" data-mode="follow">Follow</button>
-            </span>
-          </div>
           <div class="field">
             <label for="bpm">Bpm</label>
             <input type="number" id="bpm" min="40" max="240" placeholder="auto" />
@@ -190,7 +169,7 @@ function skeleton(): string {
             </select>
           </div>
           <div class="field">
-            <label for="sound">Keys</label>
+            <label for="sound">Midi sound</label>
             <select id="sound">
               ${SOUND_GROUPS.map(
                 g =>
@@ -200,40 +179,6 @@ function skeleton(): string {
               ).join('')}
             </select>
           </div>
-          <div class="field">
-            <label for="mic-in">Mic in</label>
-            <select id="mic-in"><option value="">default</option></select>
-          </div>
-          <div class="field">
-            <label for="midi-in">Midi in</label>
-            <select id="midi-in"><option value="">all</option></select>
-          </div>
-          <div class="field">
-            <label for="morph-out">Morph out</label>
-            <select id="morph-out"><option value="">off</option></select>
-          </div>
-          <div class="field">
-            <button type="button" class="morph-key wide" id="morph-band" data-morph="band"
-                    aria-label="Morph route for the band engine">Band &rarr; Morph<span class="morph-led"></span></button>
-          </div>
-          <small class="hint" id="tempoMode-note" hidden>Follow needs Patterns</small>
-          <small class="hint" id="morph-note" hidden>Morph out needs Chrome</small>
-        </div>
-      </div>
-      <div class="bottom">
-        <div class="zone zone--green you">
-          <span class="label">You</span>
-          <span class="meters">
-            <span class="level level--main"><i id="you-level"></i></span>
-            <span class="level level--intensity" title="Intensity"><i id="you-intensity"></i></span>
-          </span>
-          <span class="pill note" id="you-note">—</span>
-          <span class="pill" id="you-notes"></span>
-          <button type="button" class="morph-key" id="mic-mute" aria-label="Mute the mic from the listener">MIC<span class="morph-led"></span></button>
-        </div>
-        <div class="foot">
-          <button type="button" class="btn big power-on" id="power-key">Power</button>
-          <button type="button" class="btn big power-off" id="power-off-key" hidden>Power Off</button>
         </div>
       </div>
     </div>
@@ -269,36 +214,15 @@ function wireControls(screen: HTMLElement, store: Store): void {
   screen.querySelectorAll<HTMLButtonElement>('#inst-tiles button[data-inst]').forEach(btn => {
     btn.addEventListener('click', () => actions().toggle(btn.dataset.inst as Instrument));
   });
-  screen.querySelectorAll<HTMLButtonElement>('button[data-morph]').forEach(btn => {
-    btn.addEventListener('click', () => actions().cycleMorph?.(btn.dataset.morph as RouteTarget));
-  });
-  const morphOut = screen.querySelector<HTMLSelectElement>('#morph-out')!;
-  morphOut.addEventListener('change', () => actions().setMorphOutput?.(morphOut.value || null));
-  const micIn = screen.querySelector<HTMLSelectElement>('#mic-in')!;
-  micIn.addEventListener('change', () => actions().setMicInput?.(micIn.value || null));
   const micMute = screen.querySelector<HTMLButtonElement>('#mic-mute')!;
   micMute.addEventListener('click', () => {
     if (micMute.disabled) return;
     actions().setMicMuted?.(!store.state.micMuted);
   });
-  const midiIn = screen.querySelector<HTMLSelectElement>('#midi-in')!;
-  midiIn.addEventListener('change', () => actions().setMidiInput?.(midiIn.value || null));
-  const powerBtn = screen.querySelector<HTMLButtonElement>('#power-key')!;
-  powerBtn.addEventListener('click', () => {
-    if (screen.classList.contains('powering')) return;
-    screen.classList.add('powering');
-    actions().power();
-  });
-  const powerOffBtn = screen.querySelector<HTMLButtonElement>('#power-off-key')!;
-  powerOffBtn.addEventListener('click', () => {
-    if (screen.classList.contains('stopping')) return;
-    // let the pads fade and the digits fall before the panel goes dark
-    screen.classList.add('stopping');
-    window.setTimeout(() => {
-      screen.classList.remove('stopping', 'powering');
-      actions().powerOff();
-    }, 200);
-  });
+  // The band boots on page load; browsers keep the AudioContext suspended until
+  // a gesture, so the first tap anywhere on the panel wakes it. Capture phase,
+  // so a tap on any control counts.
+  screen.addEventListener('pointerdown', () => actions().wake(), { capture: true });
 
   screen.querySelectorAll<HTMLButtonElement>('#engine-choice button').forEach(btn => {
     btn.addEventListener('click', () => actions().setEngine(btn.dataset.engine as 'lyria' | 'patterns' | 'acestep' | 'amt'));
@@ -329,12 +253,6 @@ function wireControls(screen: HTMLElement, store: Store): void {
     actions().setKeyOverride?.({ root: Number(root), mode: mode as 'major' | 'minor' });
   });
 
-  screen.querySelectorAll<HTMLButtonElement>('#tempoMode button').forEach(btn => {
-    btn.addEventListener('click', () => {
-      if (btn.disabled) return;
-      actions().setTempoMode?.(btn.dataset.mode as 'locked' | 'follow');
-    });
-  });
 
   void store;
 }
@@ -388,9 +306,8 @@ function update(screen: HTMLElement, s: AppState, changeLatencyMs: number): void
   updateHeader(screen, s);
   updateEngine(screen, s);
   updateReadouts(screen, s);
-  updateYouStrip(screen, s);
+  updateMicMute(screen, s);
   updateTiles(screen, s, changeLatencyMs);
-  updateMorph(screen, s);
   updateFooter(screen, s);
 }
 
@@ -413,27 +330,23 @@ export function midiLabel(s: AppState): string {
 }
 
 function lcdText(s: AppState): string {
-  if (s.power === 'off') return 'OFF · PRESS POWER';
-  // any part sent to the morph box is worth one flag: it is the difference between
-  // hearing the band and hearing it through LYDIA
-  const morph = anyMorph(s.routing, !!s.morphOut) ? ' · MORPH' : '';
+  if (s.power === 'off') return 'STARTING…';
+  if (s.audioSuspended) return 'TAP ANYWHERE TO ENABLE SOUND';
   if (s.locked) {
     const d = s.input.dynamics;
     // What the band is doing with the gap the player left, in the two words that matter.
     const flags = `${d.space && s.enabled.lead ? ' · ANSWER' : ''}${d.fillDue ? ' · FILL' : ''}`;
-    return `LIVE · BAR ${s.bar}${s.input.chord ? ` · ${chordName(s.input.chord)}` : ''}${flags}${morph}`;
+    return `LIVE · BAR ${s.bar}${s.input.chord ? ` · ${chordName(s.input.chord)}` : ''}${flags}`;
   }
   // once there is enough to guess with, show the running estimate — it is the
   // only feedback that the mic is hearing a tempo and not just noise
   const guess = s.input.pendingBpm ? ` · ~${Math.round(s.input.pendingBpm)} BPM` : '';
-  return `LISTENING · MIC ${mark(s.sources.mic)} ${midiLabel(s)} · ${s.input.onsets}/12${guess}${morph}`;
+  return `LISTENING · MIC ${mark(s.sources.mic)} ${midiLabel(s)} · ${s.input.onsets}/12${guess}`;
 }
 
 function updatePower(screen: HTMLElement, s: AppState): void {
   const on = s.power === 'on';
   screen.classList.toggle('powered', on);
-  screen.querySelector<HTMLElement>('#power-key')!.hidden = on;
-  screen.querySelector<HTMLElement>('#power-off-key')!.hidden = !on;
   screen.querySelectorAll<HTMLElement>('#inst-tiles, .row2 .zone').forEach(el => el.classList.toggle('dimmed', !on));
   // Pads, the creativity knob, and manual tempo/key overrides need a running
   // band; ENGINE and GENRE only set state, so they stay clickable while off.
@@ -547,13 +460,6 @@ function updateReadouts(screen: HTMLElement, s: AppState): void {
   iKnob.style.setProperty('--k', String(s.intensity));
   iKnob.setAttribute('aria-valuenow', s.intensity.toFixed(2));
 
-  const lyriaFollow = s.engine === 'lyria' || s.engine === 'acestep' || s.engine === 'amt';
-  screen.querySelectorAll<HTMLButtonElement>('#tempoMode button').forEach(btn => {
-    btn.classList.toggle('on', btn.dataset.mode === s.tempoMode);
-    if (btn.dataset.mode === 'follow') btn.disabled = lyriaFollow;
-  });
-  const note = screen.querySelector<HTMLElement>('#tempoMode-note')!;
-  note.hidden = !lyriaFollow;
 
   let tempoText = s.input.bpm ? String(Math.round(s.input.bpm)) : '—';
   if (s.engine === 'lyria' && s.input.bpm) {
@@ -585,42 +491,7 @@ function updateBeats(screen: HTMLElement, s: AppState): void {
   }
 }
 
-const peakHold = new WeakMap<HTMLElement, { v: number; t: number }>();
-
-function updateYouStrip(screen: HTMLElement, s: AppState): void {
-  const level = Math.max(0, Math.min(1, s.input.inputLevel));
-  screen.querySelector<HTMLElement>('#you-level')!.style.width = `${Math.round(level * 100)}%`;
-
-  // peak-hold marker, decaying ~60% of full scale per second
-  const now = Date.now();
-  const held = peakHold.get(screen);
-  const decayed = held ? Math.max(0, held.v - ((now - held.t) / 1000) * 0.6) : 0;
-  const peak = Math.max(level, decayed);
-  peakHold.set(screen, { v: peak, t: now });
-  screen.querySelector<HTMLElement>('.you .level--main')!.style.setProperty('--peak', String(Math.round(peak * 100)));
-
-  // Second, thinner bar: not how loud the player is, but how hard the band reads them as
-  // working — it lags the level bar on the way down, which is the whole point.
-  // The effective intensity the band actually plays at (auto activity × the manual knob),
-  // not the raw activity reading — so the bar tracks what you hear, while the knob shows your setting.
-  const intensity = Math.max(0, Math.min(1, s.effectiveIntensity));
-  screen.querySelector<HTMLElement>('#you-intensity')!.style.width = `${Math.round(intensity * 100)}%`;
-
-  screen.querySelector<HTMLElement>('#you-notes')!.textContent = s.input.notesNow.length
-    ? s.input.notesNow.map(noteName).join(' · ')
-    : '—';
-
-  const noteEl = screen.querySelector<HTMLElement>('#you-note')!;
-  const p = s.input.pitch;
-  if (p) {
-    const sign = p.cents >= 0 ? '+' : '';
-    noteEl.textContent = `${noteName(p.midi)}${octave(p.midi)} ${sign}${p.cents}¢`;
-  } else {
-    noteEl.textContent = '—';
-  }
-  noteEl.classList.toggle('stable', !!p?.stable);
-  noteEl.classList.toggle('unstable', !p?.stable);
-
+function updateMicMute(screen: HTMLElement, s: AppState): void {
   const micMute = screen.querySelector<HTMLButtonElement>('#mic-mute')!;
   const midiOnly = s.sources.mic === 'denied' || s.sources.mic === 'none';
   micMute.hidden = midiOnly;
@@ -696,54 +567,7 @@ function updateTiles(screen: HTMLElement, s: AppState, changeLatencyMs: number):
   }
 }
 
-/**
- * Fills a device <select> without clobbering what the user has open or chosen.
- * The first option is the "none" one baked into the skeleton (off / default / all).
- */
-export function fillDeviceSelect(sel: HTMLSelectElement, options: DeviceOption[], chosen: string | null): void {
-  const signature = options.map(o => `${o.id}:${o.label}`).join('|');
-  if (sel.dataset.devices !== signature) {
-    sel.dataset.devices = signature;
-    const keep = sel.options[0];
-    sel.replaceChildren(keep);
-    for (const o of options) {
-      const opt = document.createElement('option');
-      opt.value = o.id;
-      opt.textContent = shortDeviceName(o.label);
-      sel.appendChild(opt);
-    }
-  }
-  const want = chosen ?? '';
-  if (sel.value !== want) sel.value = want;
-}
 
-const ROUTE_TITLE: Record<MorphRoute, string> = {
-  main: 'main output',
-  morph: 'morph output',
-  both: 'main + morph',
-};
-
-function updateMorph(screen: HTMLElement, s: AppState): void {
-  fillDeviceSelect(screen.querySelector<HTMLSelectElement>('#morph-out')!, s.audioOutputs, s.morphOut);
-  fillDeviceSelect(screen.querySelector<HTMLSelectElement>('#mic-in')!, s.audioInputs, s.micIn);
-  fillDeviceSelect(screen.querySelector<HTMLSelectElement>('#midi-in')!, s.midiInputs, s.midiIn);
-  screen.querySelector<HTMLSelectElement>('#morph-out')!.disabled = !s.morphSupported;
-  screen.querySelector<HTMLElement>('#morph-note')!.hidden = s.morphSupported;
-
-  for (const t of ROUTE_TARGETS) {
-    const key = screen.querySelector<HTMLButtonElement>(`#morph-${t}`);
-    if (!key) continue;
-    const route = s.routing[t];
-    // With no output chosen a "morph" pad is still only reaching the main output,
-    // so the LED stays grey rather than claiming a destination that isn't there.
-    const live = !!s.morphOut && route !== 'main';
-    key.dataset.route = route;
-    key.classList.toggle('on', live);
-    key.classList.toggle('both', live && route === 'both');
-    key.title = `${displayLabel(t)} → ${s.morphOut ? ROUTE_TITLE[route] : 'main output (no morph device)'}`;
-    key.setAttribute('aria-pressed', String(live));
-  }
-}
 
 function updateFooter(_screen: HTMLElement, _s: AppState): void {
   // nothing to update here currently
@@ -764,11 +588,3 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-function noteName(n: number): string {
-  return NOTE_NAMES[((n % 12) + 12) % 12];
-}
-
-function octave(n: number): number {
-  return Math.floor(n / 12) - 1;
-}

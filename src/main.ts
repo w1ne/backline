@@ -27,7 +27,6 @@ import {
   loadDeviceId,
   onDeviceChange,
   resolveDeviceId,
-  saveDeviceId,
   MIC_DEVICE_KEY,
   MIDI_INPUT_KEY,
   MORPH_SINK_KEY,
@@ -35,7 +34,7 @@ import {
   loadBool,
   saveBool,
 } from './audio/devices';
-import { defaultRouting, isAllMain, nextRoute } from './audio/routing';
+import { defaultRouting } from './audio/routing';
 import { createViz, type Viz } from './ui/viz';
 
 const FALLBACK_TIMEOUT_MS = 8000;
@@ -233,6 +232,9 @@ async function power() {
   store.update({ error: null });
   await players.init();
   audioReady = true;
+  const ctx = players.rawContext();
+  store.update({ audioSuspended: ctx.state !== 'running' });
+  ctx.addEventListener('statechange', () => store.update({ audioSuspended: ctx.state !== 'running' }));
   players.setGenre(store.state.genre);
   await applyMorph();
 
@@ -241,7 +243,9 @@ async function power() {
   midi = new MidiSource(store.state.midiIn);
   mic = new MicSource(store.state.micIn);
   midi.onInputs(inputs => store.update({ midiInputs: inputs }));
-  const perfOffset = Tone.now() - performance.now() / 1000; // MIDI times are performance.now-based
+  // MIDI times are performance.now-based. Read at use, not at boot: the AudioContext clock
+  // stands still until the first gesture resumes it.
+  const perfOffset = (): number => Tone.now() - performance.now() / 1000;
 
   listener = new Listener([midi, mic], ['midi', 'mic']);
   listener.setMicMuted(store.state.micMuted);
@@ -255,13 +259,13 @@ async function power() {
 
   // The listener timestamps notes on the performance.now clock; the strip draws on the
   // AudioContext one, which is what every scheduled band note is already in.
-  listener.onNote(n => viz?.addNote('you', n.midi, n.timeSec + perfOffset, YOU_NOTE_SEC, n.velocity));
+  listener.onNote(n => viz?.addNote('you', n.midi, n.timeSec + perfOffset(), YOU_NOTE_SEC, n.velocity));
 
   listener.onChange(input => {
     store.update({ input });
     if (input.key) band!.set({ key: input.key });
     if (input.bpm && !store.state.locked) {
-      const db = listener!.downbeat! + perfOffset;
+      const db = listener!.downbeat! + perfOffset();
       const barLen = 240 / input.bpm;
       let first = db;
       while (first < Tone.now() + 0.1) first += barLen;
@@ -320,10 +324,11 @@ function powerOff() {
 
 store.subscribe(s => {
   renderLive(root, store, {
-    power: () => {
-      power().catch(err => {
-        store.update({ error: err instanceof Error ? err.message : String(err) });
-      });
+    wake: () => {
+      if (!store.state.audioSuspended) return;
+      Tone.start()
+        .then(() => store.update({ audioSuspended: false }))
+        .catch(() => undefined);
     },
     toggle: i => {
       // Read live state, not the `s` snapshot from this subscribe callback,
@@ -338,10 +343,6 @@ store.subscribe(s => {
       players.setGenre(g);
       band?.set({ genre: g });
       store.update({ genre: g });
-    },
-    setSound: snd => {
-      store.update({ sound: snd });
-      monitor?.setSound(snd);
     },
     setEngine: e => {
       const prevEngine = store.state.engine;
@@ -373,7 +374,6 @@ store.subscribe(s => {
       // the next beat. Nothing to push to the engine here.
       store.update({ intensity: Math.min(1, Math.max(0, i)) });
     },
-    powerOff,
     setBpmOverride: bpm => {
       const clamped = bpm === undefined ? undefined : Math.min(240, Math.max(40, bpm));
       listener?.setOverride({ bpm: clamped });
@@ -393,39 +393,10 @@ store.subscribe(s => {
     setKeyOverride: key => {
       listener?.setOverride({ key });
     },
-    cycleMorph: t => {
-      const routing = { ...store.state.routing, [t]: nextRoute(store.state.routing[t]) };
-      store.update({ routing });
-      applyRouting();
-    },
-    setMorphOutput: id => {
-      saveDeviceId(MORPH_SINK_KEY, id);
-      // First time a box is chosen, put the parts worth morphing on it; once the user
-      // has moved anything by hand their routing is left alone.
-      const routing = id && isAllMain(store.state.routing) ? defaultRouting(true) : store.state.routing;
-      store.update({ morphOut: id, routing });
-      applyMorph().catch(err => store.update({ error: err instanceof Error ? err.message : String(err) }));
-    },
-    setMicInput: id => {
-      saveDeviceId(MIC_DEVICE_KEY, id);
-      store.update({ micIn: id });
-      // Only this source restarts: the Listener keeps its tempo lock, so the band plays on.
-      mic?.setDevice(id).catch(err => store.update({ error: `mic: ${err instanceof Error ? err.message : String(err)}` }));
-    },
     setMicMuted: muted => {
       saveBool(MIC_MUTE_KEY, muted);
       store.update({ micMuted: muted });
       listener?.setMicMuted(muted);
-    },
-    setMidiInput: id => {
-      saveDeviceId(MIDI_INPUT_KEY, id);
-      midi?.setInput(id);
-      store.update({ midiIn: id, sources: { ...store.state.sources, midi: midi?.getStatus() ?? store.state.sources.midi } });
-    },
-    setTempoMode: m => {
-      lastFollowedBpm = undefined;
-      listener?.setTempoMode(m);
-      store.update({ tempoMode: m });
     },
     changeLatencyMs: band?.changeLatencyMs,
   });
@@ -456,6 +427,14 @@ installDebug({
 });
 
 store.update({}); // first render, which is what puts the canvas in the DOM
+
+// No power key: the band boots with the page. Audio stays suspended until the
+// first tap (browser autoplay policy); the LCD says so until then.
+if (!demo) {
+  power().catch(err => {
+    store.update({ error: err instanceof Error ? err.message : String(err) });
+  });
+}
 
 // The strip runs on the AudioContext clock, the same one every scheduled note is timed
 // against. In demo mode there is no running context, so it follows the wall clock instead.
