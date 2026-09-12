@@ -1,0 +1,232 @@
+{
+ "streammuse/interval_2_gen_frame_5/melody_am": {
+  "notes": 52,
+  "notes_per_bar": 6.5,
+  "in_key": 0.9807692307692307,
+  "pitch_range": [
+   38,
+   79
+  ],
+  "first_onset_beat": 1.25,
+  "bars_with_notes": 8,
+  "requests": 60,
+  "rtt_ms": {
+   "n": 60,
+   "mean": 230.06311568121114,
+   "p50": 238.8954907655716,
+   "p95": 260.8264684677124,
+   "max": 364.69708755612373
+  },
+  "server_ms": {
+   "n": 60,
+   "mean": 225.70278060932955,
+   "p50": 235.3409342467785,
+   "p95": 255.9516839683056,
+   "max": 357.70731791853905
+  },
+  "hit_rate": 0.9752066115702479,
+  "ticks": 121
+ },
+ "streammuse/interval_2_gen_frame_5/arpeggio_am": {
+  "notes": 31,
+  "notes_per_bar": 3.875,
+  "in_key": 0.7419354838709677,
+  "pitch_range": [
+   41,
+   72
+  ],
+  "first_onset_beat": 1.25,
+  "bars_with_notes": 7,
+  "chord_tone_per_bar": [
+   0.0,
+   null,
+   0.0,
+   0.33,
+   0.0,
+   0.43,
+   0.25,
+   1.0
+  ],
+  "chord_tone_mean": 0.28741496598639454,
+  "requests": 60,
+  "rtt_ms": {
+   "n": 60,
+   "mean": 119.04520373791456,
+   "p50": 118.93048882484436,
+   "p95": 140.15742763876915,
+   "max": 152.63377502560616
+  },
+  "server_ms": {
+   "n": 60,
+   "mean": 114.34484360118707,
+   "p50": 113.73786628246307,
+   "p95": 135.55891066789627,
+   "max": 147.80660346150398
+  },
+  "hit_rate": 0.9917355371900827,
+  "ticks": 121
+ },
+ "streammuse/interval_1_gen_frame_3/melody_am": {
+  "notes": 132,
+  "notes_per_bar": 16.5,
+  "in_key": 0.3484848484848485,
+  "pitch_range": [
+   43,
+   87
+  ],
+  "first_onset_beat": 1.0,
+  "bars_with_notes": 8,
+  "requests": 120,
+  "rtt_ms": {
+   "n": 120,
+   "mean": 85.97615147009492,
+   "p50": 87.06323057413101,
+   "p95": 103.4378819167614,
+   "max": 107.42209479212761
+  },
+  "server_ms": {
+   "n": 120,
+   "mean": 81.78210373347004,
+   "p50": 83.1117294728756,
+   "p95": 98.89905154705048,
+   "max": 101.54919698834419
+  },
+  "hit_rate": 0.9917355371900827,
+  "ticks": 121
+ },
+ "streammuse/interval_1_gen_frame_3/arpeggio_am": {
+  "notes": 47,
+  "notes_per_bar": 5.875,
+  "in_key": 0.9148936170212766,
+  "pitch_range": [
+   43,
+   79
+  ],
+  "first_onset_beat": 1.5,
+  "bars_with_notes": 8,
+  "chord_tone_per_bar": [
+   1.0,
+   0.2,
+   0.17,
+   0.33,
+   0.75,
+   0.5,
+   0.62,
+   0.0
+  ],
+  "chord_tone_mean": 0.446875,
+  "requests": 120,
+  "rtt_ms": {
+   "n": 120,
+   "mean": 69.9392662383616,
+   "p50": 69.80464980006218,
+   "p95": 95.43582424521446,
+   "max": 112.55328729748726
+  },
+  "server_ms": {
+   "n": 120,
+   "mean": 65.75624300166965,
+   "p50": 65.81274047493935,
+   "p95": 91.55217185616493,
+   "max": 108.34411159157753
+  },
+  "hit_rate": 0.9917355371900827,
+  "ticks": 121
+ },
+ "amt/melody_am": {
+  "notes": 26,
+  "notes_per_bar": 3.25,
+  "in_key": 1.0,
+  "pitch_range": [
+   45,
+   86
+  ],
+  "first_onset_beat": 7.995833333333334,
+  "bars_with_notes": 7,
+  "keys_only": {
+   "notes": 20,
+   "notes_per_bar": 2.5,
+   "in_key": 1.0,
+   "pitch_range": [
+    71,
+    86
+   ],
+   "first_onset_beat": 7.995833333333334,
+   "bars_with_notes": 7
+  },
+  "requests": 9,
+  "rtt_ms": {
+   "n": 9,
+   "mean": 278.37921055530995,
+   "p50": 270.73701199969946,
+   "p95": 377.7252599993517,
+   "max": 377.7252599993517
+  },
+  "server_ms": {
+   "n": 9,
+   "mean": 104.08144278658762,
+   "p50": 98.22357818484306,
+   "p95": 135.61751693487167,
+   "max": 135.61751693487167
+  }
+ },
+ "amt/arpeggio_am": {
+  "notes": 19,
+  "notes_per_bar": 2.375,
+  "in_key": 1.0,
+  "pitch_range": [
+   45,
+   64
+  ],
+  "first_onset_beat": 7.995833333333334,
+  "bars_with_notes": 7,
+  "chord_tone_per_bar": [
+   null,
+   0.0,
+   0.0,
+   0.33,
+   0.5,
+   1.0,
+   0.5,
+   0.4
+  ],
+  "chord_tone_mean": 0.3904761904761905,
+  "keys_only": {
+   "notes": 13,
+   "notes_per_bar": 1.625,
+   "in_key": 1.0,
+   "pitch_range": [
+    55,
+    64
+   ],
+   "first_onset_beat": 7.995833333333334,
+   "bars_with_notes": 5,
+   "chord_tone_per_bar": [
+    null,
+    0.0,
+    null,
+    0.5,
+    0.33,
+    null,
+    0.67,
+    0.25
+   ],
+   "chord_tone_mean": 0.35
+  },
+  "requests": 9,
+  "rtt_ms": {
+   "n": 9,
+   "mean": 276.47484099977896,
+   "p50": 277.91723999962414,
+   "p95": 362.1808070001862,
+   "max": 362.1808070001862
+  },
+  "server_ms": {
+   "n": 9,
+   "mean": 107.31876268982887,
+   "p50": 103.35982218384743,
+   "p95": 193.8151717185974,
+   "max": 193.8151717185974
+  }
+ }
+}
