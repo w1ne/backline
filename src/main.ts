@@ -12,6 +12,7 @@ import type { BandEngine } from './engines/engine';
 import { PatternEngine } from './engines/patternEngine';
 import { LyriaEngine } from './engines/lyriaEngine';
 import { AceStepEngine } from './engines/acestepEngine';
+import { AmtEngine } from './engines/amtEngine';
 import { forwardBpm } from './band/bpmForward';
 import { installDebug, recordToggle } from './debug';
 import { chooseFallback } from './engines/fallback';
@@ -31,6 +32,7 @@ let disarmFallback: (() => void) | undefined;
 function makeBand(engine: EngineChoice): BandEngine {
   if (engine === 'lyria') return new LyriaEngine(players.rawContext());
   if (engine === 'acestep') return new AceStepEngine(players.rawContext());
+  if (engine === 'amt') return new AmtEngine(players, listener!);
   return new PatternEngine(players, PATTERNS);
 }
 
@@ -98,7 +100,7 @@ function armFallback(engine: EngineChoice, b: BandEngine): () => void {
 // Cheap readiness probe: flag ACE/Lyria as offline in the ENGINE switch if the relay is
 // unreachable at load time. Both stay selectable — this is advisory, not a lock.
 fetch(RELAY_URL + '/health').catch(() => {
-  store.update({ offlineEngines: ['acestep', 'lyria'] });
+  store.update({ offlineEngines: ['acestep', 'lyria', 'amt'] });
 });
 
 async function power() {

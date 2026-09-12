@@ -21,6 +21,7 @@ export class Listener {
   private override: { bpm?: number; key?: Key } = {};
   private cbs: ((i: BandInput) => void)[] = [];
   private statusCbs: ((s: SourceStatus) => void)[] = [];
+  private noteCbs: ((n: { midi: number; velocity: number; timeSec: number }) => void)[] = [];
   private mode: 'locked' | 'follow' = 'locked';
   private follower?: TempoFollower;
   private followBpm: number | null = null;
@@ -62,6 +63,7 @@ export class Listener {
         this.keyDet.addNote(n, v);
         this.recent.push({ n, t });
         this.recent = this.recent.filter(r => t - r.t < 0.5);
+        this.noteCbs.forEach(cb => cb({ midi: n, velocity: v, timeSec: t }));
       }
       this.emit();
     };
@@ -87,6 +89,9 @@ export class Listener {
   setOverride(p: { bpm?: number; key?: Key }) { Object.assign(this.override, p); this.emit(); }
 
   onChange(cb: (i: BandInput) => void) { this.cbs.push(cb); }
+
+  /** Fires for every pitched note (rests, i.e. midi < 0, are excluded). */
+  onNote(cb: (n: { midi: number; velocity: number; timeSec: number }) => void) { this.noteCbs.push(cb); }
 
   onSourceStatus(cb: (s: SourceStatus) => void) { this.statusCbs.push(cb); }
 

@@ -16,7 +16,7 @@ export interface LiveActions {
   powerOff(): void;
   toggle(i: Instrument): void;
   setGenre(g: Genre): void;
-  setEngine(e: 'lyria' | 'patterns' | 'acestep'): void;
+  setEngine(e: 'lyria' | 'patterns' | 'acestep' | 'amt'): void;
   setCreativity(c: number): void;
   setBpmOverride?(bpm: number | undefined): void;
   setKeyOverride?(key: { root: number; mode: 'major' | 'minor' } | undefined): void;
@@ -124,6 +124,13 @@ function skeleton(): string {
               </span>
               <span class="engine-led" data-engine-led="acestep"></span>
             </button>
+            <button type="button" class="engine-key" id="engine-amt" data-engine="amt">
+              <span class="engine-key-text">
+                <span class="engine-key-name">AMT</span>
+                <span class="engine-key-desc">follows your notes · MIDI</span>
+              </span>
+              <span class="engine-led" data-engine-led="amt"></span>
+            </button>
           </div>
         </div>
         <div class="zone zone--yellow manual">
@@ -210,7 +217,7 @@ function wireControls(screen: HTMLElement, store: Store): void {
   });
 
   screen.querySelectorAll<HTMLButtonElement>('#engine-choice button').forEach(btn => {
-    btn.addEventListener('click', () => actions().setEngine(btn.dataset.engine as 'lyria' | 'patterns' | 'acestep'));
+    btn.addEventListener('click', () => actions().setEngine(btn.dataset.engine as 'lyria' | 'patterns' | 'acestep' | 'amt'));
   });
 
   const bpmInput = screen.querySelector<HTMLInputElement>('#bpm')!;
@@ -307,6 +314,7 @@ const ENGINE_NAMES: Record<AppState['engine'], string> = {
   patterns: 'PATTERNS',
   lyria: 'LYRIA',
   acestep: 'ACE',
+  amt: 'AMT',
 };
 
 function lcdText(s: AppState): string {
@@ -425,7 +433,7 @@ function updateReadouts(screen: HTMLElement, s: AppState): void {
   knob.style.setProperty('--k', String(s.creativity));
   knob.setAttribute('aria-valuenow', s.creativity.toFixed(2));
 
-  const lyriaFollow = s.engine === 'lyria' || s.engine === 'acestep';
+  const lyriaFollow = s.engine === 'lyria' || s.engine === 'acestep' || s.engine === 'amt';
   screen.querySelectorAll<HTMLButtonElement>('#tempoMode button').forEach(btn => {
     btn.classList.toggle('on', btn.dataset.mode === s.tempoMode);
     if (btn.dataset.mode === 'follow') btn.disabled = lyriaFollow;
