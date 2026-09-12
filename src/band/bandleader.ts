@@ -9,6 +9,8 @@ const BEATS_PER_BAR = 4;
 const CHORD_LOG_MAX = 8;
 
 export interface PlayersLike {
+  setBandAmount?(amount: number): void;
+  cancelScheduled?(): void;
   schedule(instrument: Instrument, events: NoteEvent[], barStartTime: number, bpm: number): void;
 }
 

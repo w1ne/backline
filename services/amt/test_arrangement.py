@@ -41,6 +41,32 @@ class ArrangementTest(unittest.TestCase):
         notes = shape_notes([(2, 5, 40, 60), (2.5, 5, 41, 64), (3, 5, 42, 67)], 2, 4, 0.5, False)
         self.assertEqual(notes, [(2, 0.5, 40, 60), (2.5, 0.5, 41, 64), (3, 1, 42, 67)])
 
+    def test_amount_controls_density_and_zero_is_silent(self):
+        raw = [(i * .125, .4, 60 + i % 8) for i in range(32)]
+        quiet = shape_notes(raw, 0, 4, .5, False, amount=.1)
+        full = shape_notes(raw, 0, 4, .5, False, amount=1)
+        self.assertGreater(len(full), len(quiet))
+        self.assertEqual(shape_notes(raw, 0, 4, .5, False, amount=0), [])
+
+    def test_creativity_keeps_scale_passing_notes_instead_of_flattening_to_chord(self):
+        raw = [(0, .2, 60), (.25, .2, 62), (.5, .2, 64), (.75, .2, 65)]
+        simple = shape_notes(raw, 0, 2, .5, False, key='C major', chord='C', creativity=0, amount=1)
+        varied = shape_notes(raw, 0, 2, .5, False, key='C major', chord='C', creativity=1, amount=1)
+        self.assertTrue(all(n[-1] % 12 in {0,4,7} for n in simple))
+        self.assertTrue(any(n[-1] % 12 in {2,5} for n in varied))
+
+    def test_output_lands_on_tempo_grid_at_multiple_tempos(self):
+        for bpm in (80, 133, 180):
+            beat = 60 / bpm
+            start = 12 * beat
+            raw = [(start + x * beat, .07, 60) for x in (.03, .57, 1.13, 2.79, 3.97)]
+            notes = shape_notes(raw, start, start + 4 * beat, beat, False, creativity=1, amount=1)
+            self.assertTrue(notes)
+            for t, d, _ in notes:
+                self.assertAlmostEqual((t - start) / beat * 4, round((t-start) / beat * 4))
+                self.assertGreaterEqual(d / beat, .25 - 1e-8)
+                self.assertLessEqual(t+d, start + 4 * beat + 1e-8)
+
     def test_bass_uses_the_players_harmony_in_a_fixed_bass_register(self):
         self.assertEqual(bass_pitch('Dm', 'C major'), 38)
         self.assertEqual(bass_pitch('F#min7', 'C major'), 42)

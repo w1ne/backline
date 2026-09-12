@@ -3,14 +3,21 @@ import math
 import re
 
 
-def shape_notes(notes, start, end, beat_seconds, space, time_resolution=100, key=None, chord=None):
-    # Quarter notes under the player, eighth notes for short answering phrases.
-    gap = beat_seconds * (0.5 if space else 1.0)
+def shape_notes(notes, start, end, beat_seconds, space, time_resolution=100, key=None, chord=None, creativity=0.0, amount=0.5):
+    creativity = max(0.0, min(1.0, creativity))
+    amount = max(0.0, min(1.0, amount))
+    if amount == 0:
+        return []
+    # Amount controls room left for the performer; creativity unlocks subdivisions.
+    grid_beats = .25 if creativity >= .65 else .5
+    gap_beats = 2.0 if amount < .25 else 1.0 if amount < .7 else .5
+    gap = beat_seconds * max(grid_beats, gap_beats * (.5 if space else 1.0))
     # Answer for at most two beats, then hand the phrase back to the performer.
     if space:
         end = min(end, start + 2 * beat_seconds)
     start_tick, end_tick = round(start * time_resolution), round(end * time_resolution)
-    allowed = harmony_classes(key, chord if not space else None)
+    chord_tones = harmony_classes(key, chord)
+    scale_tones = harmony_classes(key)
     kept = []
     # Notes are (onset, duration, pitch) or (onset, duration, instrument, pitch); any
     # fields between duration and pitch pass through untouched.
@@ -19,7 +26,16 @@ def shape_notes(notes, start, end, beat_seconds, space, time_resolution=100, key
             continue
         if not start_tick <= round(onset * time_resolution) < end_tick or duration <= 0 or not 0 <= pitch <= 127:
             continue
-        onset = max(start, onset)
+        relative_beat = max(0, (onset - start) / beat_seconds)
+        grid_index = math.floor(relative_beat / grid_beats + .5)
+        onset = start + grid_index * grid_beats * beat_seconds
+        if onset >= end - 1e-8:
+            continue
+        duration = max(grid_beats, round(duration / beat_seconds / grid_beats) * grid_beats) * beat_seconds
+        # Simple phrases stay on chord tones; adventurous phrases can use scale
+        # passing tones between strong beats without turning into random chromatic notes.
+        strong_beat = abs(grid_index * grid_beats % 1) < 1e-8
+        allowed = scale_tones if space or (creativity >= .5 and not strong_beat) else chord_tones
         if allowed:
             # Keep the model's contour/register while removing clashes against
             # the performer's harmony. Ties prefer the lower supporting note.

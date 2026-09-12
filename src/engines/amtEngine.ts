@@ -64,7 +64,12 @@ export class AmtEngine implements BandEngine {
   onStatus?: (message: string, latencyMs?: number) => void;
   private amount = 1;
   private responseTimer?: ReturnType<typeof setTimeout>;
-  setAmount(value: number): void { this.amount = Math.min(1, Math.max(0, value)); }
+  setAmount(value: number): void {
+    this.amount = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
+    this.players.setBandAmount?.(this.amount);
+    this.queueSet();
+  }
+  private get velocityAmount(): number { return this.players.setBandAmount ? 1 : this.amount; }
   private rhythmRng = mulberry32(42);
 
   private state: BandState = {
@@ -122,6 +127,7 @@ export class AmtEngine implements BandEngine {
 
   async start(bpm: number, firstBarAt: number): Promise<void> {
     this.stopping = false;
+    this.players.setBandAmount?.(this.amount);
     this.onStatus?.('Listening');
     this.bpm = bpm;
     this.bar = 0;
@@ -148,6 +154,7 @@ export class AmtEngine implements BandEngine {
         commitBeats: COMMIT_BEATS,
         listenBeats: LISTEN_BEATS,
       });
+      this.queueSet();
       this.flushSet();
       this.onConnected?.();
     });
@@ -162,7 +169,10 @@ export class AmtEngine implements BandEngine {
     });
 
     this.clock.onBar((bar, time) => {
+      if (bar === 0) this.firstBarAt = time;
       this.bar = bar;
+      this.onBar?.(bar);
+      this.flushSet();
       this.flushNotes();
       if (this.sendRaw(JSON.stringify({ type: 'bar', bar })) && this.responseTimer === undefined) {
         this.responseTimer = setTimeout(() => {
@@ -170,13 +180,12 @@ export class AmtEngine implements BandEngine {
           this.onError?.('AMT: model response timed out');
         }, 8000);
       }
-      this.onBar?.(bar);
       const ctx = {bar, key:this.state.key, chord:this.state.chord ?? undefined,
         creativity:this.state.creativity, dynamics:this.state.dynamics, rng:this.rhythmRng};
       for (const voice of ['drums', 'lead'] as const) {
         if (!this.amount || !this.state.enabled[voice] || (voice === 'lead' && !this.state.dynamics.space)) continue;
         const events = PATTERNS[this.state.genre][voice].nextBar(ctx);
-        if (events.length) this.players.schedule(voice, events.map(e => ({...e,velocity:e.velocity*this.amount})), time, this.bpm);
+        if (events.length) this.players.schedule(voice, events.map(e => ({...e,velocity:e.velocity*this.velocityAmount})), time, this.bpm);
       }
     });
     this.clock.start(bpm, firstBarAt);
@@ -197,6 +206,8 @@ export class AmtEngine implements BandEngine {
 
   stop(): void {
     this.stopping = true;
+    this.players.cancelScheduled?.();
+    this.players.setBandAmount?.(1);
     clearTimeout(this.responseTimer);
     this.responseTimer = undefined;
     ++this.inputSession;
@@ -246,6 +257,7 @@ export class AmtEngine implements BandEngine {
       chord: this.state.chord ? chordName(this.state.chord) : null,
       space: this.state.dynamics.space,
       creativity: this.state.creativity,
+      amount: this.amount,
       instruments: { ...this.state.enabled },
       // Dynamics hint; the manual amount also scales local playback directly.
       intensity: Math.round(this.state.dynamics.intensity * 5) / 5,
@@ -359,7 +371,7 @@ export class AmtEngine implements BandEngine {
         time: n.beat - barNum * BEATS_PER_BAR,
         note: n.pitch,
         duration: n.dur,
-        velocity: n.vel * this.amount,
+        velocity: n.vel * this.velocityAmount,
       }));
       this.players.schedule(voice, events, barStart, this.bpm);
       if (!this.gotFirstNotes) {

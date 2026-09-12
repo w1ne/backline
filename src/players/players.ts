@@ -60,6 +60,20 @@ export class Players implements PlayersLike {
     INSTRUMENTS.forEach(i => this.applyRoute(i));
   }
 
+  /** Remove old-tempo events and tails when an engine transport restarts. */
+  cancelScheduled(): void {
+    if (!this.set) return;
+    this.set.dispose();
+    this.set = makeSoundSet(this.genre, (this.busses ?? this.fallbackOuts()) as SoundOuts);
+    this.lastVoiceTime.clear();
+  }
+
+  /** Apply after synthesis, including notes already scheduled, on every output route. */
+  setBandAmount(amount: number): void {
+    const gain = Number.isFinite(amount) ? Math.min(1, Math.max(0, amount)) : 0;
+    if (this.busses) Object.values(this.busses).forEach(bus => bus.gain.rampTo(gain, .03));
+  }
+
   /** Sends one instrument to the main output, the MORPH output, or both. */
   route(inst: Instrument, route: MorphRoute): void {
     this.routes[inst] = route;

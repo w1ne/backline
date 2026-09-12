@@ -145,6 +145,9 @@ class Session:
         self.commit_beats = commit_beats
         self.listen_beats = listen_beats
         self.top_p = top_p
+        self.creativity = .3
+        self.amount = .5
+        self.temperature = .85
         # Default to the validated string-ensemble preset rather than a lone violin: a single
         # instrument was consistently too sparse against a real, densely-played performance to be
         # heard at all (see bench/amt/SETUP.md in the Music repo this was ported from). The three
@@ -161,6 +164,15 @@ class Session:
         self.key = None
         self.chord = None
         self.space = False
+
+    def set_controls(self, msg):
+        self.key = msg.get("key", self.key)
+        self.chord = msg.get("chord", self.chord)
+        self.space = bool(msg.get("space", self.space))
+        self.creativity = max(0.0, min(1.0, float(msg.get("creativity", self.creativity))))
+        self.top_p = 0.70 + self.creativity * 0.29
+        self.temperature = 0.65 + self.creativity * 0.65
+        self.amount = max(0.0, min(1.0, float(msg.get("amount", self.amount))))
 
     def add_human_notes(self, notes):
         for n in notes:
@@ -249,6 +261,7 @@ class Session:
         result = generate_duet(
             self.model, start_s, end_s, history_before, self.accomp_instrs, self.top_p, ACCOMP_BIAS,
             deadline_s=deadline_s,
+            temperature=self.temperature,
             # The committed voice is monophonic and the app plays to a beat grid, so a
             # sixteenth note is the shortest onset gap worth sampling.
             min_interval_ticks=max(1, round(self.beat_s / 4.0 * TIME_RESOLUTION)),
@@ -269,7 +282,7 @@ class Session:
         ]
         # Every instrument flattens into the one "keys" voice the client plays, so the
         # leave-room spacing applies across the whole ensemble, not per instrument.
-        raw_notes = shape_notes(raw_notes, start_s, commit_end_s, self.beat_s, self.space, TIME_RESOLUTION, key=self.key, chord=self.chord)
+        raw_notes = shape_notes(raw_notes, start_s, commit_end_s, self.beat_s, self.space, TIME_RESOLUTION, key=self.key, chord=self.chord, creativity=self.creativity, amount=self.amount)
         # (onset_s, dur_s, instr, pitch), trimmed/monophonic per instrument by the committer.
         committed = self.committer.commit(raw_notes)
         self.committed_horizon_beats = commit_end_beat
@@ -372,11 +385,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     await websocket.send_text(json.dumps(out["status"]))
 
                 elif mtype == "set":
-                    session.key = msg.get("key", session.key)
-                    session.chord = msg.get("chord", session.chord)
-                    session.space = bool(msg.get("space", False))
-                    creativity = max(0.0, min(1.0, float(msg.get("creativity", 0.3))))
-                    session.top_p = 0.75 + creativity * 0.2
+                    session.set_controls(msg)
 
                 else:
                     await websocket.send_text(json.dumps({"type": "error", "message": f"unknown type {mtype}"}))

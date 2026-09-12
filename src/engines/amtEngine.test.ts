@@ -126,6 +126,38 @@ describe('AmtEngine', () => {
     engine.stop();
   });
 
+  it('sends manual amount to AMT and updates already scheduled audio through the bus', async () => {
+    const { engine, players } = mk();
+    const setBandAmount = vi.fn();
+    Object.assign(players, { setBandAmount });
+    await engine.start(120, 0);
+    startedSocket().open();
+    engine.setAmount(.2);
+    engine.flushSetForTest();
+    expect(setBandAmount).toHaveBeenLastCalledWith(.2);
+    expect(startedSocket().sent).toContainEqual(expect.objectContaining({type:'set', amount:.2}));
+    engine.setAmount(0);
+    expect(setBandAmount).toHaveBeenLastCalledWith(0);
+    engine.stop();
+    expect(setBandAmount).toHaveBeenLastCalledWith(1);
+  });
+
+  it('resends all controls after a tempo change', async () => {
+    const {engine, players} = mk();
+    const cancelScheduled = vi.fn();
+    Object.assign(players, {cancelScheduled});
+    engine.set({creativity:.9});
+    engine.setAmount(.7);
+    await engine.start(100, 0);
+    startedSocket().open();
+    engine.setBpm(150);
+    expect(cancelScheduled).toHaveBeenCalledOnce();
+    startedSocket().open();
+    expect(startedSocket().sent).toContainEqual(expect.objectContaining({type:'start', bpm:150}));
+    expect(startedSocket().sent).toContainEqual(expect.objectContaining({type:'set', creativity:.9, amount:.7}));
+    engine.stop();
+  });
+
   it('applies band amount to model voices, with zero silent', async () => {
     const {engine,players} = mk(); engine.setEnabled('keys',true);
     await engine.start(120,0); startedSocket().open();
@@ -383,9 +415,10 @@ describe('AmtEngine', () => {
     engine.flushSetForTest();
 
     const frames = setFrames(startedSocket());
-    expect(frames).toHaveLength(2);
-    expect(frames[0]).toMatchObject({ type: 'set', genre: 'jazz' });
-    expect(frames[1]).toMatchObject({ type: 'set', instruments: { keys: true } });
+    expect(frames).toHaveLength(3); // initial controls, then each real change
+    expect(frames[1]).toMatchObject({ type: 'set', genre: 'jazz' });
+    expect(frames[2]).toMatchObject({ type: 'set', instruments: { keys: true } });
+    engine.stop();
   });
 
   it('ignores delayed events from the socket replaced by a tempo change', async () => {
