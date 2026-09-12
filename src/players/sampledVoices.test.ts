@@ -74,6 +74,23 @@ describe('sampled drums fallback', () => {
     expect(starts.acoustic).toEqual(expect.arrayContaining([expect.objectContaining({ note: 'hhclosed' }), expect.objectContaining({ note: 'crash' })]));
     expect(starts.electronic).toEqual(expect.arrayContaining([expect.objectContaining({ note: 'hihat-close' }), expect.objectContaining({ note: 'cymbal' })]));
   });
+
+  it('cancels scheduled sample hits when the voice is disposed', async () => {
+    vi.resetModules();
+    const stop = vi.fn();
+    vi.doMock('smplr', () => ({
+      DrumMachine: () => ({ ready: Promise.resolve(), start: () => stop }),
+      ElectricPiano: () => ({ ready: Promise.resolve(), start: () => () => undefined }),
+      Soundfont: () => ({ ready: Promise.resolve(), start: () => () => undefined }),
+    }));
+    const { makeSampledDrums } = await import('./sampledVoices');
+    const fallback = { kick: fakeVoice(), snare: fakeVoice(), hat: fakeVoice(), openHat: fakeVoice(), crash: fakeVoice() };
+    const drums = makeSampledDrums({} as AudioContext, {} as AudioNode, 'acoustic', fallback);
+    await Promise.resolve();
+    drums.kick.triggerAttackRelease('C1', 0.2, 2, 0.8);
+    drums.kick.dispose();
+    expect(stop).toHaveBeenCalledOnce();
+  });
 });
 
 describe('sampled melodic voices (bass/keys/lead) fallback', () => {
