@@ -11,7 +11,7 @@ export interface SoundSet {
   };
   bass: Tone.MonoSynth;
   keys: Tone.PolySynth;
-  lead: Tone.Synth;
+  lead: Tone.PluckSynth;
   dispose(): void;
 }
 
@@ -43,10 +43,13 @@ export function makeSoundSet(genre: Genre, outs: SoundOuts): SoundSet {
     oscillator: { type: genre === 'rock' ? 'sawtooth' : 'sine' },
     envelope: { attack: 0.02, decay: 0.3, sustain: 0.4, release: 0.6 },
   }).connect(outs.keys);
-  const lead = new Tone.Synth({
-    oscillator: { type: genre === 'jazz' ? 'sine' : 'square' },
-    envelope: { attack: 0.02, release: 0.3 },
-  }).connect(outs.lead);
+  // Plucked/Karplus-Strong guitar tone: clean, longer resonance for lofi/jazz;
+  // brighter attack noise and shorter sustain (more bite) for rock/funk.
+  const lead = new Tone.PluckSynth(
+    genre === 'rock' || genre === 'funk'
+      ? { attackNoise: 4, dampening: 3000, resonance: 0.85, release: 0.4 }
+      : { attackNoise: 1, dampening: 5000, resonance: 0.95, release: 1.2 },
+  ).connect(outs.lead);
   const set = {
     drums: { kick, snare, hat: mkHat(0.05), openHat: mkHat(0.3), crash: mkHat(1.2) },
     bass,

@@ -1,6 +1,52 @@
 import { describe, it, expect } from 'vitest';
-import { ActivityTracker } from './activity';
+import { ActivityTracker, effectiveIntensity, effectiveDynamics } from './activity';
 import type { Dynamics } from '../types';
+
+const dyn = (d: Partial<Dynamics> = {}): Dynamics => ({ intensity: 0, space: false, fillDue: false, silenceBeats: 0, ...d });
+
+describe('effectiveIntensity — the manual knob folded into the auto activity', () => {
+  it('manual 0 keeps the band sparse even under hard playing', () => {
+    expect(effectiveIntensity(1, 0)).toBeCloseTo(0.4);
+    expect(effectiveIntensity(0.5, 0)).toBeCloseTo(0.2);
+  });
+  it('manual 0.5 tracks the player one-to-one', () => {
+    expect(effectiveIntensity(0.3, 0.5)).toBeCloseTo(0.3);
+    expect(effectiveIntensity(0.8, 0.5)).toBeCloseTo(0.8);
+  });
+  it('manual 1 fills the band out, clamped at 1', () => {
+    expect(effectiveIntensity(1, 1)).toBe(1);
+    expect(effectiveIntensity(0.5, 1)).toBeCloseTo(0.8);
+    expect(effectiveIntensity(0.7, 1)).toBe(1); // 0.7*1.6 = 1.12, clamped
+  });
+  it('a silent player stays silent at any manual setting', () => {
+    expect(effectiveIntensity(0, 1)).toBe(0);
+  });
+  it('clamps its inputs', () => {
+    expect(effectiveIntensity(2, 2)).toBe(1);
+    expect(effectiveIntensity(-1, -1)).toBe(0);
+  });
+});
+
+describe('effectiveDynamics — manual overrides on the whole frame', () => {
+  it('scales intensity by the manual knob', () => {
+    expect(effectiveDynamics(dyn({ intensity: 0.5 }), 0).intensity).toBeCloseTo(0.2);
+    expect(effectiveDynamics(dyn({ intensity: 0.5 }), 1).intensity).toBeCloseTo(0.8);
+  });
+  it('leaves space and fill alone at a moderate manual setting', () => {
+    const e = effectiveDynamics(dyn({ space: false, fillDue: true }), 0.5, 12);
+    expect(e.space).toBe(false);
+    expect(e.fillDue).toBe(true);
+  });
+  it('lets the lead play without space above manual 0.85', () => {
+    expect(effectiveDynamics(dyn({ space: false }), 0.9).space).toBe(true);
+  });
+  it('forces a fill on the last-of-group downbeat above manual 0.85, regardless of quiet', () => {
+    // bar 3 downbeat = beat 12 (last of a 4-bar group); busy player would normally suppress it
+    expect(effectiveDynamics(dyn({ intensity: 1, fillDue: false }), 0.9, 12).fillDue).toBe(true);
+    expect(effectiveDynamics(dyn({ fillDue: false }), 0.9, 8).fillDue).toBe(false); // bar 2, not last of group
+    expect(effectiveDynamics(dyn({ fillDue: false }), 0.9, 13).fillDue).toBe(false); // not a downbeat
+  });
+});
 
 const BEAT = 0.5; // 120 bpm
 

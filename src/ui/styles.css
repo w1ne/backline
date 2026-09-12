@@ -795,9 +795,12 @@ body {
 
 /* ---------- live: knob ---------- */
 
+/* One row, however many zones the panel grows: a fifth zone used to wrap onto a
+   second row and push the MANUAL panel out of the frame. */
 .row2 {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: 12px;
   min-height: 0;
 }
@@ -959,54 +962,41 @@ body {
 /* ---------- live: manual panel ---------- */
 
 .manual {
-  justify-content: space-between;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-content: start;
+  gap: 6px 9px;
 }
 
-/* Eight controls have to fit the fixed-height panel: tight single-column rows,
-   and the zone gets a wider track in the controls row. */
+/* the MANUAL zone holds eight controls: give it a wider track on desktop */
 @media (min-width: 901px) {
+  .row2 .manual {
+    min-width: 0;
+  }
+  .row2 > .manual {
+    grid-auto-columns: auto;
+  }
   .row2 {
-    grid-template-columns: minmax(0, 0.9fr) minmax(0, 0.9fr) minmax(0, 1fr) minmax(0, 1.2fr);
-  }
-  .manual {
-    gap: 4px;
-    justify-content: start;
-  }
-  .manual .field {
-    min-height: 25px;
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 0.8fr) minmax(0, 1.05fr) minmax(0, 1.05fr) minmax(0, 1.3fr);
   }
   .manual .field label,
   .manual .field .fl {
     white-space: nowrap;
-    font-size: 10px;
   }
-  .manual input[type='number'],
-  .manual select {
-    padding: 2px 4px;
-    font-size: 11px;
-    line-height: 1.3;
-    border-width: 2px;
-    border-radius: 7px;
-    width: 118px;
-    height: auto;
-  }
-  .manual #tempoMode {
-    border-width: 2px;
-    border-radius: 9px;
-  }
-  .manual #tempoMode button {
-    padding: 3px 7px;
-    font-size: 9px;
-  }
-  .manual .morph-key.wide {
-    padding: 2px 8px;
-    font-size: 10px;
-    min-height: 22px;
-  }
-  .manual .hint {
-    display: none;
-  }
+}
+
+/* the zone title, the hints and the band route key span both columns */
+.manual > .zone-label,
+.manual > .hint,
+.manual > .field:has(.morph-key) {
+  grid-column: 1 / -1;
+}
+
+.manual .field {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  min-width: 0;
 }
 
 .field {
@@ -1031,20 +1021,40 @@ body {
   background: var(--panel);
   border: 3px solid var(--ink);
   border-radius: 9px;
-  padding: 5px 6px;
-  width: 92px;
+  padding: 4px 6px;
+  width: 100%;
   min-width: 0;
 }
 
 .manual #tempoMode button {
-  padding: 8px 8px;
-  font-size: 10px;
+  padding: 6px 2px;
+  font-size: 9px;
+  letter-spacing: 0.02em;
 }
 
-#tempoMode-note {
+/* equal halves, so neither LOCKED nor FOLLOW is cut off in the narrow zone */
+.manual .switch {
+  width: 100%;
+  grid-auto-flow: row;
+  grid-template-columns: 1fr 1fr;
+}
+
+#tempoMode-note,
+#morph-note {
   text-transform: uppercase;
-  font-size: 10px;
+  font-size: 9px;
+  line-height: 1;
+  padding-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   flex: 0 0 auto;
+}
+
+.manual .field label,
+.manual .field .fl {
+  font-size: 10px;
+  letter-spacing: 0.1em;
 }
 
 /* ---------- live: YOU strip ---------- */
@@ -1217,6 +1227,7 @@ body {
 
 @media (max-width: 640px) {
   .row2 {
+    grid-auto-flow: row;
     grid-template-columns: 1fr;
   }
 }
@@ -1479,8 +1490,8 @@ body {
 /* the M key sits in the pad's free corner, opposite the on/off LED */
 .morph-key {
   position: absolute;
-  left: 10px;
-  bottom: 10px;
+  left: 12px;
+  top: 12px;
   z-index: 2;
   display: inline-flex;
   align-items: center;
@@ -1502,6 +1513,7 @@ body {
   position: static;
   width: 100%;
   justify-content: space-between;
+  padding: 6px 8px;
 }
 
 .morph-key:active {

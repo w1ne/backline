@@ -231,10 +231,10 @@ describe('the live LCD reports what the band is doing with the player', () => {
     expect(render(dyn({ fillDue: true })).lcd).toBe('LIVE · BAR 3 · FILL');
   });
 
-  it('drives the intensity bar', () => {
-    expect(render(dyn({ intensity: 0 })).intensityWidth).toBe('0%');
-    expect(render(dyn({ intensity: 0.42 })).intensityWidth).toBe('42%');
-    expect(render(dyn({ intensity: 1 })).intensityWidth).toBe('100%');
+  it('drives the intensity bar from the effective intensity, not the raw activity', () => {
+    expect(render(dyn({ intensity: 0.9 }), { effectiveIntensity: 0 }).intensityWidth).toBe('0%');
+    expect(render(dyn({}), { effectiveIntensity: 0.42 }).intensityWidth).toBe('42%');
+    expect(render(dyn({}), { effectiveIntensity: 1 }).intensityWidth).toBe('100%');
   });
 });
 

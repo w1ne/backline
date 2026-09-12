@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { fires, bassPattern, chordPattern, drumPattern, leadPattern, dynVel } from './toolkit';
+import { effectiveDynamics } from '../listener/activity';
 import type { Dynamics } from '../types';
 import { DRUM } from '../types';
 import { mulberry32 } from '../rng';
@@ -67,5 +68,39 @@ describe('drumPattern fills', () => {
   });
   it('does not fill on the last bar of a group while the player is busy', () => {
     expect(p.nextBar(dctx({ fillDue: false, intensity: 0.9 }, 3)).some(e => e.time === 3.5)).toBe(false);
+  });
+});
+
+describe('optional hits scale with the effective intensity', () => {
+  // A single optional step; count how often it fires across many seeds at creativity 0.
+  const step = { t: 0, p: 0.4 };
+  const rate = (intensity: number): number => {
+    let hits = 0;
+    for (let i = 0; i < 400; i++) {
+      if (fires(step, { ...ctx(0, i), dynamics: dyn({ intensity }) })) hits++;
+    }
+    return hits / 400;
+  };
+  it('drops more optional hits when the band is quiet and adds them as it rises', () => {
+    const low = rate(0);
+    const high = rate(1);
+    expect(low).toBeGreaterThan(0.3); // ~0.4 baseline from p alone
+    expect(high).toBeGreaterThan(low + 0.15); // intensity boost adds hits
+  });
+  it('never fires below the creativity-only baseline (no listener behaves as before)', () => {
+    // p=0 step, creativity 0, no dynamics: still never fires.
+    for (let i = 0; i < 50; i++) expect(fires({ t: 0, p: 0 }, ctx(0, i))).toBe(false);
+  });
+});
+
+describe('lead plays without space at a high manual intensity', () => {
+  const p = leadPattern([[{ t: 0, idx: 0, p: 1 }]], 5);
+  it('is silent without space at a moderate manual setting', () => {
+    const d = effectiveDynamics(dyn({ space: false }), 0.5);
+    expect(p.nextBar({ ...ctx(0), dynamics: d })).toEqual([]);
+  });
+  it('answers even without space above manual 0.85', () => {
+    const d = effectiveDynamics(dyn({ space: false }), 0.9);
+    expect(p.nextBar({ ...ctx(0), dynamics: d }).length).toBe(1);
   });
 });
