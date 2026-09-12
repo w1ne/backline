@@ -9,3 +9,7 @@ __pycache__/
 relay/.dev.vars
 COMMIT.pi
 .claude/
+
+# MIR-1K audio (research use; not redistributed) and rendered mixes
+bench/realvoice/data/
+bench/realvoice/out/
