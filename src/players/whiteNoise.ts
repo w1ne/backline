@@ -13,7 +13,7 @@ export class WhiteNoise {
   }
   setEnabled(enabled: boolean) { this.enabled = enabled; this.apply(); }
   private apply() {
-    const value = this.enabled ? this.level : 0;
+    const value = this.enabled ? this.level * this.level * 0.1 : 0;
     if (!this.noise && value > 0) {
       this.gain = new Tone.Gain(0).toDestination();
       this.noise = new Tone.Noise('white').connect(this.gain).start();

@@ -1,7 +1,7 @@
 import type { LiveActions } from '../ui/live';
 import type { Store } from '../ui/state';
 
-export const LOCAL_SOUNDS = ['synth_soft', 'synth_bell', 'synth_pluck', 'synth_pad', 'synth_square', 'synth'] as const;
+export const LOCAL_SOUNDS = ['grand', 'electric_piano_1', 'drawbar_organ', 'acoustic_guitar_nylon', 'string_ensemble_1', 'vibraphone'] as const;
 type Command = { field: 'sound'; value: string } | { field: 'noiseVolume' | 'creativity' | 'bpm' | 'soundStep'; value: number };
 
 export function arturiaCommand(port: string, data: ArrayLike<number>): Command | null {
@@ -11,10 +11,11 @@ export function arturiaCommand(port: string, data: ArrayLike<number>): Command |
     return { field: 'sound', value: LOCAL_SOUNDS[data[1]] };
   if (kind !== 0xb0 || data.length < 3 || data[2] > 127 || data[2] < 0) return null;
   const value = data[2];
-  if (data[1] === 114 && value !== 64 && value !== 0) return { field: 'soundStep', value: value > 64 ? 1 : -1 };
-  if (data[1] === 74) return { field: 'noiseVolume', value: value / 127 };
-  if (data[1] === 71) return { field: 'creativity', value: value / 127 };
-  if (data[1] === 76) return { field: 'bpm', value: Math.round(60 + value * 100 / 127) };
+  const cc = ({28:114,86:74,87:71,89:76} as Record<number, number>)[data[1]] ?? data[1];
+  if (cc === 114 && value !== 64 && value !== 0) return { field: 'soundStep', value: value > 64 ? 1 : -1 };
+  if (cc === 74) return { field: 'noiseVolume', value: value / 127 };
+  if (cc === 71) return { field: 'creativity', value: value / 127 };
+  if (cc === 76) return { field: 'bpm', value: Math.round(60 + value * 100 / 127) };
   return null;
 }
 

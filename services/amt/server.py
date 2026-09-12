@@ -110,6 +110,11 @@ class ChordInference:
         return max(0, root)
 
 
+def plan_window(bar, span_bars=1):
+    """A contiguous future window; Pi uses two bars above 110 BPM."""
+    return ((bar + span_bars) * 4.0, (bar + 2 * span_bars) * 4.0)
+
+
 class Session:
     """Per-connection state: the human note history, plan history (token
     stream), and the AMT scheduler's lookahead/commit bookkeeping.
@@ -187,15 +192,13 @@ class Session:
         the kept window stayed two beats -- which is why most bars came back
         with no notes at all.
         """
-        beats_per_bar = 4.0
-        target_start_beat = (bar + 1) * beats_per_bar
-        target_end_beat = target_start_beat + beats_per_bar
+        target_start_beat, target_end_beat = plan_window(bar, getattr(self, "plan_bars", 1))
 
         # Listen-first (ReaLJam): commit nothing until `listen_beats` of the
         # player's melody have been heard, so the model answers real material
         # instead of guessing from a nearly empty bar. This was parsed from
         # the `start` message and then never used.
-        if target_end_beat <= self.listen_beats:
+        if (bar + 2) * 4.0 <= self.listen_beats:
             log.info("bar %d: listening (target bar ends at beat %.1f, listen=%.1f)",
                      bar, target_end_beat, self.listen_beats)
             return {

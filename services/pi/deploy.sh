@@ -5,7 +5,10 @@ cd "$(dirname "$0")/../.."
 target=${1:-test@192.168.10.1}
 control=${DUET_SSH_CONTROL:-/tmp/duet-pi-%r@%h:%p}
 ssh_args=(-o ControlMaster=auto -o ControlPersist=600 -o "ControlPath=$control")
+node services/pi/fetch-samples.mjs
 npm run build:pi
+mkdir -p dist-pi/samples
+cp -a .pi-samples/. dist-pi/samples/
 ssh "${ssh_args[@]}" "$target" 'mkdir -p /home/test/duet-ai/site/backline /home/test/duet-ai/services/pi'
 tar -C dist-pi -cf - . | ssh "${ssh_args[@]}" "$target" 'tar --warning=no-timestamp -C /home/test/duet-ai/site/backline -xf -'
 tar --exclude=__pycache__ -cf - services/pi | ssh "${ssh_args[@]}" "$target" 'tar --warning=no-timestamp -C /home/test/duet-ai -xf -'

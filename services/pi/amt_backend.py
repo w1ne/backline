@@ -57,13 +57,25 @@ def convert_conv1d(module):
             convert_conv1d(child)
 
 
+def prepare_context(inputs, start):
+    """Pad only the retained musical window, without inventing silence from time zero."""
+    clipped = ops.clip(ops.sort(inputs), 0, start, clip_duration=False, seconds=False)
+    if not clipped:
+        return [TIME_OFFSET + start, DUR_OFFSET, REST]
+    base = ops.min_time(clipped, seconds=False)
+    relative = clipped.copy()
+    relative[::3] = [t - base for t in relative[::3]]
+    padded = ops.pad(relative, start - base)
+    padded[::3] = [t + base for t in padded[::3]]
+    return padded
+
+
 def cached_generate(model, start_time, end_time, inputs, top_p=1.0,
                     accomp_bias=2.0, accomp_only=True, deadline_s=None,
                     min_interval_ticks=1):
     start = int(TIME_RESOLUTION * start_time)
     end = int(TIME_RESOLUTION * end_time)
-    tokens = ops.pad(ops.clip(ops.sort(inputs), 0, start,
-                            clip_duration=False, seconds=False), start)
+    tokens = prepare_context(inputs, start)
     current = ops.max_time(tokens, seconds=False)
     began = time.monotonic()
     cache = None
@@ -188,6 +200,7 @@ async def endpoint(ws: WebSocket):
                     session.reset(bpm, min(16, max(1, float(msg.get('lookaheadBeats', 4)))),
                                   min(4, max(1, float(msg.get('commitBeats', 2)))),
                                   min(32, max(0, float(msg.get('listenBeats', 8)))), .95)
+                    session.plan_bars = 2 if bpm > 110 else 1
                     session.key = msg.get('key')
                 elif kind == 'notes':
                     notes = msg.get('notes', [])[:256]
@@ -200,6 +213,8 @@ async def endpoint(ws: WebSocket):
                     session.space = bool(msg.get('space', False))
                     session.top_p = .75 + min(1, max(0, float(msg.get('creativity', .3)))) * .2
                 elif kind == 'bar':
+                    if int(msg.get('bar', 0)) % session.plan_bars:
+                        continue
                     if not session.human_notes:
                         continue  # Listen until actual performer notes arrive.
                     async with inference_lock:

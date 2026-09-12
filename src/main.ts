@@ -8,6 +8,7 @@ import { startDeviceRuntime } from './device/runtime';
 import { Listener } from './listener/listener';
 import { MidiSource } from './listener/midiSource';
 import { WhiteNoise } from './players/whiteNoise';
+import { LOCAL_SOUNDS } from './device/arturia';
 import { MidiMonitor } from './players/monitor';
 import { MicSource } from './listener/micSource';
 import { Players } from './players/players';
@@ -257,7 +258,9 @@ async function power() {
   listener = new Listener([midi, mic], ['midi', 'mic']);
   listener.setMicMuted(store.state.micMuted);
   monitor = new MidiMonitor(players.rawContext(), store.state.sound);
-  monitor.start().catch(() => undefined);
+  const activeMonitor = monitor;
+  monitor.start().then(() => PI_EDITION ? activeMonitor.preload(LOCAL_SOUNDS) : undefined)
+    .catch(error => store.update({ error: `Keyboard sound: ${String(error)}` }));
   band = makeBand(engine);
   band.set({ genre: store.state.genre, creativity: store.state.creativity });
   wireBand(band);
@@ -425,7 +428,7 @@ store.subscribe(s => {
     },
     setSound: sound => {
       if (sound === store.state.sound) return;
-      monitor?.setSound(sound);
+      monitor?.setSound(sound).catch(error => store.update({error: `Keyboard sound: ${String(error)}`}));
       store.update({ sound });
     },
     changeLatencyMs: band?.changeLatencyMs,

@@ -14,7 +14,7 @@ describe('deployment profiles', () => {
     store.update({ morphOut: 'stale-device', micMuted: true, micIn: 'stale-mic' });
     applyDeviceProfile(store, 'lydia');
     expect(store.state.engine).toBe('amt');
-    expect(store.state.sound).toBe('synth');
+    expect(store.state.sound).toBe('grand');
     expect(store.state.morphOut).toBeNull();
     expect(store.state.micIn).toBeNull();
     expect(store.state.micMuted).toBe(false);

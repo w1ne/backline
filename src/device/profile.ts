@@ -6,7 +6,7 @@ export const PI_EDITION = import.meta.env.VITE_DEVICE === 'lydia';
 export function applyDeviceProfile(store: Store, edition: string): void {
   if (edition !== 'lydia') return;
   store.update({
-    engine: 'amt', sound: 'synth',
+    engine: 'amt', sound: 'grand',
     enabled: { drums: true, bass: true, keys: true, lead: false },
     morphOut: null, routing: { ...MAIN_ROUTING },
     micIn: null, midiIn: null, micMuted: false,

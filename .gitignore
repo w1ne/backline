@@ -2,3 +2,5 @@ node_modules
 dist
 dist-pi
 __pycache__/
+
+.pi-samples/

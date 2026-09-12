@@ -11,6 +11,17 @@ except ModuleNotFoundError as exc:
 
 
 class CacheTests(unittest.TestCase):
+    def test_padding_depends_on_retained_context_not_session_age(self):
+        from anticipation.vocab import TIME_OFFSET, DUR_OFFSET, NOTE_OFFSET
+        inputs = [TIME_OFFSET + 100, DUR_OFFSET + 20, NOTE_OFFSET + 60]
+        early = backend.prepare_context(inputs, 200)
+        shifted = inputs.copy()
+        shifted[0] += 100000
+        late = backend.prepare_context(shifted, 100200)
+        late[::3] = [t - 100000 for t in late[::3]]
+        self.assertEqual(early, late)
+        self.assertLess(len(late), 12)
+
     def test_cached_logits_match_full_prefix(self):
         torch.manual_seed(2)
         model = GPT2LMHeadModel(GPT2Config(vocab_size=32, n_positions=32,
@@ -47,6 +58,11 @@ class CacheTests(unittest.TestCase):
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_fast_tempo_plans_are_contiguous_with_two_bars_of_lead(self):
+        self.assertEqual(backend.shared.plan_window(3), (16.0, 20.0))
+        self.assertEqual(backend.shared.plan_window(2, 2), (16.0, 24.0))
+        self.assertEqual(backend.shared.plan_window(4, 2), (24.0, 32.0))
+
     def test_start_notes_set_bar_contract(self):
         from unittest.mock import patch
         from fastapi.testclient import TestClient
