@@ -1,5 +1,5 @@
 import unittest
-from arrangement import shape_notes, bass_pitch, voice_chord, harmony_classes, early_entry_plan
+from arrangement import fill_silent_window, shape_notes, bass_pitch, voice_chord, harmony_classes, early_entry_plan
 
 
 class ArrangementTest(unittest.TestCase):
@@ -105,3 +105,19 @@ class ArrangementTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class FillSilentWindowTests(unittest.TestCase):
+    def test_empty_window_gets_the_key_only_plan(self):
+        out = fill_silent_window([], 'A minor', 'Am', 8.0, 12.0)
+        self.assertTrue(out)
+        self.assertEqual(sorted(n['beat'] for n in out if n['voice'] == 'bass'), [8.0, 10.0])
+        self.assertTrue(any(n['voice'] == 'keys' for n in out))
+
+    def test_window_with_keys_is_left_alone(self):
+        notes = [{'beat': 8.0, 'pitch': 64, 'dur': 1.0, 'vel': 0.5, 'voice': 'keys'}]
+        self.assertIs(fill_silent_window(notes, 'A minor', 'Am', 8.0, 12.0), notes)
+
+    def test_no_key_no_chord_stays_empty(self):
+        self.assertEqual(fill_silent_window([], None, None, 8.0, 12.0), [])
+

@@ -51,7 +51,7 @@ from amt import (  # noqa: E402
     generate_duet,
 )
 from live_duet import AccompanimentCommitter  # noqa: E402
-from arrangement import shape_notes, bass_pitch, harmony_classes, voice_chord, early_entry_plan
+from arrangement import shape_notes, bass_pitch, harmony_classes, voice_chord, early_entry_plan, fill_silent_window
 from cached import cached_generate  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -326,6 +326,9 @@ class Session:
                     "voice": "bass",
                 }
             )
+
+        # An empty window is a dropout to the singer: fall back to the key-only plan.
+        notes_out = fill_silent_window(notes_out, self.key, self.chord, start_beat, commit_end_beat)
 
         prior_clipped = ops.pad(
             ops.clip(history_before, 0, int(TIME_RESOLUTION * start_s), clip_duration=False, seconds=False),

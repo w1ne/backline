@@ -134,3 +134,17 @@ def harmony_classes(key, chord=None):
     else:
         intervals = [0,2,3,5,7,8,10] if minor else [0,2,4,5,7,9,11]
     return {(root+i)%12 for i in intervals}
+
+
+def fill_silent_window(notes_out, key, chord, start_beat, end_beat):
+    """The model sometimes commits nothing for a window (little human context,
+    or every generated note landed outside it). A band that goes quiet for a
+    bar sounds like a dropout, so when no keys note was committed the window
+    gets the same key-only plan the listen phase uses: bass root on 1 and 3,
+    a voiced chord on 1. Returns `notes_out` untouched when it has keys notes
+    or when no key/chord is known."""
+    if any(n.get("voice") == "keys" for n in notes_out):
+        return notes_out
+    plan = early_entry_plan(key, chord, start_beat, end_beat)
+    return plan if plan else notes_out
+
