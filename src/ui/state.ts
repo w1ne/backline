@@ -30,6 +30,8 @@ export interface AppState {
   tempoMode: 'locked' | 'follow';
   /** play a two-bar count-in click before the band's first bar; default on, persisted */
   countIn: boolean;
+  /** current count-in beat (1..4), or null when no count-in is playing */
+  countInBeat: number | null;
   /** AudioContext.outputLatency (or baseLatency), read once the context is running */
   outputLatencyMs: number | null;
   /** AudioContext still waiting for the first user gesture */
@@ -80,6 +82,7 @@ const defaults: AppState = {
   locked: false,
   tempoMode: 'locked',
   countIn: true,
+  countInBeat: null,
   outputLatencyMs: null,
   audioSuspended: false,
   bar: 0,

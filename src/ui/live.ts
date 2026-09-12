@@ -438,6 +438,7 @@ export function midiLabel(s: AppState): string {
 function lcdText(s: AppState): string {
   if (s.power === 'off') return 'STARTING…';
   if (s.audioSuspended) return 'TAP ANYWHERE TO ENABLE SOUND';
+  if (s.countInBeat != null) return `COUNT-IN · ${[1, 2, 3, 4].map(n => (n === s.countInBeat ? n : '·')).join(' ')}`;
   if (s.locked) {
     const d = s.input.dynamics;
     // What the band is doing with the gap the player left, in the two words that matter.

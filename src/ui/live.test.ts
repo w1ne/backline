@@ -82,6 +82,10 @@ describe('the listening LCD', () => {
   it('drops the estimate once the band is live', () => {
     expect(lcd({ onsets: 12, pendingBpm: 98.4 }, { locked: true, bar: 2 })).toBe('LIVE · BAR 2');
   });
+
+  it('shows the count-in beat ahead of the band entering', () => {
+    expect(lcd({}, { countInBeat: 3 })).toBe('COUNT-IN · · · 3 ·');
+  });
 });
 
 describe('waking the audio context', () => {

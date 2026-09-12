@@ -9,6 +9,7 @@ import { startDeviceRuntime } from './device/runtime';
 import { Listener } from './listener/listener';
 import { MidiSource } from './listener/midiSource';
 import { TapTempo } from './listener/tapTempo';
+import { countInClicks } from './band/countIn';
 import { Drone } from './players/drone';
 import { WhiteNoise } from './players/whiteNoise';
 import { LOCAL_SOUNDS } from './device/arturia';
@@ -81,6 +82,8 @@ let tapCount = 0;
 let disarmFallback: (() => void) | undefined;
 let halfBarTimer: ReturnType<typeof setTimeout> | undefined;
 let beatTimers: ReturnType<typeof setTimeout>[] = [];
+let countInSynth: Tone.Synth | undefined;
+let countInTimers: ReturnType<typeof setTimeout>[] = [];
 
 /** Re-reads the player's activity for one beat and hands the result to the band. Engines only
  *  call back on the bar, so beats 1..3 come off timers re-armed from every downbeat — they
@@ -98,6 +101,42 @@ function tickBeat(beat: number): void {
 function clearBeatTimers(): void {
   beatTimers.forEach(t => clearTimeout(t));
   beatTimers = [];
+}
+
+function clearCountIn(): void {
+  countInTimers.forEach(t => clearTimeout(t));
+  countInTimers = [];
+  store.update({ countInBeat: null });
+}
+
+/** True while the only thing feeding the listener is the mic — no MIDI keyboard is plugged
+ *  in — which is exactly when a singer most needs the two bars of click before the band comes in. */
+function micIsOnlySource(): boolean {
+  const s = listener?.sourceStatus;
+  return !!s && s.mic === 'on' && s.midi !== 'on';
+}
+
+/**
+ * Plays two bars of click on the audio clock (never Tone.now(), so it lines up with
+ * `bandStartAt`, the same time the band's clock is armed to) and drives the LCD's "1 2 3 4".
+ * Returns the time the count-in itself starts, i.e. `bandStartAt` minus two bars.
+ */
+function scheduleCountIn(bpm: number, bandStartAt: number): number {
+  clearCountIn();
+  const ctx = Tone.getContext();
+  countInSynth ??= new Tone.Synth({
+    oscillator: { type: 'square' },
+    envelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.05 },
+  }).toDestination();
+  const clicks = countInClicks(bpm, bandStartAt);
+  for (const { atSec, beat } of clicks) {
+    countInSynth.triggerAttackRelease(beat === 1 ? 'C5' : 'C4', 0.05, atSec);
+    const delayMs = Math.max(0, (atSec - ctx.currentTime) * 1000);
+    countInTimers.push(setTimeout(() => store.update({ countInBeat: beat }), delayMs));
+  }
+  const doneMs = Math.max(0, (bandStartAt - ctx.currentTime) * 1000);
+  countInTimers.push(setTimeout(() => store.update({ countInBeat: null }), doneMs));
+  return clicks[0]?.atSec ?? bandStartAt;
 }
 
 /** Re-decides the chord from what the player just played and hands it to the band.
@@ -311,6 +350,13 @@ async function power() {
       const barLen = 240 / input.bpm;
       let first = db;
       while (first < Tone.now() + 0.1) first += barLen;
+      // A singer with no MIDI keyboard plugged in gets no click track from anywhere else,
+      // so give them two bars of count-in before the band enters, pushing the band's own
+      // first bar back by that much.
+      if (store.state.countIn && micIsOnlySource()) {
+        first += 2 * barLen;
+        scheduleCountIn(input.bpm, first);
+      }
       store.update({ locked: true });
       lastFollowedBpm = input.bpm;
       disarmFallback?.();
@@ -346,6 +392,7 @@ function powerOff() {
   if (halfBarTimer !== undefined) clearTimeout(halfBarTimer);
   halfBarTimer = undefined;
   clearBeatTimers();
+  clearCountIn();
   band?.stop();
   playbackActivity.clear();
   listener?.stop();
