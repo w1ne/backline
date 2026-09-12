@@ -917,19 +917,21 @@ function runVizDemo(bpm: number, startBar: number): void {
     // the player, slightly behind the grid and only in bars already gone by
     for (let i = 0; i < you.length; i++)
       viz!.addNote('you', you[(i + bar) % you.length], at + i * 0.66 * beat + 0.02, 0.3 * beat, 0.9);
-    // and the voice line under those notes: a scoop into each note, a little vibrato on it,
-    // a breath between phrases
+    // and the voice line through those notes: one phrase per bar that scoops into the first
+    // note, glides between the rest with a little vibrato on each, then breathes at the bar end
+    const phraseEnd = you.length - 1;
     for (let i = 0; i < you.length; i++) {
       const target = you[(i + bar) % you.length];
+      const prev = i === 0 ? target - 3 : you[(i - 1 + bar) % you.length];
       const start = at + i * 0.66 * beat + 0.02;
-      for (let k = 0; k <= 8; k++) {
-        const f = k / 8;
-        const t = start + f * 0.5 * beat;
-        const scoop = f < 0.25 ? -(0.25 - f) * 4 : 0;
-        const vib = Math.sin(f * Math.PI * 4) * 0.12;
-        viz!.addPitch(t, target + scoop + vib, f >= 0.25);
+      for (let k = 0; k < 14; k++) {
+        const f = k / 14;
+        const t = start + f * 0.66 * beat;
+        const glide = f < 0.25 ? (prev - target) * Math.pow(1 - f / 0.25, 2) : 0;
+        const vib = f > 0.4 ? Math.sin((f - 0.4) * Math.PI * 5) * 0.2 : 0;
+        viz!.addPitch(t, target + glide + vib, f >= 0.25);
       }
-      viz!.addPitch(start + 0.55 * beat, null, false);
+      if (i === phraseEnd) viz!.addPitch(start + 0.66 * beat, null, false);
     }
   };
 

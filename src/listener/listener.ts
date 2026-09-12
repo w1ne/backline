@@ -137,8 +137,7 @@ export class Listener {
       this.pitch = p;
       const now = this.now();
       if (p && p.stable) {
-        // The key detector hears the pitch as sung, never the snapped one below: snapping to a
-        // provisional key would only ever confirm it. It weighs a pitch by how long it is held
+        // The key detector hears the pitch as sung. It weighs a pitch by how long it is held
         // (frames are ~50 ms apart; a gap after silence is capped so it does not count), and
         // counts each new pitch once toward its minimum-evidence gate.
         if (this.lastPitchAt !== null) this.keyDet.addSustain(p.midi, Math.min(Math.max(0, now - this.lastPitchAt), MAX_PITCH_FRAME_SEC));
@@ -147,11 +146,8 @@ export class Listener {
           this.lastSungMidi = p.midi;
           this.keyDet.addNote(p.midi, 0);
         }
-        // A voice glides through the cracks between scale tones; once the key is known and
-        // the singer is actually staying inside it, land each sung pitch on the nearest scale
-        // tone so a slide does not drag the harmony.
-        const snapKey = this.override.key ?? (this.keyDet.fits ? this.keyDet.key : null);
-        const midi = snapToKey(p.midi, snapKey);
+        // Send the actual performance to accompaniment; do not quantize input harmony.
+        const midi = p.midi;
         if (midi !== this.lastStableMidi) {
           this.lastStableMidi = midi;
           this.chordDet.addNote(midi, now, 0.8);
@@ -268,16 +264,4 @@ export class Listener {
   private emit() { const i = this.input; this.cbs.forEach(c => c(i)); }
 
   private emitStatus() { const s = this.status; this.statusCbs.forEach(c => c(s)); }
-}
-
-const MAJOR = [0, 2, 4, 5, 7, 9, 11];
-const MINOR = [0, 2, 3, 5, 7, 8, 10];
-
-/** Nearest scale tone of `key` to `midi` (ties resolve downward); `midi` itself when no key is known. */
-export function snapToKey(midi: number, key: { root: number; mode: 'major' | 'minor' } | null): number {
-  if (!key) return midi;
-  const scale = key.mode === 'major' ? MAJOR : MINOR;
-  const inKey = (m: number) => scale.includes((((m - key.root) % 12) + 12) % 12);
-  if (inKey(midi)) return midi;
-  return inKey(midi - 1) ? midi - 1 : midi + 1;
 }

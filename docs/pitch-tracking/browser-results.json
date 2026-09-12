@@ -1,0 +1,486 @@
+[
+  {
+    "pitch": {
+      "midi": 57,
+      "cents": 0,
+      "stable": true
+    },
+    "level": 0.057016971849192806,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 57,
+      "cents": 0,
+      "stable": true
+    },
+    "level": 0.05591755534892354,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 57,
+      "cents": 0,
+      "stable": true
+    },
+    "level": 0.056644028249377136,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 57,
+      "cents": 0,
+      "stable": true
+    },
+    "level": 0.05518796065320411,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 57,
+      "cents": 0,
+      "stable": true
+    },
+    "level": 0.055212325375119865,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 57,
+      "cents": 0,
+      "stable": true
+    },
+    "level": 0.05668750472151038,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 57,
+      "cents": 0,
+      "stable": true
+    },
+    "level": 0.05799510672226002,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 57,
+      "cents": 0,
+      "stable": true
+    },
+    "level": 0.05496126767322835,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 57,
+      "cents": 0,
+      "stable": true
+    },
+    "level": 0.0581048962360221,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 57,
+      "cents": 0,
+      "stable": true
+    },
+    "level": 0.05504926520026768,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 57,
+      "cents": 0,
+      "stable": true
+    },
+    "level": 0.05812443212337837,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 57,
+      "cents": 0,
+      "stable": true
+    },
+    "level": 0.057714051887680536,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 57,
+      "cents": 0,
+      "stable": true
+    },
+    "level": 0.05566263913722268,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 69,
+      "cents": 0,
+      "stable": true
+    },
+    "level": 0.057078165728904236,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 69,
+      "cents": 0,
+      "stable": true
+    },
+    "level": 0.05577997889808657,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 69,
+      "cents": 0,
+      "stable": true
+    },
+    "level": 0.05729623219121306,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 69,
+      "cents": 0,
+      "stable": true
+    },
+    "level": 0.05597710910321973,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 69,
+      "cents": 0,
+      "stable": true
+    },
+    "level": 0.057078166853713946,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 69,
+      "cents": 0,
+      "stable": true
+    },
+    "level": 0.05746309622534893,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 69,
+      "cents": 0,
+      "stable": true
+    },
+    "level": 0.05643860538682631,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 69,
+      "cents": 0,
+      "stable": true
+    },
+    "level": 0.055699191394295355,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 69,
+      "cents": 0,
+      "stable": true
+    },
+    "level": 0.05744650797717911,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 69,
+      "cents": 0,
+      "stable": true
+    },
+    "level": 0.05578513104043108,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 69,
+      "cents": 0,
+      "stable": true
+    },
+    "level": 0.057249978971503676,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 69,
+      "cents": 0,
+      "stable": true
+    },
+    "level": 0.05737871257378722,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 69,
+      "cents": 0,
+      "stable": true
+    },
+    "level": 0.05688179981583402,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 69,
+      "cents": 9,
+      "stable": true
+    },
+    "level": 0.05645585241601438,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 69,
+      "cents": 20,
+      "stable": true
+    },
+    "level": 0.056907897454002716,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 69,
+      "cents": 20,
+      "stable": true
+    },
+    "level": 0.0572712542774833,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 69,
+      "cents": 20,
+      "stable": true
+    },
+    "level": 0.05748755948436483,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 69,
+      "cents": 20,
+      "stable": true
+    },
+    "level": 0.05565902238507384,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 69,
+      "cents": 20,
+      "stable": true
+    },
+    "level": 0.05724767905919105,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 69,
+      "cents": 20,
+      "stable": true
+    },
+    "level": 0.056816294108652,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 69,
+      "cents": 20,
+      "stable": true
+    },
+    "level": 0.056364014203326734,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 69,
+      "cents": 20,
+      "stable": true
+    },
+    "level": 0.05720823509094176,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 69,
+      "cents": 20,
+      "stable": true
+    },
+    "level": 0.05746666482588679,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 69,
+      "cents": 20,
+      "stable": true
+    },
+    "level": 0.05748620133898114,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 69,
+      "cents": 20,
+      "stable": true
+    },
+    "level": 0.05583096410505118,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 69,
+      "cents": 20,
+      "stable": true
+    },
+    "level": 0.05691477542147002,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 69,
+      "cents": 20,
+      "stable": true
+    },
+    "level": 0.05642240079333324,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 69,
+      "cents": 20,
+      "stable": true
+    },
+    "level": 0.05596002897316135,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 69,
+      "cents": 20,
+      "stable": true
+    },
+    "level": 0.057263233085566315,
+    "error": null
+  },
+  {
+    "pitch": null,
+    "level": 0.057263233085566315,
+    "error": null
+  },
+  {
+    "pitch": null,
+    "level": 0.057263233085566315,
+    "error": null
+  },
+  {
+    "pitch": null,
+    "level": 0.057263233085566315,
+    "error": null
+  },
+  {
+    "pitch": null,
+    "level": 0.057263233085566315,
+    "error": null
+  },
+  {
+    "pitch": null,
+    "level": 0.057263233085566315,
+    "error": null
+  },
+  {
+    "pitch": null,
+    "level": 0.057263233085566315,
+    "error": null
+  },
+  {
+    "pitch": null,
+    "level": 0.057263233085566315,
+    "error": null
+  },
+  {
+    "pitch": null,
+    "level": 0.057263233085566315,
+    "error": null
+  },
+  {
+    "pitch": null,
+    "level": 0.057263233085566315,
+    "error": null
+  },
+  {
+    "pitch": null,
+    "level": 0.057263233085566315,
+    "error": null
+  },
+  {
+    "pitch": null,
+    "level": 0.057263233085566315,
+    "error": null
+  },
+  {
+    "pitch": null,
+    "level": 0.057263233085566315,
+    "error": null
+  },
+  {
+    "pitch": null,
+    "level": 0.057263233085566315,
+    "error": null
+  },
+  {
+    "pitch": null,
+    "level": 0.057263233085566315,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 57,
+      "cents": 0,
+      "stable": true
+    },
+    "level": 0.05505394677956091,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 57,
+      "cents": 0,
+      "stable": true
+    },
+    "level": 0.055185735328871784,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 57,
+      "cents": 0,
+      "stable": true
+    },
+    "level": 0.05778320913431097,
+    "error": null
+  },
+  {
+    "pitch": {
+      "midi": 57,
+      "cents": 0,
+      "stable": true
+    },
+    "level": 0.055793940790101415,
+    "error": null
+  }
+]
