@@ -20,6 +20,13 @@ class DeviceServerTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 validate_command(dict(type='set',field=field,value=value))
 
+    def test_shared_ui_key_control_is_validated(self):
+        self.assertEqual(validate_command({'type':'key','key':{'root':2,'mode':'minor'}})['key'], {'root':2,'mode':'minor'})
+        self.assertIsNone(validate_command({'type':'key','key':None})['key'])
+        for key in ({'root':12,'mode':'major'}, {'root':True,'mode':'major'}, {'root':2,'mode':'other'}, 'C'):
+            with self.assertRaises(ValueError):
+                validate_command({'type':'key','key':key})
+
     def test_commands_survive_poll_retry_until_acknowledged(self):
         state = DeviceState()
         state.enqueue(dict(type='toggle', instrument='keys'))
@@ -49,12 +56,19 @@ class DeviceHTTPTest(unittest.TestCase):
             root.mkdir()
             (Path(temp) / 'private.txt').write_text('outside')
             (root / 'index.html').write_text('app')
+            (root / 'backline').mkdir()
+            (root / 'backline' / 'index.html').write_text('shared app')
             state = DeviceState()
             server = ThreadingHTTPServer(('127.0.0.1', 0), handler_for(root, state))
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
             base = 'http://127.0.0.1:' + str(server.server_port)
             try:
+                with urlopen(base + '/') as response:
+                    self.assertTrue(response.url.endswith('/backline/?control=pi'))
+                    self.assertEqual(response.read(), b'shared app')
+                with urlopen(base + '/control.html') as response:
+                    self.assertTrue(response.url.endswith('/backline/?control=pi'))
                 request = Request(base + '/api/command', data=json.dumps(dict(type='bpm', bpm=100)).encode(), headers={'Content-Type': 'application/json'})
                 with urlopen(request) as response:
                     self.assertEqual(response.status, 202)

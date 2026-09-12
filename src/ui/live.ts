@@ -1,6 +1,6 @@
 import { GENRES, INSTRUMENTS } from '../types';
 import type { Genre, Instrument } from '../types';
-import { SOUNDS, SOUND_GROUPS, type MonitorSound } from '../players/monitor';
+import { SOUNDS, SOUND_GROUPS, type MonitorSound } from '../players/soundCatalog';
 import { keyName } from '../music/scales';
 import { chordName } from '../listener/chordDetector';
 import { DEBUG } from '../debug';
@@ -15,6 +15,9 @@ const ALL_KEYS: { root: number; mode: 'major' | 'minor' }[] = [
 ];
 
 export interface LiveActions {
+  playbackTarget?: 'Pi' | 'This browser';
+  soundIds?: readonly string[];
+  setPlaying?(playing: boolean): void;
   /** first user gesture: resume the AudioContext the page booted with */
   wake(): void;
   toggle(i: Instrument): void;
@@ -51,6 +54,10 @@ export function renderLive(root: HTMLElement, store: Store, actions: LiveActions
     screen = root.querySelector<HTMLElement>('.screen[data-live]')!;
     screen.classList.add('intro');
     actionsRef.set(screen, actions);
+    if (actions.soundIds) screen.querySelectorAll<HTMLOptionElement>('#sound option').forEach(option => {
+      if (!actions.soundIds!.includes(option.value)) option.remove();
+    });
+    screen.querySelectorAll('#sound optgroup').forEach(group => { if (!group.children.length) group.remove(); });
     wireControls(screen, store);
   } else {
     // Refresh the stored actions reference so listeners wired once below always
@@ -59,6 +66,12 @@ export function renderLive(root: HTMLElement, store: Store, actions: LiveActions
     actionsRef.set(screen, actions);
   }
   update(screen, store.state, actions.changeLatencyMs ?? 0);
+  screen.querySelector<HTMLElement>('#playback-target')!.textContent = `Playback: ${actions.playbackTarget ?? 'This browser'}`;
+  if (actions.setPlaying) {
+    const audio = screen.querySelector<HTMLButtonElement>('#enable-audio')!;
+    audio.hidden = false;
+    audio.textContent = store.state.power === 'on' && !store.state.audioSuspended ? 'Pause sound' : 'Start sound';
+  }
 }
 
 function skeleton(): string {
@@ -68,6 +81,7 @@ function skeleton(): string {
         <div class="bar-top">
           <h1 class="logo">duet<i>.ai</i></h1>
           <span class="pill" id="live-pill"></span>
+          <span class="pill" id="playback-target"></span>
           <button type="button" class="morph-key" id="mic-mute" aria-label="Mute the mic from the listener">MIC<span class="morph-led"></span></button>
         </div>
         <span class="lcd" id="lcd"></span>
@@ -196,7 +210,11 @@ function wireControls(screen: HTMLElement, store: Store): void {
   // "1" means a re-render re-wired it and every click fires N handlers.
   if (DEBUG) screen.dataset.wired = String(Number(screen.dataset.wired ?? 0) + 1);
   const actions = (): LiveActions => actionsRef.get(screen)!;
-  screen.querySelector<HTMLButtonElement>('#enable-audio')!.addEventListener('click', () => actions().wake());
+  screen.querySelector<HTMLButtonElement>('#enable-audio')!.addEventListener('click', () => {
+    const a = actions();
+    if (a.setPlaying) a.setPlaying(store.state.power !== 'on' || store.state.audioSuspended);
+    else a.wake();
+  });
   for (const [id, action] of [['noise-volume', 'setNoiseVolume'], ['drone-volume', 'setDroneVolume']] as const) {
     const input = screen.querySelector<HTMLInputElement>(`#${id}`)!;
     input.addEventListener('input', () => actions()[action]?.(Number(input.value)));

@@ -1,4 +1,4 @@
-import { soundDef } from '../players/monitor';
+import { soundDef } from '../players/soundCatalog';
 import type { LiveActions } from '../ui/live';
 import type { Store } from '../ui/state';
 import { keyName } from '../music/scales';
@@ -6,13 +6,14 @@ import { chordName } from '../listener/chordDetector';
 
 export interface DeviceCommand {
   id: number;
-  type: 'set' | 'toggle' | 'transport' | 'mic' | 'bpm';
+  type: 'set' | 'toggle' | 'transport' | 'mic' | 'bpm' | 'key';
   field?: string;
   value?: unknown;
   instrument?: 'drums' | 'bass' | 'keys' | 'lead';
   playing?: boolean;
   muted?: boolean;
   bpm?: number | null;
+  key?: {root:number;mode:'major'|'minor'} | null;
 }
 
 /** Local control plane for the Pi renderer. Never installed in the public web build. */
@@ -35,6 +36,7 @@ export function startDeviceRuntime(store: Store, actions: () => LiveActions,
         if (c.type === 'toggle' && c.instrument) a.toggle(c.instrument);
         else if (c.type === 'transport') await transport(c.playing === true);
         else if (c.type === 'mic') a.setMicMuted?.(c.muted === true);
+        else if (c.type === 'key') a.setKeyOverride?.(c.key ?? undefined);
         else if (c.type === 'bpm') a.setBpmOverride?.(c.bpm ?? undefined);
         else if (c.type === 'set') {
           if (c.field === 'sound') a.setSound?.(c.value as string);
@@ -51,7 +53,7 @@ export function startDeviceRuntime(store: Store, actions: () => LiveActions,
       await fetch('/api/status', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         signal: AbortSignal.timeout(2000),
-        body: JSON.stringify({ accompanimentStatus: s.accompanimentStatus, modelLatencyMs: s.modelLatencyMs, activeParts: s.activeParts, noiseVolume: s.noiseVolume, droneVolume: s.droneVolume, sound: s.sound, soundLabel: soundDef(s.sound).label, power: s.power, engine: s.engine, genre: s.genre,
+        body: JSON.stringify({ state: s, accompanimentStatus: s.accompanimentStatus, modelLatencyMs: s.modelLatencyMs, activeParts: s.activeParts, noiseVolume: s.noiseVolume, droneVolume: s.droneVolume, sound: s.sound, soundLabel: soundDef(s.sound).label, power: s.power, engine: s.engine, genre: s.genre,
           bpm: s.input.bpm, key: s.input.key ? keyName(s.input.key) : null,
           chord: s.input.chord ? chordName(s.input.chord) : null,
           inputLevel: s.input.inputLevel, locked: s.locked, bar: s.bar,

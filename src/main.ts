@@ -387,6 +387,8 @@ store.subscribe(s => {
       band?.set({ genre: g });
       store.update({ genre: g });
     },
+    playbackTarget: PI_EDITION ? 'Pi' : 'This browser',
+    soundIds: PI_EDITION ? LOCAL_SOUNDS : undefined,
     setEngine: e => {
       const prevEngine = store.state.engine;
       // A fresh pick clears any stale "<ENGINE> OFFLINE" fallback note.
