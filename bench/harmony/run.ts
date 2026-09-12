@@ -58,7 +58,12 @@ function fmtRow(r: Row): string {
   return `| ${r.progression} | ${r.genre} | ${r.change} | ${r.totalMovement} | ${r.maxLeap} | ${r.distinctVoicings} | ${r.coloredChord} |`;
 }
 
-function main() {
+export interface HarmonyBenchResult {
+  rows: Row[];
+  md: string;
+}
+
+export function run(): HarmonyBenchResult {
   const rows: Row[] = [];
 
   for (const prog of PROGRESSIONS) {
@@ -111,11 +116,14 @@ function main() {
   const sep = '|---|---|---|---|---|---|---|';
   const lines = [header, sep, ...rows.map(fmtRow)];
   const table = lines.join('\n');
-
-  console.log(table);
-
-  const out = `# Harmony bench results\n\n${table}\n`;
-  writeFileSync(join(__dirname, 'RESULTS.md'), out);
+  const md = `# Harmony bench results\n\n${table}\n`;
+  return { rows, md };
 }
 
-main();
+function main() {
+  const { md } = run();
+  console.log(md);
+  writeFileSync(join(__dirname, 'RESULTS.md'), md);
+}
+
+if (!process.env.BENCH_GATE) main();
