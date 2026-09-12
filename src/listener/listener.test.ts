@@ -346,4 +346,16 @@ describe('Listener key snap for voice', () => {
     a.pitch!({ midi: 61, cents: 0, stable: true });
     expect(heard).toEqual([61]);
   });
+
+  it('can detect a new sung key from raw pitches instead of the old snapped scale', async () => {
+    const a = new Fake();
+    const l = new Listener([a], ['mic']);
+    await l.start();
+    for (const n of [60, 62, 64, 65, 67, 69, 71, 72, 64, 67, 60]) a.note(n, 0.8, 1);
+    expect(l.input.key).toEqual({ root: 0, mode: 'major' });
+
+    const dMajor = [62, 66, 69, 73];
+    for (let i = 0; i < 12; i++) a.pitch!({ midi: dMajor[i % dMajor.length], cents: 0, stable: true });
+    expect(l.input.key).toEqual({ root: 2, mode: 'major' });
+  });
 });

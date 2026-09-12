@@ -12,7 +12,7 @@ export interface BandEngine {
   setAmount?(amount: number): void;
   /** smallest bpm change worth forwarding in follow mode */
   readonly bpmStep: number;
-  onBar?: (bar: number) => void;
+  onBar?: (bar: number, audioTime?: number) => void;
   /** called with a human-readable message when the engine hits an unrecoverable error */
   onError?: (msg: string) => void;
   /** called once the engine has actually produced/received its first audio block */

@@ -70,14 +70,22 @@ export class PitchTracker {
     this.window.push(frame);
     if (this.window.length > this.opts.holdFrames) this.window.shift();
 
+    const clear = this.window.filter(f => f.clarity >= this.opts.minClarity && Number.isFinite(f.hz) && f.hz > 0);
+    const raw = clear.map(f => f.hz).sort((a, b) => a - b);
+    const rawMedian = raw[Math.floor(raw.length / 2)];
+    // An isolated harmonic error is corrected; a sustained real octave is not.
+    const octaveConfirmed = this.stableHz !== null &&
+      Math.abs(Math.abs(centsBetween(rawMedian, this.stableHz)) - 1200) < 50 &&
+      raw.filter(h => Math.abs(centsBetween(h, rawMedian)) <= 50).length >= Math.min(this.opts.holdFrames, this.opts.minAgree + 1);
     const octaveCorrect = (hz: number): number => {
+      if (octaveConfirmed) return hz;
       if (this.stableHz === null) return hz;
       if (Math.abs(centsBetween(hz * 2, this.stableHz)) < 30) return hz * 2;
       if (Math.abs(centsBetween(hz / 2, this.stableHz)) < 30) return hz / 2;
       return hz;
     };
 
-    const hzs = this.window.map(f => octaveCorrect(f.hz));
+    const hzs = clear.map(f => octaveCorrect(f.hz));
     const sorted = [...hzs].sort((a, b) => a - b);
     const median = sorted[Math.floor(sorted.length / 2)];
     const agree = hzs.filter(h => Math.abs(centsBetween(h, median)) <= 50).length;

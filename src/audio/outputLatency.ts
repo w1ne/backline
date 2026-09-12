@@ -4,6 +4,12 @@ export interface LatencySource {
   baseLatency?: number;
 }
 
+/** Clock conversion has no scheduling lookahead. Only audio playback compensates
+ * hardware latency; note visualization/export retains the captured timestamp. */
+export function performanceAudioOffset(audioNow: number, performanceNow: number): number {
+  return audioNow - performanceNow;
+}
+
 /**
  * outputLatency (seconds from a scheduled sample to the speaker) in milliseconds, falling
  * back to baseLatency where the browser doesn't report it (Safari), then to 0.

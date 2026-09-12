@@ -11,7 +11,8 @@ import { MidiSource } from './listener/midiSource';
 import { TapTempo } from './listener/tapTempo';
 import { countInClicks } from './band/countIn';
 import { SongForm, type Section } from './band/form';
-import { outputLatencyMs } from './audio/outputLatency';
+import { outputLatencyMs, performanceAudioOffset } from './audio/outputLatency';
+import { EndingGate } from './band/endingGate';
 import { Drone } from './players/drone';
 import { WhiteNoise } from './players/whiteNoise';
 import { LOCAL_SOUNDS } from './device/arturia';
@@ -108,7 +109,9 @@ const SECTION_LABEL: Record<Section, string> = {
 /** Re-reads the player's activity for one beat and hands the result to the band. Engines only
  *  call back on the bar, so beats 1..3 come off timers re-armed from every downbeat — they
  *  never drift more than a bar, and a bpm change lands on the next one. */
-function tickBeat(beat: number): void {
+const endingGate = new EndingGate();
+
+function tickBeat(beat: number, barStart?: number): void {
   if (!listener) return;
   // Fold the manual INTENSITY knob into the auto activity before it reaches the band, so every
   // consumer (patterns, Lyria density, ACE/AMT requests) sees the effective value. The store keeps
@@ -124,8 +127,17 @@ function tickBeat(beat: number): void {
     // engine (including the ones with no form of their own) stops here regardless, and the
     // app goes quiet until the singer's next onset re-arms it through the existing
     // first-lock path (see the `!store.state.locked` branch in listener.onChange below).
-    band?.stop();
-    store.update({ locked: false, accompanimentStatus: SECTION_LABEL.ended });
+    const endingBand = band;
+    const endAt = (barStart ?? Tone.now()) + 240 / (store.state.input.bpm ?? 120);
+    endingGate.finishAfter((endAt - players.rawContext().currentTime) * 1000,
+      () => listener?.input.onsets ?? 0, () => {
+        if (band !== endingBand) return;
+        endingBand?.stop();
+        clearBeatTimers();
+        if (halfBarTimer !== undefined) clearTimeout(halfBarTimer);
+        store.update({ locked: false, accompanimentStatus: SECTION_LABEL.ended });
+      });
+    store.update({ accompanimentStatus: SECTION_LABEL.ending });
   } else {
     store.update({ accompanimentStatus: SECTION_LABEL[result.section] });
   }
@@ -247,6 +259,7 @@ function applyRouting(): void {
 /** Starts a band engine and points the visualiser at the same bar grid and, for the
  *  audio engines, the same output. */
 function startBand(b: BandEngine, bpm: number, firstBarAt: number): Promise<void> {
+  endingGate.reset();
   viz?.setClock(firstBarAt, bpm);
   return b.start(bpm, firstBarAt).then(() => {
     viz?.setAnalyser(b.getAnalyser?.());
@@ -271,12 +284,12 @@ function wireBand(b: BandEngine): void {
   b.setAmount?.(store.state.intensity);
   INSTRUMENTS.forEach(i => b.setEnabled(i, store.state.enabled[i]));
   b.routeBand?.(store.state.routing.band, morph?.input);
-  b.onBar = bar => {
+  b.onBar = (bar, time) => {
     store.update({ bar });
     const beat = bar * BEATS_PER_BAR;
     // The downbeat's dynamics have to be in the band's hands before it schedules this bar,
     // and onBar runs ahead of scheduling, so tick the beat first.
-    tickBeat(beat);
+    tickBeat(beat, time);
     tickChord(beat);
     if (halfBarTimer !== undefined) clearTimeout(halfBarTimer);
     clearBeatTimers();
@@ -391,13 +404,10 @@ async function power() {
   // MIDI times are performance.now-based. Read at use, not at boot: the AudioContext clock
   // stands still until the first gesture resumes it.
   //
-  // A note scheduled at audio-clock time T is not actually audible until T + outputLatency
-  // (on phones this can be tens of ms) — so a band scheduled straight off this offset would
-  // always drag behind the singer by that much. Subtracting outputLatency here shifts every
-  // downstream schedule time (firstBarAt, count-in clicks) earlier by the same amount, so
-  // what comes out of the speaker lines up with the listener's wall-clock timestamps instead
-  // of lagging behind them.
-  const perfOffset = (): number => Tone.now() - performance.now() / 1000 - (store.state.outputLatencyMs ?? 0) / 1000;
+  // Keep timestamp conversion on the raw AudioContext clock. Hardware output latency is
+  // applied only when calculating the accompaniment grid below; the visualiser and exported
+  // performer notes should retain their captured time.
+  const perfOffset = (): number => performanceAudioOffset(ctx.currentTime, performance.now() / 1000);
 
   listener = new Listener([midi, mic], ['midi', 'mic']);
   listener.setMicMuted(store.state.micMuted);
@@ -423,11 +433,13 @@ async function power() {
     store.update({ input });
     if (input.key) drone.setRoot(input.key.root);
     if (input.key) band!.set({ key: input.key });
+    if (!store.state.locked && !endingGate.canStart(input.onsets)) return;
     if (input.bpm && !store.state.locked && store.state.paused) {
       store.update({ locked: true });
       lastFollowedBpm = input.bpm;
     } else if (input.bpm && !store.state.locked) {
-      const db = listener!.downbeat! + perfOffset();
+      const db = listener!.downbeat === null ? Tone.now() + 0.1 :
+        listener!.downbeat + perfOffset() - (store.state.outputLatencyMs ?? 0) / 1000;
       const barLen = 240 / input.bpm;
       let first = db;
       while (first < Tone.now() + 0.1) first += barLen;
@@ -468,6 +480,7 @@ async function power() {
 }
 
 function powerOff() {
+  endingGate.reset();
   whiteNoise.setEnabled(false);
   drone.setEnabled(false);
   disarmFallback?.();

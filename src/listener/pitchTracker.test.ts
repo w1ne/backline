@@ -25,6 +25,14 @@ describe('PitchTracker', () => {
     expect(halved!.midi).toBe(57);
   });
 
+  it('accepts an octave change after it persists for a full window', () => {
+    const tr = new PitchTracker();
+    for (let i = 0; i < 6; i++) tr.push(hz(A3));
+    let changed = tr.push(hz(A3 * 2));
+    for (let i = 1; i < 5; i++) changed = tr.push(hz(A3 * 2));
+    expect(changed).toMatchObject({ midi: 69, stable: true });
+  });
+
   it('returns null on silence, after the short dropout hold', () => {
     const tr = new PitchTracker();
     for (let i = 0; i < 6; i++) tr.push(hz(A3));

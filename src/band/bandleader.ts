@@ -50,7 +50,7 @@ export class Bandleader {
     enabled: { drums: false, bass: false, keys: false, lead: false },
     dynamics: { ...IDLE_DYNAMICS },
   };
-  onBarCb?: (bar: number) => void;
+  onBarCb?: (bar: number, audioTime?: number) => void;
   private rng: () => number;
   /** chord changes stamped with the absolute beat they took effect on, ascending */
   private chordLog: { beat: number; chord: Chord }[] = [];
@@ -113,7 +113,7 @@ export class Bandleader {
     this.clock.stop();
   }
   private onBar(bar: number, t: number) {
-    this.onBarCb?.(bar);
+    this.onBarCb?.(bar, t);
     // A toggle can land after this bar's callback was scheduled ahead of time; if the bar's
     // start has already slipped into the past, don't schedule stale notes for it — the
     // instrument simply joins on the next bar.

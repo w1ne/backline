@@ -35,9 +35,17 @@ const FULL_NOTES = 8, CONFIDENCE = 0.6;
 export class KeyDetector {
   private w = new Array(12).fill(0);
   private count = 0;
+  private recent: { pc: number; weight: number }[] = [];
 
   addNote(midi: number, weight = 1): void {
-    this.w[((midi % 12) + 12) % 12] += weight;
+    const pc = ((midi % 12) + 12) % 12;
+    this.w[pc] += weight;
+    this.recent.push({ pc, weight });
+    // Keep the early-lock behavior, but let a later phrase replace the initial key.
+    if (this.recent.length > 32) {
+      const old = this.recent.shift()!;
+      this.w[old.pc] = Math.max(0, this.w[old.pc] - old.weight);
+    }
     this.count++;
   }
 
@@ -55,5 +63,6 @@ export class KeyDetector {
   reset(): void {
     this.w.fill(0);
     this.count = 0;
+    this.recent = [];
   }
 }

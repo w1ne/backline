@@ -27,6 +27,21 @@ const GROUP: Record<DrumKit, Record<DrumName, string>> = {
 type DrumMachineInstance = ReturnType<typeof DrumMachine>;
 type SoundfontInstance = ReturnType<typeof Soundfont>;
 
+/** Each wrapper owns its scheduled voices, while sample buffers remain cached. */
+class SampleHandles {
+  private active = new Set<{ stop?: () => void }>();
+  start(play: (onEnded: () => void) => () => void): void {
+    const handle: { stop?: () => void } = {};
+    this.active.add(handle);
+    try { handle.stop = play(() => this.active.delete(handle)); }
+    catch (error) { this.active.delete(handle); throw error; }
+  }
+  stop(): void {
+    for (const handle of this.active) handle.stop?.();
+    this.active.clear();
+  }
+}
+
 /** One DrumMachine instrument per (context, kit): fetching its sample manifest and buffers
  *  is expensive, so genre/route changes that recreate the SoundSet must reuse it rather than
  *  re-fetching the kit from the CDN every time. */
@@ -69,6 +84,7 @@ function getMelodic(ctx: AudioContext, id: string, make: () => SoundfontInstance
  *  (..., time, velocity). */
 class SampledDrumVoice implements Voice {
   private ready = false;
+  private handles = new SampleHandles();
   constructor(
     private dm: DrumMachineInstance,
     private group: string,
@@ -83,9 +99,10 @@ class SampledDrumVoice implements Voice {
     }
     const time = args[args.length - 2] as number;
     const velocity = (args[args.length - 1] as number) ?? 1;
-    this.dm.start({ note: this.group, time, velocity: Math.max(1, Math.round(velocity * 127)) });
+    this.handles.start(onEnded => this.dm.start({ note: this.group, time, velocity: Math.max(1, Math.round(velocity * 127)), onEnded }));
   }
   dispose(): void {
+    this.handles.stop();
     this.fallback.dispose();
   }
 }
@@ -95,6 +112,7 @@ class SampledDrumVoice implements Voice {
  *  converted back to a MIDI note for the sampled instrument. */
 class SampledMelodicVoice implements Voice {
   private ready = false;
+  private handles = new SampleHandles();
   constructor(
     private inst: SoundfontInstance,
     private fallback: Voice,
@@ -107,9 +125,10 @@ class SampledMelodicVoice implements Voice {
       return;
     }
     const midi = Tone.Frequency(note).toMidi();
-    this.inst.start({ note: midi, time, duration, velocity: Math.max(1, Math.round(velocity * 127)) });
+    this.handles.start(onEnded => this.inst.start({ note: midi, time, duration, velocity: Math.max(1, Math.round(velocity * 127)), onEnded }));
   }
   dispose(): void {
+    this.handles.stop();
     this.fallback.dispose();
   }
 }

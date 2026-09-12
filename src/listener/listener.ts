@@ -40,6 +40,7 @@ export class Listener {
   private pitchNotes: { n: number; t: number }[] = [];
   private pitch: StablePitch | null = null;
   private lastStableMidi: number | null = null;
+  private lastRawMidi: number | null = null;
   /** when a MIDI note last arrived; while none is recent the chord detector runs in melody mode */
   private lastMidiNoteAt = -Infinity;
   private level = 0;
@@ -124,18 +125,23 @@ export class Listener {
       this.pitch = p;
       const now = this.now();
       if (p && p.stable) {
+        // Learn modulation from the actual voice, before any scale correction.
+        if (p.midi !== this.lastRawMidi) {
+          this.keyDet.addNote(p.midi, 0.8);
+          this.lastRawMidi = p.midi;
+        }
         // A voice glides through the cracks between scale tones; once the key is known,
         // land each sung pitch on the nearest scale tone so a slide does not drag the harmony.
         const midi = snapToKey(p.midi, this.override.key ?? this.keyDet.key);
         if (midi !== this.lastStableMidi) {
           this.lastStableMidi = midi;
-          this.keyDet.addNote(midi, 0.8);
           this.chordDet.addNote(midi, now, 0.8);
           this.pitchNotes.push({ n: midi, t: now });
           this.noteCbs.forEach(cb => cb({ midi, velocity: 0.8, timeSec: now }));
         }
-      } else {
+      } else if (!p) {
         this.lastStableMidi = null;
+        this.lastRawMidi = null;
       }
       this.pitchNotes = this.pitchNotes.filter(r => now - r.t < PITCH_NOTES_WINDOW_SEC);
       this.emit();

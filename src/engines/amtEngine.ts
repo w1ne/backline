@@ -57,7 +57,7 @@ export interface NoteSource {
  *  the server got, the more of each bar went silent. */
 export class AmtEngine implements BandEngine {
   readonly bpmStep = 2;
-  onBar?: (bar: number) => void;
+  onBar?: (bar: number, audioTime?: number) => void;
   onError?: (msg: string) => void;
   onFirstBlock?: () => void;
   onConnected?: () => void;
@@ -171,7 +171,7 @@ export class AmtEngine implements BandEngine {
     this.clock.onBar((bar, time) => {
       if (bar === 0) this.firstBarAt = time;
       this.bar = bar;
-      this.onBar?.(bar);
+      this.onBar?.(bar, time);
       this.flushSet();
       this.flushNotes();
       if (this.sendRaw(JSON.stringify({ type: 'bar', bar })) && this.responseTimer === undefined) {

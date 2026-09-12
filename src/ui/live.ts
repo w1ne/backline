@@ -107,7 +107,7 @@ function skeleton(): string {
           <button type="button" id="enable-audio" class="audio-start">Enable sound</button>
         </div>
       </div>
-      <div class="section-heading band-heading"><div><h2>Your band</h2><p id="band-status" role="status"></p></div><span id="model-latency"></span></div>
+      <div class="section-heading band-heading"><p id="band-status" role="status"></p><span id="model-latency"></span></div>
       <div class="readout">
         <div class="ro-tempo"><small>Tempo</small><strong id="ro-tempo">&mdash;</strong></div>
         <div class="ro-side">
@@ -729,4 +729,3 @@ function displayLabel(i: string): string {
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
-

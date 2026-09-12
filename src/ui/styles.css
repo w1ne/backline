@@ -118,7 +118,7 @@ body {
   font-family: var(--display);
   font-size: clamp(34px, 8.5vw, 76px);
   line-height: 0.92;
-  letter-spacing: -0.035em;
+  letter-spacing: -0.01em;
   color: var(--panel);
   text-transform: uppercase;
   margin: 0;
@@ -932,7 +932,7 @@ body {
       )
       border-box,
     var(--panel);
-  box-shadow:
+    box-shadow:
     var(--lift) var(--lift) 0 var(--ink),
     0 0 calc(var(--k) * 26px) rgba(255, 212, 0, calc(var(--k) * 0.85));
   position: relative;
@@ -1736,6 +1736,7 @@ body {
 .instrument-controls input[type=range] { accent-color: var(--ink); width: 100%; min-height: 36px; margin: 0; }
 .instrument-controls output { float: right; }
 .band-heading { padding: 0 4px; }
+.band-heading > p { margin-top: 0; }
 #model-latency { font-size: 11px; line-height: 1.5; }
 .screen[data-live] .readout { flex: none; }
 .screen[data-live] .row2 { grid-auto-flow: row; grid-template-columns: .85fr .85fr 1.2fr 1.2fr; }

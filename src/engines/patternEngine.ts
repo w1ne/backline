@@ -9,11 +9,11 @@ export class PatternEngine implements BandEngine {
   readonly changeLatencyMs = 0;
   readonly bpmStep = 0.5;
   private band: Bandleader;
-  onBar?: (bar: number) => void;
+  onBar?: (bar: number, audioTime?: number) => void;
 
   constructor(players: PlayersLike, patterns: Record<Genre, Record<Instrument, Pattern>>) {
     this.band = new Bandleader(new ToneClock(), players, patterns, Date.now(), () => Tone.getContext().currentTime);
-    this.band.onBarCb = bar => this.onBar?.(bar);
+    this.band.onBarCb = (bar, time) => this.onBar?.(bar, time);
   }
 
   async start(bpm: number, firstBarAt: number): Promise<void> {

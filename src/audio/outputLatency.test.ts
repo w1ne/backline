@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { outputLatencyMs } from './outputLatency';
+import { outputLatencyMs, performanceAudioOffset } from './outputLatency';
 
 describe('outputLatencyMs', () => {
   it('reads outputLatency in seconds and converts to ms', () => {
@@ -21,4 +21,8 @@ describe('outputLatencyMs', () => {
   it('treats a negative value as unreported', () => {
     expect(outputLatencyMs({ outputLatency: -1 })).toBe(0);
   });
+});
+
+it('maps the performance clock from raw audio time without Tone lookahead', () => {
+  expect(performanceAudioOffset(12.25, 10)).toBe(2.25);
 });
