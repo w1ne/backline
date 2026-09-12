@@ -59,6 +59,9 @@ export interface AppState {
   micIn: string | null;
   /** mic gated from the listener (onsets/pitch/level); MIDI is unaffected */
   micMuted: boolean;
+  /** the singer's own mic monitored back through the vocal chain — off by default, and
+   *  only ever actually audible when monitorAllowed() agrees it is safe */
+  voiceMonitor: boolean;
   audioInputs: DeviceOption[];
   /** chosen MIDI input id, or null for "all" */
   midiIn: string | null;
@@ -101,6 +104,7 @@ const defaults: AppState = {
   audioOutputs: [],
   micIn: null,
   micMuted: false,
+  voiceMonitor: false,
   audioInputs: [],
   midiIn: null,
   midiInputs: [],

@@ -1645,8 +1645,14 @@ body {
 }
 
 /* mic mute lives inline in the YOU strip, not pinned to a pad corner like other morph keys */
-#mic-mute {
+#mic-mute,
+#voice-monitor {
   position: static;
+}
+
+.morph-key:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 /* mic mute: red, not pink — muted is a warning, not a routing choice */
