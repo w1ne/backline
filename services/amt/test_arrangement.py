@@ -29,6 +29,10 @@ class ArrangementTest(unittest.TestCase):
         self.assertEqual(len(notes), 1)
         self.assertAlmostEqual(notes[0][0], start)
 
+    def test_instrument_field_passes_through_shaping(self):
+        notes = shape_notes([(2, 5, 40, 60), (2.5, 5, 41, 64), (3, 5, 42, 67)], 2, 4, 0.5, False)
+        self.assertEqual(notes, [(2, 0.5, 40, 60), (2.5, 0.5, 41, 64), (3, 1, 42, 67)])
+
     def test_bass_uses_the_players_harmony_in_a_fixed_bass_register(self):
         self.assertEqual(bass_pitch('Dm', 'C major'), 38)
         self.assertEqual(bass_pitch('F#min7', 'C major'), 42)
