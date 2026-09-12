@@ -3,7 +3,7 @@
 One codebase produces two editions. `npm run build` creates the public web app
 in `dist/`; its existing relay settings and hosting workflow are unchanged.
 `npm run build:pi` creates `dist-pi/` with `.env.pi`: offline synth sounds,
-Patterns by default, physical LYDIA audio, and a local AMT endpoint.
+local AMT by default, physical LYDIA audio, and a local AMT endpoint.
 Never upload `dist-pi/` to public hosting.
 
 ## Use the installed pedal
@@ -80,5 +80,6 @@ port at 100 BPM. The Pi detected the melody/key, the browser received local AMT
 plans and scheduled keys/bass without JavaScript errors or late-note drops in
 that short run. See `docs/pi-amt-benchmark/browser-midi-check.json`. Longer
 concurrent benchmarks did show occasional late or empty windows, so AMT remains
-experimental. Patterns is restored to automatic tempo listening after testing.
+experimental. The Pi now starts with AMT and does not automatically switch to Patterns when
+AMT has no output. Patterns remains a manual option in the controller.
 Wi-Fi reachability and internet HTTPS were checked from the installed Pi.

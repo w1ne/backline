@@ -20,3 +20,7 @@ describe('chooseFallback', () => {
     expect(chooseFallback('patterns', 'anything')).toBeNull();
   });
 });
+
+it('keeps the selected model when automatic pattern fallback is disabled', () => {
+  expect(chooseFallback('amt', 'timeout', false)).toBeNull();
+});

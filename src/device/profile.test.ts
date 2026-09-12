@@ -13,7 +13,7 @@ describe('deployment profiles', () => {
     const store = new Store();
     store.update({ morphOut: 'stale-device', micMuted: true, micIn: 'stale-mic' });
     applyDeviceProfile(store, 'lydia');
-    expect(store.state.engine).toBe('patterns');
+    expect(store.state.engine).toBe('amt');
     expect(store.state.sound).toBe('synth');
     expect(store.state.morphOut).toBeNull();
     expect(store.state.micIn).toBeNull();

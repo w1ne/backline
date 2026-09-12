@@ -182,7 +182,7 @@ function wireBand(b: BandEngine): void {
  *  place at the same bpm. Returns a disposer to call once the engine is confirmed healthy or the
  *  band is torn down for another reason. */
 function armFallback(engine: EngineChoice, b: BandEngine): () => void {
-  const fallback = chooseFallback(engine, '');
+  const fallback = chooseFallback(engine, '', !(PI_EDITION && engine === 'amt'));
   if (!fallback) return () => {};
 
   let settled = false;
