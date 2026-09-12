@@ -4,7 +4,7 @@ import type { AccompPreset, BandState, Chord, Instrument, Key, NoteEvent } from 
 import { IDLE_DYNAMICS } from '../types';
 import { chordName, parseChordName } from '../listener/chordDetector';
 import type { Section } from '../band/form';
-import type { BandEngine } from './engine';
+import type { BandEngine, EngineStatusStats } from './engine';
 import { ToneClock } from '../band/clock';
 import type { ClockLike } from '../band/clockTypes';
 import type { PlayersLike } from '../band/bandleader';
@@ -70,7 +70,7 @@ export class AmtEngine implements BandEngine {
   onError?: (msg: string) => void;
   onFirstBlock?: () => void;
   onConnected?: () => void;
-  onStatus?: (message: string, latencyMs?: number) => void;
+  onStatus?: (message: string, latencyMs?: number, stats?: EngineStatusStats) => void;
   onResponseTiming?: (estimatedMs: number | null) => void;
   private lastResponseCapture = -Infinity;
   private lastResponseEstimate = Infinity;
@@ -568,7 +568,8 @@ export class AmtEngine implements BandEngine {
       clearTimeout(this.responseTimer); this.responseTimer = undefined;
     }
     if (msg.type === 'status' && typeof msg.latencyMs === 'number') {
-      this.onStatus?.('', msg.latencyMs);
+      const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+      this.onStatus?.('', msg.latencyMs, { tooLate: this.tooLate, queueLatencyMs: num(msg.queueLatencyMs), requestAgeMs: num(msg.requestAgeMs) });
     }
     if (msg.type === 'plan') {
       const notes = Array.isArray(msg.notes) ? (msg.notes as PlanNote[]).filter(n =>

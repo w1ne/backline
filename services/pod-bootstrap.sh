@@ -116,9 +116,14 @@ tmux new-session -d -s ace "cd $BACKLINE_DIR/services/acestep && \
   $ACE_REPO_DIR/.venv/bin/python server.py 2>&1 | tee $LOG_DIR/ace.log"
 
 log "start AMT service (tmux: amt, internal port 18081, public via nginx 8081)"
+# Append to the log (a restart used to truncate it and lose every committed= line);
+# rotate once it passes 50 MB.
+if [ -f "$LOG_DIR/amt.log" ] && [ "$(stat -c%s "$LOG_DIR/amt.log")" -gt 52428800 ]; then
+  mv -f "$LOG_DIR/amt.log" "$LOG_DIR/amt.log.1"
+fi
 tmux new-session -d -s amt "cd $BACKLINE_DIR/services/amt && \
   PORT=18081 \
-  $AMT_VENV/bin/python server.py 2>&1 | tee $LOG_DIR/amt.log"
+  $AMT_VENV/bin/python server.py 2>&1 | tee -a $LOG_DIR/amt.log"
 
 log "waiting for services to come up..."
 for i in $(seq 1 60); do

@@ -794,3 +794,22 @@ it('requests the model guitar when the visible lead role is enabled with the def
   engine.stop();
   vi.useRealTimers();
 });
+
+describe('AmtEngine status numbers', () => {
+  beforeEach(() => { FakeWebSocket.instances = []; });
+
+  it('surfaces the server queue/age latencies and the tooLate count with each status', async () => {
+    const players = new FakePlayers();
+    const engine = new AmtEngine(players, new FakeNoteSource(), new FakeClock(), () => 10, () => 10);
+    const status = vi.fn();
+    engine.onStatus = status;
+    engine.setEnabled('keys', true);
+    await engine.start(120, 0);
+    const ws = startedSocket(); ws.open();
+    // beat 1 at 120 bpm is 0.5 s after firstBarAt=0: already past `now`=10, so it is too late.
+    ws.receiveJson({ type: 'plan', notes: [{ beat: 1, pitch: 60, dur: 1, vel: .5, voice: 'keys' }] });
+    ws.receiveJson({ type: 'status', latencyMs: 120, queueLatencyMs: 5.5, requestAgeMs: 130 });
+    expect(status).toHaveBeenLastCalledWith('', 120, { tooLate: 1, queueLatencyMs: 5.5, requestAgeMs: 130 });
+    engine.stop();
+  });
+});

@@ -452,7 +452,10 @@ function update(screen: HTMLElement, s: AppState, changeLatencyMs: number): void
   rec.setAttribute('aria-pressed', String(s.recording));
   screen.querySelector<HTMLElement>('#record-label')!.textContent = s.recording ? 'Save' : 'Rec';
   rec.title = s.recording ? 'Recording… tap to save the MIDI' : 'Tap to record you + the band, tap again to save the MIDI';
-  screen.querySelector<HTMLElement>('#model-latency')!.textContent = [s.responseLatencyMs == null ? '' : `Response ≈${Math.round(s.responseLatencyMs)} ms`, s.modelLatencyMs == null ? '' : `Model ${Math.round(s.modelLatencyMs)} ms`].filter(Boolean).join(' · ');
+  screen.querySelector<HTMLElement>('#model-latency')!.textContent = [s.responseLatencyMs == null ? '' : `Response ≈${Math.round(s.responseLatencyMs)} ms`, s.modelLatencyMs == null ? '' : `Model ${Math.round(s.modelLatencyMs)} ms`,
+    s.queueLatencyMs == null ? '' : `Queue ${Math.round(s.queueLatencyMs)} ms`,
+    s.requestAgeMs == null ? '' : `Age ${Math.round(s.requestAgeMs)} ms`,
+    s.tooLate ? `Late ${s.tooLate}` : ''].filter(Boolean).join(' · ');
   screen.querySelector<HTMLElement>('#output-latency')!.textContent = s.outputLatencyMs == null ? '' : `Output latency: ${Math.round(s.outputLatencyMs)} ms`;
   screen.querySelector<HTMLElement>('#engine-status')!.textContent = s.engineConnecting ? `${ENGINE_NAMES[s.engine]} · connecting…` : s.offlineEngines.includes(s.engine) ? `${ENGINE_NAMES[s.engine]} · offline` : '';
   for (const [id, value] of [['noise', s.noiseVolume], ['drone', s.droneVolume]] as const) {

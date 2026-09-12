@@ -49,7 +49,7 @@ log "unhealthy: ${health_json}"
 
 if [ "$amt_ok" != "true" ]; then
   log "restarting amt tmux session"
-  ssh_pod "tmux kill-session -t amt 2>/dev/null; tmux new-session -d -s amt \"cd /opt/backline/services/amt && PORT=${AMT_PORT} /opt/amt-venv/bin/python server.py 2>&1 | tee /var/log/amt.log\"" || log "amt restart command failed"
+  ssh_pod "tmux kill-session -t amt 2>/dev/null; f=/var/log/amt.log; if [ -f \$f ] && [ \$(stat -c%s \$f) -gt 52428800 ]; then mv -f \$f \$f.1; fi; tmux new-session -d -s amt \"cd /opt/backline/services/amt && PORT=${AMT_PORT} /opt/amt-venv/bin/python server.py 2>&1 | tee -a /var/log/amt.log\"" || log "amt restart command failed"
 fi
 
 if [ "$acestep_ok" != "true" ]; then
