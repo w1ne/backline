@@ -37,8 +37,27 @@ class UpdateTest(unittest.TestCase):
                         DUET_UPDATE_HEALTH_ATTEMPTS='1', PATH=str(self.bin)+':'+os.environ['PATH'],
                         FIXTURE=str(self.root), DUET_INSTALL_RESULT='0')
         self.command('curl', '''#!/usr/bin/env python3
-import os,sys,pathlib,shutil
+import os,sys,pathlib,shutil,json
 r=pathlib.Path(os.environ['FIXTURE']); args=sys.argv[1:]; url=args[-1]
+if '/compare/' in url:
+ if os.environ.get('DUET_COMPARE_STATUS')=='error': sys.exit(22)
+ print(json.dumps({'status':os.environ.get('DUET_COMPARE_STATUS','ahead')})); sys.exit(0)
+if url.endswith('/api/command'):
+ command=json.loads(args[args.index('--data')+1]); packet=json.loads((r/'status').read_text())
+ with (r/'commands.jsonl').open('a') as log: log.write(json.dumps(command)+'\\n')
+ state=packet.setdefault('state',{})
+ if command['type']=='set': state[command['field']]=command['value']
+ elif command['type']=='mic': state['micMuted']=command['muted']
+ elif command['type']=='toggle':
+  role=command['instrument']; state['enabled'][role]=not state['enabled'][role]
+ elif command['type']=='bpm': packet['bpmOverride']=command['bpm']
+ elif command['type']=='key': packet['keyOverride']=command['key']
+ elif command['type']=='accompPreset':
+  presets=set(state.get('accompPresets',[])); preset=command['preset']
+  presets.add(preset) if command['on'] else presets.discard(preset)
+  state['accompPresets']=sorted(presets)
+ if not os.environ.get('DUET_IGNORE_COMMANDS'): (r/'status').write_text(json.dumps(packet))
+ print('{"id":1}'); sys.exit(0)
 if url.endswith('/api/status'):
  print((r/'status').read_text()); sys.exit(0)
 if url.endswith('/COMMIT'): print('b'*40); sys.exit(0)
@@ -55,6 +74,7 @@ if os.environ.get('DUET_START_DURING_DOWNLOAD'): (r/'status').write_text('{"onli
         files = {'COMMIT': commit, 'services/pi/update.py': '# new runner\n', 'site/backline/index.html': 'new', 'services/unoq/version': 'new',
                  'services/pi/install.sh': '''#!/bin/bash
 echo new-unit > "$DUET_UPDATE_SYSTEMD/duet-web.service"
+if [ -f "$FIXTURE/restarted-status" ]; then cp "$FIXTURE/restarted-status" "$FIXTURE/status"; fi
 if [ "${DUET_FAIL_HEALTH:-0}" = 1 ]; then echo '{"online":false}' > "$FIXTURE/status"; fi
 exit "$DUET_INSTALL_RESULT"
 '''}
@@ -175,6 +195,99 @@ exit "$DUET_INSTALL_RESULT"
                     process.kill()
                     process.communicate()
         self.assertEqual((self.home / '.updates/update-runner.py').read_text(), '# redeployed runner\n')
+
+    def preference_fixture(self):
+        settings = dict(sound='acoustic_guitar_nylon', genre='jazz', engine='amt',
+                        creativity=.7, intensity=.4, noiseVolume=0, droneVolume=0,
+                        enabled=dict(drums=False, bass=True, keys=False, lead=True),
+                        micMuted=True, accompPresets=['guitar', 'strings'])
+        packet = dict(online=True, performanceActive=False, audioSuspended=False,
+                      state=settings, bpmOverride=112, keyOverride=dict(root=9, mode='minor'))
+        self.status.write_text(json.dumps(packet))
+        restarted = dict(packet, state=dict(settings, sound='grand', genre='lofi',
+                         creativity=.3, intensity=.5, micMuted=False, accompPresets=['strings'],
+                         enabled=dict(drums=True, bass=True, keys=True, lead=False)),
+                         bpmOverride=None, keyOverride=None)
+        (self.root / 'restarted-status').write_text(json.dumps(restarted))
+        return packet
+
+    def test_preferences_restored_and_verified_before_commit(self):
+        packet = self.preference_fixture()
+        # Runtime/input state must never become replayed preferences.
+        packet['state'].update(power='off', recording=True, input=dict(bpm=190))
+        self.status.write_text(json.dumps(packet))
+        result = self.run_update(); self.assertEqual(result.returncode, 0, result.stderr)
+        observed = json.loads(self.status.read_text())
+        for name in ('sound', 'genre', 'engine', 'creativity', 'intensity', 'enabled', 'micMuted', 'accompPresets'):
+            self.assertEqual(observed['state'][name], packet['state'][name])
+        self.assertEqual(observed['bpmOverride'], 112)
+        self.assertEqual(observed['keyOverride'], packet['keyOverride'])
+        commands = [json.loads(line) for line in (self.root / 'commands.jsonl').read_text().splitlines()]
+        self.assertFalse(any(c.get('type') == 'transport' or c.get('field') in ('input', 'power', 'recording') for c in commands))
+        self.assertEqual(sum(c['type'] == 'toggle' for c in commands), 3)
+        self.assertEqual((self.home / 'COMMIT').read_text().strip(), NEW)
+
+    def test_failed_install_restores_previous_preferences(self):
+        packet = self.preference_fixture()
+        self.env['DUET_INSTALL_RESULT'] = '1'
+        self.assertNotEqual(self.run_update().returncode, 0)
+        self.assert_old()
+        self.assertEqual(json.loads(self.status.read_text())['state'], packet['state'])
+        self.assertFalse((self.home / '.updates/pending.json').exists())
+
+    def test_unconfirmed_preferences_never_advance_commit(self):
+        self.preference_fixture()
+        self.env['DUET_IGNORE_COMMANDS'] = '1'
+        self.assertNotEqual(self.run_update().returncode, 0)
+        self.assert_old()
+        self.assertTrue((self.home / '.updates/pending.json').exists())
+
+    def test_stale_diverged_or_unknown_release_never_installs(self):
+        for comparison in ('behind', 'diverged', 'identical', 'unknown', 'error'):
+            self.env['DUET_COMPARE_STATUS'] = comparison
+            result = self.run_update(); self.assertEqual(result.returncode, 0, result.stderr)
+            self.assert_old()
+            self.assertFalse((self.root / 'systemctl.log').exists())
+            self.assertFalse((self.home / '.updates/releases').exists())
+
+    def test_legacy_missing_overrides_are_not_inferred_from_detected_input(self):
+        packet = self.preference_fixture()
+        del packet['bpmOverride'], packet['keyOverride']
+        packet['state']['input'] = dict(bpm=190, key=dict(root=2, mode='major'))
+        self.status.write_text(json.dumps(packet))
+        result = self.run_update(); self.assertEqual(result.returncode, 0, result.stderr)
+        commands = [json.loads(line) for line in (self.root / 'commands.jsonl').read_text().splitlines()]
+        self.assertFalse(any(c['type'] in ('bpm', 'key') for c in commands))
+
+    def test_old_journal_without_preferences_still_recovers(self):
+        self.archive(extra={'services/pi/install.sh': 'kill -KILL "$PPID"\n'})
+        self.assertNotEqual(self.run_update().returncode, 0)
+        for saved in (self.home / '.updates/backups').glob('*/preferences.json'):
+            saved.unlink()
+        self.status.write_text('{"online":false}')
+        result = self.run_update(); self.assertEqual(result.returncode, 0, result.stderr)
+        self.assert_old()
+        self.assertFalse((self.home / '.updates/pending.json').exists())
+
+    def test_install_stderr_is_visible_before_rollback(self):
+        self.archive(extra={'services/pi/install.sh': 'echo renderer-failed >&2; exit 1\n'})
+        result = self.run_update()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('renderer-failed', result.stdout)
+        self.assertLess(result.stdout.index('renderer-failed'), result.stdout.index('restoring known-good'))
+        self.assert_old()
+
+    def test_explicit_auto_overrides_are_restored_as_null(self):
+        packet = self.preference_fixture()
+        packet.update(bpmOverride=None, keyOverride=None)
+        self.status.write_text(json.dumps(packet))
+        restarted = json.loads((self.root / 'restarted-status').read_text())
+        restarted.update(bpmOverride=180, keyOverride=dict(root=0, mode='major'))
+        (self.root / 'restarted-status').write_text(json.dumps(restarted))
+        result = self.run_update(); self.assertEqual(result.returncode, 0, result.stderr)
+        observed = json.loads(self.status.read_text())
+        self.assertIsNone(observed['bpmOverride'])
+        self.assertIsNone(observed['keyOverride'])
 
     def test_concurrent_run_defers(self):
         with (self.home / '.updates/lock').open('w') as lock:

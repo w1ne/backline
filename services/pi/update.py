@@ -83,7 +83,11 @@ def replace(source, target):
 
 
 def snapshot(backup):
+    captured = status()
+    if captured.get('online') is not True:
+        raise RuntimeError('renderer preferences unavailable before snapshot')
     backup.mkdir(parents=True)
+    persist(backup / 'preferences.json', json.dumps(preferences(captured)))
     for name in PATHS:
         copy(HOME / name, backup / name)
     copy(STATE / 'update-runner.py', backup / 'update-runner.py')
@@ -129,6 +133,7 @@ def rollback(backup):
             run('systemctl', 'disable', name)
         if state['active']:
             run('systemctl', 'start', name)
+    restore_preferences(backup)
     (STATE / 'pending.json').unlink()
     os.sync()
 
@@ -154,6 +159,73 @@ def extract(archive, target, commit):
         raise ValueError('archive COMMIT differs from discovered release; retry next timer')
 
 
+PREFERENCE_SETTINGS = ('engine', 'genre', 'sound', 'creativity', 'intensity',
+                       'noiseVolume', 'droneVolume')
+
+
+def preferences(packet):
+    """Only explicit controls; never replay detected input, transport or recording."""
+    state = packet.get('state')
+    state = state if isinstance(state, dict) else packet
+    out = {name: state[name] for name in (*PREFERENCE_SETTINGS, 'micMuted', 'enabled')
+           if name in state}
+    if isinstance(state.get('accompPresets'), list):
+        out['accompPresets'] = sorted(set(state['accompPresets']))
+    # Explicit null means automatic. Absent means an older renderer cannot tell us.
+    for name in ('bpmOverride', 'keyOverride'):
+        if name in packet:
+            out[name] = packet[name]
+    return out
+
+
+def post_command(command):
+    run('curl', '-fsSL', '--max-time', '3', '-H', 'Content-Type: application/json',
+        '--data', json.dumps(command), 'http://127.0.0.1:8088/api/command')
+
+
+def restore_preferences(backup):
+    saved = backup / 'preferences.json'
+    if not saved.exists():  # Journals made before preference restoration remain recoverable.
+        return
+    wanted = json.loads(saved.read_text())
+    if not wanted:
+        return
+    if not healthy():
+        raise RuntimeError('renderer unavailable for preference restoration')
+    current = preferences(status())
+    for name in PREFERENCE_SETTINGS:
+        if name in wanted and current.get(name) != wanted[name]:
+            post_command({'type': 'set', 'field': name, 'value': wanted[name]})
+    for name, kind, field in (('micMuted', 'mic', 'muted'),
+                              ('bpmOverride', 'bpm', 'bpm'), ('keyOverride', 'key', 'key')):
+        if name in wanted and (name not in current or current[name] != wanted[name]):
+            post_command({'type': kind, field: wanted[name]})
+    for role, enabled in wanted.get('enabled', {}).items():
+        actual = current.get('enabled', {}).get(role)
+        if role not in ('drums', 'bass', 'keys', 'lead') or type(enabled) is not bool or type(actual) is not bool:
+            raise RuntimeError('renderer role preferences unavailable')
+        if actual != enabled:
+            # Send once; never retry a toggle after an ambiguous network outcome.
+            post_command({'type': 'toggle', 'instrument': role})
+    if 'accompPresets' in wanted:
+        if 'accompPresets' not in current:
+            raise RuntimeError('renderer accompaniment preferences unavailable')
+        for preset in sorted(set(wanted['accompPresets']) | set(current['accompPresets'])):
+            on = preset in wanted['accompPresets']
+            if on != (preset in current['accompPresets']):
+                post_command({'type': 'accompPreset', 'preset': preset, 'on': on})
+    attempts = int(os.environ.get('DUET_UPDATE_HEALTH_ATTEMPTS', '30'))
+    for attempt in range(attempts):
+        packet = status()
+        observed = preferences(packet)
+        if (packet.get('online') is True and packet.get('audioSuspended') is False
+                and all(name in observed and observed[name] == value for name, value in wanted.items())):
+            return
+        if attempt < attempts - 1:
+            time.sleep(1)
+    raise RuntimeError('renderer did not confirm restored preferences')
+
+
 def healthy():
     attempts = int(os.environ.get('DUET_UPDATE_HEALTH_ATTEMPTS', '30'))
     for attempt in range(attempts):
@@ -164,6 +236,20 @@ def healthy():
             return True
         if attempt < attempts - 1:
             time.sleep(1)
+    return False
+
+
+def newer_release(current, latest):
+    if not re.fullmatch(r'[0-9a-f]{40}', current):
+        return True  # Unversioned first-install bootstrap has no ancestry to compare.
+    try:
+        comparison = json.loads(run('curl', '-fsSL', '--max-time', '20',
+            f'https://api.github.com/repos/w1ne/duet.ai/compare/{current}...{latest}').stdout)
+        if isinstance(comparison, dict) and comparison.get('status') == 'ahead':
+            return True
+    except (subprocess.CalledProcessError, ValueError):
+        pass
+    print('update: deferred; release ancestry is not confirmed ahead of installed COMMIT')
     return False
 
 
@@ -182,7 +268,7 @@ def update():
     if not re.fullmatch(r'[0-9a-f]{40}', latest):
         raise ValueError('invalid release commit')
     current = (HOME / 'COMMIT').read_text().strip() if (HOME / 'COMMIT').exists() else ''
-    if latest == current:
+    if latest == current or not newer_release(current, latest):
         return
     releases = STATE / 'releases'
     releases.mkdir(exist_ok=True)
@@ -213,13 +299,18 @@ def update():
         run('bash', str(HOME / 'services/pi/install.sh'))
         if not healthy():
             raise RuntimeError('web/renderer health check failed')
+        restore_preferences(backup)
         if (HOME / 'services/pi/update.py').is_file():
             replace(HOME / 'services/pi/update.py', STATE / 'update-runner.py')
         persist(HOME / 'COMMIT', latest + '\n')
         pending.unlink()
         os.sync()
         print('update: installed and validated', latest)
-    except BaseException:
+    except BaseException as error:
+        if isinstance(error, subprocess.CalledProcessError) and error.stderr:
+            print('update: command failed:', error.stderr.strip(), flush=True)
+        else:
+            print('update: installation failed:', str(error), flush=True)
         rollback(backup)
         raise
 
