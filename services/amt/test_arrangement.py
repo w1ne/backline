@@ -1,5 +1,6 @@
+import random
 import unittest
-from arrangement import fill_silent_window, shape_notes, bass_pitch, voice_chord, harmony_classes, early_entry_plan
+from arrangement import fill_silent_window, shape_notes, bass_pitch, voice_chord, harmony_classes, early_entry_plan, plan_window
 
 
 class ArrangementTest(unittest.TestCase):
@@ -103,6 +104,97 @@ class ArrangementTest(unittest.TestCase):
         self.assertIsNone(bass_pitch(None, None))
 
 
+class WildCreativityTests(unittest.TestCase):
+    """A creativity zone above 0.8 unlocks scale tones on strong beats, a
+    higher per-window density cap, and 0.25-grid minimum spacing -- but
+    below 0.8 the output must stay bit-for-bit identical to today's."""
+
+    BELOW_ZONE_RAW = [(i * 0.125, .2, 60 + (i * 5) % 12) for i in range(32)]
+
+    # Captured from the pre-wild-zone implementation; below 0.8, creativity
+    # must keep producing exactly these outputs forever.
+    BELOW_ZONE_EXPECTED = {
+        0: [(0.0, 0.25, 60), (0.25, 0.25, 64), (0.5, 0.25, 64), (0.75, 0.25, 60),
+            (1.0, 0.25, 72), (1.25, 0.25, 69), (1.5, 0.25, 69), (1.75, 0.25, 64),
+            (2.0, 0.25, 64), (2.25, 0.25, 60), (2.5, 0.25, 72), (2.75, 0.25, 69),
+            (3.0, 0.25, 69), (3.25, 0.25, 64), (3.5, 0.25, 64), (3.75, 0.25, 60)],
+        0.3: [(0.0, 0.25, 60), (0.25, 0.25, 64), (0.5, 0.25, 64), (0.75, 0.25, 60),
+              (1.0, 0.25, 72), (1.25, 0.25, 69), (1.5, 0.25, 69), (1.75, 0.25, 64),
+              (2.0, 0.25, 64), (2.25, 0.25, 60), (2.5, 0.25, 72), (2.75, 0.25, 69),
+              (3.0, 0.25, 69), (3.25, 0.25, 64), (3.5, 0.25, 64), (3.75, 0.25, 60)],
+        0.5: [(0.0, 0.25, 60), (0.25, 0.25, 65), (0.5, 0.25, 64), (0.75, 0.25, 60),
+              (1.0, 0.25, 72), (1.25, 0.25, 69), (1.5, 0.25, 69), (1.75, 0.25, 65),
+              (2.0, 0.25, 64), (2.25, 0.25, 60), (2.5, 0.25, 72), (2.75, 0.25, 69),
+              (3.0, 0.25, 69), (3.25, 0.25, 65), (3.5, 0.25, 64), (3.75, 0.25, 60)],
+        0.65: [(0.0, 0.25, 60), (0.25, 0.25, 69), (0.5, 0.25, 69), (0.75, 0.25, 65),
+               (1.0, 0.25, 64), (1.25, 0.25, 62), (1.5, 0.25, 60), (1.75, 0.25, 69),
+               (2.0, 0.25, 69), (2.25, 0.25, 65), (2.5, 0.25, 64), (2.75, 0.25, 62),
+               (3.0, 0.25, 60), (3.25, 0.25, 69), (3.5, 0.25, 69), (3.75, 0.25, 65)],
+        0.79: [(0.0, 0.25, 60), (0.25, 0.25, 69), (0.5, 0.25, 69), (0.75, 0.25, 65),
+               (1.0, 0.25, 64), (1.25, 0.25, 62), (1.5, 0.25, 60), (1.75, 0.25, 69),
+               (2.0, 0.25, 69), (2.25, 0.25, 65), (2.5, 0.25, 64), (2.75, 0.25, 62),
+               (3.0, 0.25, 60), (3.25, 0.25, 69), (3.5, 0.25, 69), (3.75, 0.25, 65)],
+    }
+
+    def test_below_wild_zone_output_is_unchanged(self):
+        for creativity, expected in self.BELOW_ZONE_EXPECTED.items():
+            out = shape_notes(self.BELOW_ZONE_RAW, 0, 4, .5, False, key='C major',
+                               chord='Am', creativity=creativity, amount=1.0)
+            self.assertEqual(out, expected, f"creativity={creativity} changed below the wild zone")
+
+    def test_wild_zone_allows_scale_tones_on_strong_beats(self):
+        chord_tones = harmony_classes('C major', 'Am')
+        scale_tones = harmony_classes('C major')
+        just_below = shape_notes(self.BELOW_ZONE_RAW, 0, 4, .5, False, key='C major',
+                                  chord='Am', creativity=0.79, amount=1.0)
+        wild = shape_notes(self.BELOW_ZONE_RAW, 0, 4, .5, False, key='C major',
+                            chord='Am', creativity=1.0, amount=1.0)
+
+        def strong_beat_pitches(notes):
+            return [p for t, d, p in notes if abs((t / .5) % 1) < 1e-8]
+
+        self.assertTrue(all(p % 12 in chord_tones for p in strong_beat_pitches(just_below)))
+        self.assertTrue(all(p % 12 in scale_tones for p in strong_beat_pitches(wild)))
+        self.assertTrue(any(p % 12 in (scale_tones - chord_tones) for p in strong_beat_pitches(wild)),
+                         "wild zone never actually used a non-chord scale tone on a strong beat")
+
+    def test_wild_zone_raises_density_and_tightens_spacing_to_the_grid(self):
+        raw = [(i * 0.0625, .1, 60 + (i * 7) % 12) for i in range(64)]
+        dense = shape_notes(raw, 0, 4, .5, False, key='C major', chord='Am',
+                             creativity=1.0, amount=0.3)
+        sparse = shape_notes(raw, 0, 4, .5, False, key='C major', chord='Am',
+                              creativity=0.79, amount=0.3)
+        self.assertGreater(len(dense), len(sparse))
+        for current, following in zip(dense, dense[1:]):
+            spacing_beats = round((following[0] - current[0]) / .5, 6)
+            self.assertGreaterEqual(spacing_beats, 0.25 - 1e-8)
+        # At full wild creativity, notes may sit as close as one 0.25-beat grid step apart.
+        gaps = [round((b[0] - a[0]) / .5, 6) for a, b in zip(dense, dense[1:])]
+        self.assertTrue(any(abs(g - 0.25) < 1e-6 for g in gaps))
+
+
+class WildCreativityKeySweepTests(unittest.TestCase):
+    def test_all_surviving_notes_stay_in_key_across_the_full_creativity_sweep(self):
+        rng = random.Random(20240913)
+        key, chord = 'C major', 'Am'
+        scale_tones = harmony_classes(key)
+        creativities = [round(i * 0.1, 1) for i in range(11)]
+        density_at = {}
+        for creativity in creativities:
+            counts = []
+            for window in range(200):
+                raw = [(rng.uniform(0, 4), rng.uniform(0.1, 0.6), rng.randint(40, 90))
+                       for _ in range(rng.randint(4, 24))]
+                out = shape_notes(raw, 0, 4, .5, False, key=key, chord=chord,
+                                   creativity=creativity, amount=0.8)
+                for _, _, pitch in out:
+                    self.assertIn(pitch % 12, scale_tones,
+                                  f"off-key note at creativity={creativity}")
+                counts.append(len(out))
+            density_at[creativity] = sum(counts) / len(counts)
+        self.assertGreater(density_at[1.0], density_at[0.7])
+
+
 if __name__ == '__main__':
     unittest.main()
 
@@ -121,3 +213,41 @@ class FillSilentWindowTests(unittest.TestCase):
     def test_no_key_no_chord_stays_empty(self):
         self.assertEqual(fill_silent_window([], None, None, 8.0, 12.0), [])
 
+
+
+class PlanWindowTests(unittest.TestCase):
+    """The window a cue asks for: `lookahead` beats past the cue, `span` beats long."""
+
+    def test_bar_cue_keeps_the_full_bar_window(self):
+        # An old client's `bar` message: the plan for bar+1 is the four beats one bar ahead.
+        self.assertEqual(plan_window(0.0, 4.0), (4.0, 8.0))
+        self.assertEqual(plan_window(12.0, 4.0), (16.0, 20.0))
+
+    def test_tick_cue_plans_one_half_bar_a_bar_ahead(self):
+        self.assertEqual(plan_window(0.0, 2.0), (4.0, 6.0))
+        self.assertEqual(plan_window(2.0, 2.0), (6.0, 8.0))
+        self.assertEqual(plan_window(10.0, 2.0), (14.0, 16.0))
+
+    def test_consecutive_ticks_tile_the_timeline_without_gaps(self):
+        windows = [plan_window(beat, 2.0) for beat in (0.0, 2.0, 4.0, 6.0)]
+        for (_, end), (start, _) in zip(windows, windows[1:]):
+            self.assertEqual(end, start)
+
+    def test_lookahead_is_configurable(self):
+        self.assertEqual(plan_window(0.0, 2.0, lookahead_beats=2.0), (2.0, 4.0))
+
+
+class HalfBarFallbackTests(unittest.TestCase):
+    def test_early_entry_plan_fits_a_half_bar(self):
+        notes = early_entry_plan('A minor', 'Am', 4.0, 6.0)
+        self.assertTrue(notes)
+        self.assertTrue(all(4.0 <= n['beat'] < 6.0 for n in notes))
+        self.assertTrue(all(n['beat'] + n['dur'] <= 6.0 + 1e-9 for n in notes))
+        bass = [n for n in notes if n['voice'] == 'bass']
+        self.assertEqual(sorted(n['beat'] for n in bass), [4.0, 5.0])
+
+    def test_silent_half_bar_is_filled_within_the_window(self):
+        out = fill_silent_window([], 'A minor', 'Am', 6.0, 8.0)
+        self.assertTrue(out)
+        self.assertTrue(all(6.0 <= n['beat'] < 8.0 for n in out))
+        self.assertTrue(all(n['beat'] + n['dur'] <= 8.0 + 1e-9 for n in out))

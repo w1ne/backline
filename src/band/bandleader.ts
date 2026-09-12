@@ -39,6 +39,9 @@ export interface PlayersLike {
   setBandAmount?(amount: number): void;
   cancelScheduled?(): void;
   schedule(instrument: Instrument, events: NoteEvent[], barStartTime: number, bpm: number): void;
+  /** AMT only: play through a real GM instrument sampler (see gmInstruments.ts) instead of
+   *  the synthesized Keys voice. */
+  scheduleAccompaniment?(gmProgram: number, events: NoteEvent[], barStartTime: number, bpm: number): void;
 }
 
 export class Bandleader {
@@ -69,15 +72,16 @@ export class Bandleader {
     this.rng = mulberry32(seed);
     clock.onBar((bar, t) => this.onBar(bar, t));
   }
-  set(p: Partial<Pick<BandState, 'genre' | 'key' | 'chord' | 'creativity' | 'dynamics'>> & { chordBeat?: number }) {
+  set(p: Partial<Pick<BandState, 'genre' | 'key' | 'chord' | 'creativity' | 'dynamics' | 'source' | 'sungPitchClass'>> & { chordBeat?: number }) {
     const { chordBeat, ...rest } = p;
     Object.assign(this.state, rest);
     if (p.chord) {
       // Genre-color the detected triad right where the chord is stored, so both the
       // patterns (via chordAtBeat) and anything downstream (e.g. the AMT engine's
-      // chordName upstream) see the same colored chord. Uses genre/key as of this call,
-      // which Object.assign above has already applied if this same `set` also changed them.
-      const colored = colorChord(p.chord, this.state.genre, this.state.key);
+      // chordName upstream) see the same colored chord. Uses genre/key/source as of this
+      // call, which Object.assign above has already applied if this same `set` also changed
+      // them.
+      const colored = colorChord(p.chord, this.state.genre, this.state.key, this.state.source);
       this.state.chord = colored;
       this.pushChord(colored, chordBeat);
     }
@@ -123,7 +127,7 @@ export class Bandleader {
     // start has already slipped into the past, don't schedule stale notes for it — the
     // instrument simply joins on the next bar.
     if (t < this.now()) return;
-    const { genre, key, creativity, enabled, dynamics } = this.state;
+    const { genre, key, creativity, enabled, dynamics, source, sungPitchClass } = this.state;
     const barBeat = bar * BEATS_PER_BAR;
     const form = this.songForm.tick({ bar, dynamics, silenceBeats: dynamics.silenceBeats, playerStopped: false });
     const ctx = {
@@ -135,6 +139,9 @@ export class Bandleader {
       chord: this.chordAtBeat(barBeat),
       chordAt: (beat: number) => this.chordAtBeat(barBeat + beat),
       arrangement: form.arrangement,
+      // Below a singer's range, not a global — only meaningful for the keys comp.
+      keysHigh: source === 'mic' ? 60 : undefined,
+      sungPitchClass: source === 'mic' ? sungPitchClass : undefined,
     };
     const spb = this.clock.bpm > 0 ? 60 / this.clock.bpm : 0.5;
     for (const i of INSTRUMENTS)

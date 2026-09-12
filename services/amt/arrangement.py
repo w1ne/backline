@@ -3,6 +3,16 @@ import math
 import re
 
 
+def plan_window(now_beat, span_beats, lookahead_beats=4.0):
+    """The window a cue at `now_beat` asks a plan for: it starts `lookahead_beats`
+    past the cue and runs for `span_beats`. A `bar` cue at beat 4*bar with a
+    four-beat span gives the old one-bar-ahead window ((bar+1)*4, (bar+2)*4);
+    a `tick` cue every two beats with a two-beat span tiles the same timeline
+    in half bars, each still committed one bar ahead."""
+    start = now_beat + lookahead_beats
+    return (start, start + span_beats)
+
+
 def shape_notes(notes, start, end, beat_seconds, space, time_resolution=100, key=None, chord=None, creativity=0.0, amount=0.5):
     creativity = max(0.0, min(1.0, creativity))
     amount = max(0.0, min(1.0, amount))
@@ -11,6 +21,12 @@ def shape_notes(notes, start, end, beat_seconds, space, time_resolution=100, key
     # Amount controls room left for the performer; creativity unlocks subdivisions.
     grid_beats = .25 if creativity >= .65 else .5
     gap_beats = 2.0 if amount < .25 else 1.0 if amount < .7 else .5
+    # Above 0.8, creativity gets a "wild" end: the density cap rises as the
+    # minimum note spacing is pulled down from the amount-driven gap toward
+    # the 0.25-beat grid, reaching exactly the grid at creativity == 1.0.
+    wild = min(1.0, max(0.0, creativity - .8) / .2)
+    if wild:
+        gap_beats = gap_beats - (gap_beats - grid_beats) * wild
     gap = beat_seconds * max(grid_beats, gap_beats * (.5 if space else 1.0))
     # Answer for at most two beats, then hand the phrase back to the performer.
     if space:
@@ -35,7 +51,9 @@ def shape_notes(notes, start, end, beat_seconds, space, time_resolution=100, key
         # Simple phrases stay on chord tones; adventurous phrases can use scale
         # passing tones between strong beats without turning into random chromatic notes.
         strong_beat = abs(grid_index * grid_beats % 1) < 1e-8
-        allowed = scale_tones if space or (creativity >= .5 and not strong_beat) else chord_tones
+        # Wild creativity (>= 0.8) lets strong beats reach for scale tones too;
+        # they still never leave the scale.
+        allowed = scale_tones if space or creativity >= .8 or (creativity >= .5 and not strong_beat) else chord_tones
         if allowed:
             # Keep the model's contour/register while removing clashes against
             # the performer's harmony. Ties prefer the lower supporting note.

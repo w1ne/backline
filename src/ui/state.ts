@@ -1,5 +1,5 @@
 import type { MonitorSound } from '../players/monitor';
-import type { BandInput, Genre, Instrument } from '../types';
+import type { AccompPreset, BandInput, Genre, Instrument } from '../types';
 import { IDLE_DYNAMICS } from '../types';
 import type { SourceStatus } from '../listener/listener';
 import { MAIN_ROUTING, type RoutingState } from '../audio/routing';
@@ -37,6 +37,8 @@ export interface AppState {
   /** AudioContext still waiting for the first user gesture */
   audioSuspended: boolean;
   bar: number;
+  /** wall-clock ms when the current bar started; drives external beat displays (UNO Q hearts) */
+  barStartedAt: number | null;
   error: string | null;
   /** the Record button is armed: notes are being collected for the MIDI download */
   recording: boolean;
@@ -69,6 +71,10 @@ export interface AppState {
   /** chosen MIDI input id, or null for "all" */
   midiIn: string | null;
   midiInputs: DeviceOption[];
+  /** AMT: extra GM instrument presets mixed into the accompaniment, beyond the default strings */
+  accompPresets: AccompPreset[];
+  /** AMT: which accompaniment presets have an audible note right now, for the tiles' LEDs */
+  accompActive: Partial<Record<AccompPreset, boolean>>;
 }
 
 const defaults: AppState = {
@@ -94,6 +100,7 @@ const defaults: AppState = {
   outputLatencyMs: null,
   audioSuspended: false,
   bar: 0,
+  barStartedAt: null,
   error: null,
   recording: false,
   paused: false,
@@ -112,6 +119,8 @@ const defaults: AppState = {
   audioInputs: [],
   midiIn: null,
   midiInputs: [],
+  accompPresets: ['strings'],
+  accompActive: {},
 };
 
 export class Store {
@@ -122,6 +131,7 @@ export class Store {
     sources: { ...defaults.sources },
     offlineEngines: [...defaults.offlineEngines],
     routing: { ...defaults.routing },
+    accompPresets: [...defaults.accompPresets],
   };
   private cbs: ((s: AppState) => void)[] = [];
 

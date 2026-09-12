@@ -3,6 +3,13 @@ export type Genre = 'lofi' | 'funk' | 'rock' | 'jazz';
 export const INSTRUMENTS: Instrument[] = ['drums', 'bass', 'keys', 'lead'];
 export const GENRES: Genre[] = ['lofi', 'funk', 'rock', 'jazz'];
 
+/** AMT-only GM instrument presets the model may mix into its accompaniment. Names match
+ *  services/amt/instruments.py's TOGGLEABLE_PRESETS (bench/amt/amt.py's INSTRUMENT_PRESETS). */
+export type AccompPreset = 'strings' | 'violin' | 'guitar' | 'sax' | 'brass' | 'keys' | 'orchestral' | 'ambient';
+/** The presets exposed as instrument tiles; the others (violin/guitar/brass/keys) are still
+ *  valid server-side but not surfaced in the UI. */
+export const ACCOMP_ROW: AccompPreset[] = ['sax', 'strings', 'orchestral', 'ambient'];
+
 export interface Key { root: number; mode: 'major' | 'minor' } // root 0=C … 11=B
 
 export type ChordQuality = 'maj' | 'min' | 'dom7' | 'min7' | 'maj7' | 'sus4' | 'dim';
@@ -62,6 +69,12 @@ export interface BarContext {
    *  chord pitches), keyed per track so it can be threaded across bars without a module-level
    *  mutable global. Absent means "no memory" — a pattern falls back to a fresh voicing. */
   voicingMemo?: Record<string, number[]>;
+  /** Ceiling (MIDI) the keys comping should stay under, so it sits below a singer's range.
+   *  Absent means "no ceiling" — a pattern uses its own written range. */
+  keysHigh?: number;
+  /** The singer's current stable pitch class (0-11), when the chord was inferred from a mic
+   *  rather than a MIDI keyboard. Absent means "no held note to avoid". */
+  sungPitchClass?: number;
 }
 export interface Pattern { nextBar(ctx: BarContext): NoteEvent[] }
 
@@ -72,6 +85,13 @@ export interface BandState {
   creativity: number;
   enabled: Record<Instrument, boolean>;
   dynamics: Dynamics;
+  /** Where the chord/key came from: a MIDI keyboard (full triads/sevenths are safe) or the
+   *  mic (a sung melody note is present, so comping needs to stay out of its way). Defaults
+   *  to 'midi' when absent. */
+  source?: 'midi' | 'mic';
+  /** The singer's current stable pitch class (0-11), threaded through so comping patterns can
+   *  avoid clashing with the held note. Only meaningful when `source` is 'mic'. */
+  sungPitchClass?: number;
 }
 
 export const DRUM = { kick: 36, snare: 38, hat: 42, openHat: 46, crash: 49 } as const;

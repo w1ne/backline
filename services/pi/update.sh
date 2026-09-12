@@ -2,7 +2,7 @@
 # Runs on the pedal from duet-update.timer: install the newest main build when it differs
 # from the installed one. No Node, no git and no token needed; the release is public.
 set -euo pipefail
-base=https://github.com/w1ne/backline/releases/download/pi-latest
+base=https://github.com/w1ne/duet.ai/releases/download/pi-latest
 home=/home/test/duet-ai
 cd "$home"
 latest=$(curl -fsSL --max-time 20 "$base/COMMIT" | tr -d '[:space:]') || { echo "update: release unreachable"; exit 0; }
@@ -19,6 +19,7 @@ test -f "$tmp/pkg/services/pi/install.sh"
 [ "$(tr -d '[:space:]' < "$tmp/pkg/COMMIT")" = "$latest" ]
 rm -rf site.new && mv "$tmp/pkg/site" site.new
 rm -rf services/pi.new && mv "$tmp/pkg/services/pi" services/pi.new
+rm -rf services/unoq && mv "$tmp/pkg/services/unoq" services/unoq
 rm -rf site.old services/pi.old
 mv site site.old 2>/dev/null || true
 mv site.new site

@@ -133,6 +133,46 @@ describe('Bandleader', () => {
     b.set({ chord: { root: 2, quality: 'min' }, chordBeat: 0 });
     expect(b.state.chord).toEqual({ root: 2, quality: 'min' });
   });
+  it("leaves the chord a plain triad when source is 'mic', even for jazz", () => {
+    const { b } = mk();
+    b.set({ genre: 'jazz', key: { root: 0, mode: 'major' }, source: 'mic' });
+    b.set({ chord: { root: 0, quality: 'maj' }, chordBeat: 0 });
+    expect(b.state.chord).toEqual({ root: 0, quality: 'maj' });
+  });
+  it("threads keysHigh=60 and sungPitchClass into the keys pattern's context when source is 'mic'", () => {
+    const clock = new FakeClock();
+    let seenCtx: BarContext | undefined;
+    const capture: Record<Instrument, Pattern> = {
+      drums: { nextBar: () => [] }, bass: { nextBar: () => [] }, lead: { nextBar: () => [] },
+      keys: { nextBar: ctx => { seenCtx = ctx; return []; } },
+    };
+    const patterns = Object.fromEntries(GENRES.map(g => [g, capture])) as Record<Genre, Record<Instrument, Pattern>>;
+    const players = { schedule: () => {} };
+    const b = new Bandleader(clock, players, patterns, 7);
+    b.start(120, 0);
+    b.set({ genre: 'lofi', source: 'mic', sungPitchClass: 4 });
+    b.setEnabled('keys', true);
+    clock.tick(0);
+    expect(seenCtx?.keysHigh).toBe(60);
+    expect(seenCtx?.sungPitchClass).toBe(4);
+  });
+  it("leaves keysHigh and sungPitchClass undefined when source is 'midi'", () => {
+    const clock = new FakeClock();
+    let seenCtx: BarContext | undefined;
+    const capture: Record<Instrument, Pattern> = {
+      drums: { nextBar: () => [] }, bass: { nextBar: () => [] }, lead: { nextBar: () => [] },
+      keys: { nextBar: ctx => { seenCtx = ctx; return []; } },
+    };
+    const patterns = Object.fromEntries(GENRES.map(g => [g, capture])) as Record<Genre, Record<Instrument, Pattern>>;
+    const players = { schedule: () => {} };
+    const b = new Bandleader(clock, players, patterns, 7);
+    b.start(120, 0);
+    b.set({ genre: 'lofi', source: 'midi', sungPitchClass: 4 });
+    b.setEnabled('keys', true);
+    clock.tick(0);
+    expect(seenCtx?.keysHigh).toBeUndefined();
+    expect(seenCtx?.sungPitchClass).toBeUndefined();
+  });
   it('falls back to the key tonic triad when no chord was ever set', () => {
     const { clock, calls, b } = mk();
     b.set({ key: { root: 9, mode: 'minor' } });
