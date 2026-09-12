@@ -85,7 +85,6 @@ export class AmtEngine implements BandEngine {
   };
   private accompPresets: AccompPreset[] = [];
   private accompBias = 2.0;
-  private temperature = 1.0;
   private ws?: WebSocket;
   private clock: ClockLike;
   private bpm = 0;
@@ -166,7 +165,6 @@ export class AmtEngine implements BandEngine {
         listenBeats: LISTEN_BEATS,
         accompInstruments: this.accompPresets,
         accompBias: this.accompBias,
-        temperature: this.temperature,
       });
       this.queueSet();
       this.flushSet();
@@ -261,10 +259,9 @@ export class AmtEngine implements BandEngine {
     this.queueSet();
   }
 
-  setAccompaniment(presets: AccompPreset[], accompBias: number, temperature: number): void {
+  setAccompaniment(presets: AccompPreset[], accompBias: number): void {
     this.accompPresets = presets;
     this.accompBias = accompBias;
-    this.temperature = temperature;
     this.queueSet();
   }
 
@@ -287,7 +284,6 @@ export class AmtEngine implements BandEngine {
       intensity: Math.round(this.state.dynamics.intensity * 5) / 5,
       accompInstruments: this.accompPresets,
       accompBias: this.accompBias,
-      temperature: this.temperature,
     });
     if (payload === this.lastSetPayload) {
       // Back to what the server already has — drop anything queued in between.

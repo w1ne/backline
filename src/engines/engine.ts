@@ -11,8 +11,9 @@ export interface BandEngine {
   setBpm(bpm: number): void;
   setAmount?(amount: number): void;
   /** AMT only: which GM instrument presets to mix into the accompaniment (beyond the default
-   *  string ensemble), and the model's own sampling knobs. */
-  setAccompaniment?(presets: AccompPreset[], accompBias: number, temperature: number): void;
+   *  string ensemble) and the instrument-preference sampling bias. Temperature is derived
+   *  server-side from creativity. */
+  setAccompaniment?(presets: AccompPreset[], accompBias: number): void;
   /** smallest bpm change worth forwarding in follow mode */
   readonly bpmStep: number;
   onBar?: (bar: number) => void;

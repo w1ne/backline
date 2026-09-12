@@ -23,8 +23,8 @@ import { INSTRUMENTS, IDLE_DYNAMICS } from './types';
 import type { AccompPreset } from './types';
 import { GM_INSTRUMENTS } from './players/gmInstruments';
 
-/** AMT's instrument-preference sampling bias; not user-adjustable (temperature is — via the
- *  Creativity knob, see setCreativity below). */
+/** AMT's instrument-preference sampling bias; not user-adjustable. The server derives its
+ *  sampling temperature from the Creativity knob. */
 const ACCOMP_BIAS = 2.0;
 import { effectiveDynamics } from './listener/activity';
 import type { BandEngine } from './engines/engine';
@@ -277,7 +277,7 @@ function makeBand(engine: EngineChoice): BandEngine {
 
 function wireBand(b: BandEngine): void {
   b.setAmount?.(store.state.intensity);
-  b.setAccompaniment?.(store.state.accompPresets, ACCOMP_BIAS, store.state.creativity);
+  b.setAccompaniment?.(store.state.accompPresets, ACCOMP_BIAS);
   INSTRUMENTS.forEach(i => b.setEnabled(i, store.state.enabled[i]));
   b.routeBand?.(store.state.routing.band, morph?.input);
   b.onBar = bar => {
@@ -620,15 +620,13 @@ store.subscribe(s => {
     },
     setCreativity: c => {
       band?.set({ creativity: c });
-      // The AMT model has no separate "temperature" control in the UI — creativity drives it.
-      band?.setAccompaniment?.(store.state.accompPresets, ACCOMP_BIAS, c);
       store.update({ creativity: c });
     },
     toggleAccompPreset: (preset: AccompPreset, on: boolean) => {
       const presets = on
         ? [...store.state.accompPresets, preset]
         : store.state.accompPresets.filter(p => p !== preset);
-      band?.setAccompaniment?.(presets, ACCOMP_BIAS, store.state.creativity);
+      band?.setAccompaniment?.(presets, ACCOMP_BIAS);
       store.update({ accompPresets: presets });
     },
     setIntensity: i => {
