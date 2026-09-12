@@ -1,5 +1,5 @@
 import * as Tone from 'tone';
-import type { BandState, Chord, Instrument, Key, NoteEvent } from '../types';
+import type { AccompPreset, BandState, Chord, Instrument, Key, NoteEvent } from '../types';
 import { IDLE_DYNAMICS } from '../types';
 import { chordName, parseChordName } from '../listener/chordDetector';
 import type { Section } from '../band/form';
@@ -37,6 +37,9 @@ interface PlanNote {
   dur: number;
   vel: number;
   voice: 'keys' | 'bass';
+  /** GM program number the server generated this note for (voice:'keys' only); see
+   *  src/players/gmInstruments.ts. Absent plays through the plain Keys voice. */
+  gmInstr?: number;
 }
 
 /** Minimal notifier interface the engine needs from the app's Listener, kept narrow so
@@ -83,6 +86,8 @@ export class AmtEngine implements BandEngine {
     enabled: { drums: false, bass: false, keys: false, lead: false },
     dynamics: { ...IDLE_DYNAMICS },
   };
+  private accompPresets: AccompPreset[] = [];
+  private accompBias = 2.0;
   private ws?: WebSocket;
   private clock: ClockLike;
   private bpm = 0;
@@ -161,6 +166,8 @@ export class AmtEngine implements BandEngine {
         lookaheadBeats: LOOKAHEAD_BEATS,
         commitBeats: COMMIT_BEATS,
         listenBeats: LISTEN_BEATS,
+        accompInstruments: this.accompPresets,
+        accompBias: this.accompBias,
       });
       this.queueSet();
       this.flushSet();
@@ -255,6 +262,12 @@ export class AmtEngine implements BandEngine {
     this.queueSet();
   }
 
+  setAccompaniment(presets: AccompPreset[], accompBias: number): void {
+    this.accompPresets = presets;
+    this.accompBias = accompBias;
+    this.queueSet();
+  }
+
   /** The store re-emits on every update, and `set()` used to put a frame on the wire for each
    *  one — 1255 `set` messages in 40 seconds of playing. Send only when the payload actually
    *  differs from what the server was last told, and never more than once per
@@ -272,6 +285,8 @@ export class AmtEngine implements BandEngine {
       instruments: { ...this.state.enabled },
       // Dynamics hint; the manual amount also scales local playback directly.
       intensity: Math.round(this.state.dynamics.intensity * 5) / 5,
+      accompInstruments: this.accompPresets,
+      accompBias: this.accompBias,
       silenceBeats: this.state.dynamics.silenceBeats,
     });
     if (payload === this.lastSetPayload) {
@@ -385,7 +400,9 @@ export class AmtEngine implements BandEngine {
         continue;
       }
       const barNum = Math.floor(n.beat / BEATS_PER_BAR);
-      const key = `${barNum}:${n.voice}`;
+      // Notes on the 'keys' voice with different gmInstr are different real instruments
+      // (see gmInstruments.ts) and must reach separate Players.scheduleAccompaniment() calls.
+      const key = `${barNum}:${n.voice}:${n.gmInstr ?? ''}`;
       const list = byBarVoice.get(key) ?? [];
       list.push(n);
       byBarVoice.set(key, list);
@@ -393,7 +410,7 @@ export class AmtEngine implements BandEngine {
     this.pending = keep;
 
     for (const [key, list] of byBarVoice) {
-      const [barNumStr, voice] = key.split(':') as [string, 'keys' | 'bass'];
+      const [barNumStr, voice, gmInstrStr] = key.split(':') as [string, 'keys' | 'bass', string];
       const barNum = Number(barNumStr);
       const barStart = this.firstBarAt + barNum * barSeconds;
       const events: NoteEvent[] = list.map(n => ({
@@ -402,7 +419,12 @@ export class AmtEngine implements BandEngine {
         duration: n.dur,
         velocity: n.vel * this.velocityAmount,
       }));
-      this.players.schedule(voice, events, barStart, this.bpm);
+      const gmInstr = gmInstrStr ? Number(gmInstrStr) : undefined;
+      if (voice === 'keys' && gmInstr !== undefined && this.players.scheduleAccompaniment) {
+        this.players.scheduleAccompaniment(gmInstr, events, barStart, this.bpm);
+      } else {
+        this.players.schedule(voice, events, barStart, this.bpm);
+      }
       if (!this.gotFirstNotes) {
         this.gotFirstNotes = true;
         this.onFirstBlock?.();

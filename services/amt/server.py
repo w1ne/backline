@@ -44,7 +44,6 @@ from anticipation.vocab import TIME_OFFSET  # noqa: E402
 
 from amt import (  # noqa: E402
     MELODY_INSTR,
-    STRING_ENSEMBLE_ACCOMP_INSTRS,
     ACCOMP_BIAS,
     make_event,
     parse_events,
@@ -55,6 +54,7 @@ from arrangement import (  # noqa: E402
     shape_notes, bass_pitch, harmony_classes, voice_chord, early_entry_plan, fill_silent_window, plan_window,
 )
 from cached import cached_generate  # noqa: E402
+from instruments import resolve as resolve_instruments, TOGGLEABLE_PRESETS  # noqa: E402,F401
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("amt-server")
@@ -141,7 +141,7 @@ class Session:
         self.reset(bpm=100.0, lookahead_beats=4.0, commit_beats=2.0, listen_beats=8.0, top_p=0.95)
 
     def reset(self, bpm, lookahead_beats, commit_beats, listen_beats, top_p,
-              accomp_instrs=STRING_ENSEMBLE_ACCOMP_INSTRS):
+              instrument_names=None, accomp_bias=ACCOMP_BIAS):
         self.bpm = bpm
         self.beat_s = 60.0 / bpm
         self.lookahead_beats = lookahead_beats
@@ -153,11 +153,13 @@ class Session:
         self.temperature = 1.02
         # Default to the validated string-ensemble preset rather than a lone violin: a single
         # instrument was consistently too sparse against a real, densely-played performance to be
-        # heard at all (see bench/amt/SETUP.md in the Music repo this was ported from). The three
-        # instruments are independent voices that may overlap each other -- AccompanimentCommitter
-        # below only keeps each individual instrument monophonic -- and all three get flattened
-        # into the single "keys" output voice the client plays, same as before.
-        self.accomp_instrs = accomp_instrs
+        # heard at all (see bench/amt/SETUP.md in the Music repo this was ported from). Every
+        # selected instrument is an independent voice that may overlap the others --
+        # AccompanimentCommitter below only keeps each individual instrument monophonic -- and
+        # they all flatten into the single "keys" output voice the client plays.
+        self.instrument_names = list(instrument_names or [])
+        self.accomp_instrs = resolve_instruments(self.instrument_names)
+        self.accomp_bias = accomp_bias
 
         self.history: list[int] = []
         self.committer = AccompanimentCommitter(self.history)
@@ -176,6 +178,11 @@ class Session:
         self.top_p = 0.85 + self.creativity * 0.14
         self.temperature = 0.9 + self.creativity * 0.4
         self.amount = max(0.0, min(1.0, float(msg.get("amount", self.amount))))
+        if "accompInstruments" in msg:
+            self.instrument_names = list(msg["accompInstruments"] or [])
+            self.accomp_instrs = resolve_instruments(self.instrument_names)
+        if "accompBias" in msg:
+            self.accomp_bias = float(msg["accompBias"])
 
     def add_human_notes(self, notes):
         for n in notes:
@@ -272,9 +279,9 @@ class Session:
         deadline_s = GENERATION_BUDGET * (commit_end_beat - start_beat) * self.beat_s
         t0 = time.monotonic()
         result = generate_duet(
-            self.model, start_s, end_s, history_before, self.accomp_instrs, self.top_p, ACCOMP_BIAS,
-            deadline_s=deadline_s,
+            self.model, start_s, end_s, history_before, self.accomp_instrs, self.top_p, self.accomp_bias,
             temperature=self.temperature,
+            deadline_s=deadline_s,
             # The committed voice is monophonic and the app plays to a beat grid, so a
             # sixteenth note is the shortest onset gap worth sampling.
             min_interval_ticks=max(1, round(self.beat_s / 4.0 * TIME_RESOLUTION)),
@@ -314,7 +321,7 @@ class Session:
         # pitch to -- bass (below) stays a single note per onset, monophonic.
         chord_tones = harmony_classes(self.key, self.chord) or harmony_classes(self.key)
         notes_out = []
-        for onset_s, dur_s, _instr, pitch in committed:
+        for onset_s, dur_s, instr, pitch in committed:
             for voiced_pitch in voice_chord(pitch, chord_tones, want=3):
                 notes_out.append(
                     {
@@ -323,6 +330,7 @@ class Session:
                         "dur": dur_s / self.beat_s,
                         "vel": 0.65 if self.space else 0.5,
                         "voice": "keys",
+                        "gmInstr": instr,
                     }
                 )
 
@@ -392,6 +400,8 @@ async def websocket_endpoint(websocket: WebSocket):
                         commit_beats=float(msg.get("commitBeats", 2.0)),
                         listen_beats=float(msg.get("listenBeats", 8.0)),
                         top_p=0.95,
+                        instrument_names=msg.get("accompInstruments"),
+                        accomp_bias=float(msg.get("accompBias", ACCOMP_BIAS)),
                     )
                     session.key = msg.get("key")
                     # Tells a new client it may cue with `tick` every commitBeats instead of
