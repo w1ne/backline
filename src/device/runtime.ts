@@ -36,26 +36,39 @@ export function startDeviceRuntime(store: Store, actions: () => LiveActions,
       const commands = packet.commands;
       for (const c of commands) {
         if (c.id <= ack) continue;
-        const a = actions();
-        if (c.type === 'toggle' && c.instrument) a.toggle(c.instrument);
-        else if (c.type === 'accompPreset' && c.preset && typeof c.on === 'boolean') {
-          if (store.state.accompPresets.includes(c.preset) !== c.on) a.toggleAccompPreset?.(c.preset, c.on);
+        try {
+          const a = actions();
+          if (c.type === 'toggle' && c.instrument) a.toggle(c.instrument);
+          else if (c.type === 'accompPreset' && c.preset && typeof c.on === 'boolean') {
+            if (store.state.accompPresets.includes(c.preset) !== c.on) a.toggleAccompPreset?.(c.preset, c.on);
+          }
+          else if (c.type === 'transport') await transport(c.playing === true);
+          else if (c.type === 'mic') a.setMicMuted?.(c.muted === true);
+          else if (c.type === 'key') a.setKeyOverride?.(c.key ?? undefined);
+          else if (c.type === 'bpm') a.setBpmOverride?.(c.bpm ?? undefined);
+          else if (c.type === 'set') {
+            if (c.field === 'sound') a.setSound?.(c.value as string);
+            if (c.field === 'noiseVolume') a.setNoiseVolume?.(c.value as number);
+            if (c.field === 'droneVolume') a.setDroneVolume?.(c.value as number);
+            if (c.field === 'genre') a.setGenre(c.value as Parameters<LiveActions['setGenre']>[0]);
+            if (c.field === 'engine') a.setEngine(c.value as Parameters<LiveActions['setEngine']>[0]);
+            if (c.field === 'creativity') a.setCreativity(c.value as number);
+            if (c.field === 'intensity') a.setIntensity?.(c.value as number);
+          }
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : String(error);
+          store.update({ error: `Device ${c.type} failed: ${detail.slice(0, 160)}` });
+        } finally {
+          // A failed action may have partially changed state. Never replay a toggle
+          // or transport action whose outcome is ambiguous.
+          ack = c.id;
         }
-        else if (c.type === 'transport') await transport(c.playing === true);
-        else if (c.type === 'mic') a.setMicMuted?.(c.muted === true);
-        else if (c.type === 'key') a.setKeyOverride?.(c.key ?? undefined);
-        else if (c.type === 'bpm') a.setBpmOverride?.(c.bpm ?? undefined);
-        else if (c.type === 'set') {
-          if (c.field === 'sound') a.setSound?.(c.value as string);
-          if (c.field === 'noiseVolume') a.setNoiseVolume?.(c.value as number);
-          if (c.field === 'droneVolume') a.setDroneVolume?.(c.value as number);
-          if (c.field === 'genre') a.setGenre(c.value as Parameters<LiveActions['setGenre']>[0]);
-          if (c.field === 'engine') a.setEngine(c.value as Parameters<LiveActions['setEngine']>[0]);
-          if (c.field === 'creativity') a.setCreativity(c.value as number);
-          if (c.field === 'intensity') a.setIntensity?.(c.value as number);
-        }
-        ack = c.id;
       }
+    } catch (error) {
+      console.warn('Pi commands:', error);
+    }
+    // Command retrieval and individual actions cannot suppress the heartbeat.
+    try {
       const s = store.state;
       await fetch('/api/status', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -70,7 +83,7 @@ export function startDeviceRuntime(store: Store, actions: () => LiveActions,
         }),
       });
     } catch (error) {
-      console.warn('Pi control:', error);
+      console.warn('Pi status:', error);
     } finally {
       if (!stopped) timer = setTimeout(run, 200);
     }
