@@ -6,6 +6,7 @@ import {
   chordName,
   chordScale,
   pitchClassWeights,
+  chordTones,
   scoreChord,
   tonicTriad,
 } from './chordDetector';
@@ -158,5 +159,21 @@ describe('chordName', () => {
   it('names every quality', () => {
     expect(['maj', 'min', 'dom7', 'min7', 'maj7', 'sus4', 'dim'].map(q => chordName({ root: 9, quality: q } as Chord)))
       .toEqual(['A', 'Am', 'A7', 'Am7', 'Amaj7', 'Asus4', 'Adim']);
+  });
+});
+
+describe('chordScale degenerate gaps', () => {
+  it('never leaves the key for a chord whose tones the key already contains', () => {
+    const inKey = new Set([0, 2, 4, 5, 7, 9, 11]);
+    for (const quality of ['maj', 'min', 'dom7', 'min7', 'maj7', 'sus4', 'dim'] as const) {
+      for (let root = 0; root < 12; root++) {
+        const chord: Chord = { root, quality };
+        const own = new Set(chordTones(chord));
+        for (const s of chordScale(C_MAJOR, chord)) {
+          const pc = (root + s) % 12;
+          expect(inKey.has(pc) || own.has(pc), `${chordName(chord)} degree ${s} -> ${pc}`).toBe(true);
+        }
+      }
+    }
   });
 });
