@@ -1,0 +1,10 @@
+[Unit]
+Description=duet.ai install the newest main build from GitHub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/home/test/duet-ai
+ExecStart=/bin/bash /home/test/duet-ai/services/pi/update.sh

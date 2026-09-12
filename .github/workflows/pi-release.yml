@@ -1,0 +1,36 @@
+name: pi-release
+# Builds the LYDIA Pi edition on every push to main and publishes it as the rolling
+# "pi-latest" release. The pedal polls that release (services/pi/update.sh) and installs it.
+on: { push: { branches: [main] } }
+permissions: { contents: write }
+concurrency: { group: pi-release, cancel-in-progress: true }
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - uses: actions/cache@v4
+        with: { path: .pi-samples, key: pi-samples-${{ hashFiles('services/pi/fetch-samples.mjs') }} }
+      - run: node services/pi/fetch-samples.mjs
+      - run: npm run build:pi
+      - name: Pack
+        run: |
+          set -euo pipefail
+          rm -rf pkg && mkdir -p pkg/site/backline
+          cp -a dist-pi/. pkg/site/backline/
+          mkdir -p pkg/site/backline/samples && cp -a .pi-samples/. pkg/site/backline/samples/
+          cp -a services/pi pkg/services-pi && rm -rf pkg/services-pi/__pycache__
+          mkdir -p pkg/services && mv pkg/services-pi pkg/services/pi
+          echo "$GITHUB_SHA" > pkg/COMMIT
+          tar -C pkg -czf duet-pi.tar.gz .
+          cp pkg/COMMIT COMMIT
+      - name: Publish rolling release
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          set -euo pipefail
+          gh release view pi-latest >/dev/null 2>&1 || gh release create pi-latest --title "Pi edition (rolling)" --notes "Built automatically from main. Installed by services/pi/update.sh on the pedal." --latest=false
+          gh release upload pi-latest duet-pi.tar.gz COMMIT --clobber
+          gh release edit pi-latest --notes "Built automatically from main at ${GITHUB_SHA}. Installed by services/pi/update.sh on the pedal."
