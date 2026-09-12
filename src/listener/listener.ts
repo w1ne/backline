@@ -6,6 +6,7 @@ import { TempoFollower } from './tempoFollower';
 import { KeyDetector } from './keyDetector';
 import { ChordDetector } from './chordDetector';
 import type { StablePitch } from './pitchTracker';
+import { DEFAULT_TUNING, type ListenerTuning } from './tuning';
 
 export interface Source {
   start(
@@ -47,8 +48,8 @@ export class Listener {
   }
   private tempo = new TempoLock();
   private activity = new ActivityTracker();
-  private keyDet = new KeyDetector();
-  private chordDet = new ChordDetector();
+  private keyDet: KeyDetector;
+  private chordDet: ChordDetector;
   private chord: Chord | null = null;
   /** absolute beat of the last `tickChord`; diagnostic only */
   lastChordBeat = -1;
@@ -86,10 +87,12 @@ export class Listener {
   /** seconds on the clock every note, level and chord tick is stamped with; injectable for offline replay */
   private now: () => number;
 
-  constructor(sources: Source[], kinds?: SourceKind[], now: () => number = () => performance.now() / 1000) {
+  constructor(sources: Source[], kinds?: SourceKind[], now: () => number = () => performance.now() / 1000, tuning: ListenerTuning = DEFAULT_TUNING) {
     this.sources = sources;
     this.kinds = kinds ?? sources.map((_, i) => (i === 0 ? 'midi' : 'mic'));
     this.now = now;
+    this.keyDet = new KeyDetector(tuning.key);
+    this.chordDet = new ChordDetector(tuning.chord);
   }
 
   setTempoMode(m: 'locked' | 'follow') {

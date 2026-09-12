@@ -1,4 +1,5 @@
 import type { Key } from '../types';
+import { DEFAULT_TUNING, type KeyTuning } from './tuning';
 
 const MAJ = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
 const MIN = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
@@ -43,19 +44,19 @@ export function scaleCoverage(pitchClassWeights: number[], key: Key): number {
   return scale.reduce((a, s) => a + pitchClassWeights[(s + key.root) % 12], 0) / total;
 }
 
-const EARLY_NOTES = 5, EARLY_CONFIDENCE = 0.7;
-const FULL_NOTES = 8, CONFIDENCE = 0.6;
-/** sung seconds needed before the coverage rule may accept a key */
-const COVER_MIN_SUSTAIN_SEC = 2;
-const COVER_MIN = 0.85, COVER_MARGIN = 0.08;
-
+/** Thresholds live in DEFAULT_TUNING.key (src/listener/tuning.ts); bench/calibrate searches them. */
 export class KeyDetector {
+  private tuning: KeyTuning;
   private w = new Array(12).fill(0);
   private count = 0;
   /** seconds of held pitch fed through addSustain */
   private sustained = 0;
   /** the last key either rule accepted; held until another key is accepted */
   private locked: Key | null = null;
+
+  constructor(tuning: KeyTuning = DEFAULT_TUNING.key) {
+    this.tuning = tuning;
+  }
 
   addNote(midi: number, weight = 1): void {
     this.w[((midi % 12) + 12) % 12] += weight;
@@ -91,11 +92,12 @@ export class KeyDetector {
    * in, but snapping their pitches onto it would move one note in four.
    */
   get fits(): boolean {
-    return this.locked !== null && scaleCoverage(this.w, this.locked) >= COVER_MIN;
+    return this.locked !== null && scaleCoverage(this.w, this.locked) >= this.tuning.coverMin;
   }
 
   private accept(): Key | null {
-    if (this.count < EARLY_NOTES) return null;
+    const T = this.tuning;
+    if (this.count < T.earlyNotes) return null;
     const ranked = rankKeys(this.w);
     const best = ranked[0];
     // Amateur singers sit a median 22 cents off the piano keys, so the Krumhansl correlation
@@ -107,15 +109,15 @@ export class KeyDetector {
     // Splitting each frame's pitch between its two neighbouring semitones was measured too
     // and locks fewer (12 of 24), so pitches stay rounded.
     if (
-      this.sustained >= COVER_MIN_SUSTAIN_SEC &&
-      scaleCoverage(this.w, best.key) >= COVER_MIN &&
-      best.confidence - ranked[1].confidence >= COVER_MARGIN
+      this.sustained >= T.coverMinSustainSec &&
+      scaleCoverage(this.w, best.key) >= T.coverMin &&
+      best.confidence - ranked[1].confidence >= T.coverMargin
     ) return best.key;
     // A singer gives one note a beat, so waiting for eight is two bars of no harmony. Five
     // notes that fit a profile clearly (0.7) are enough to start on; the usual 0.6 applies
     // from eight. Measured on hummed melodies: lock at 3.0 s instead of 4.4 to 5.7 s, no
     // wrong keys; 0.65 already picks wrong ones.
-    const needed = this.count < FULL_NOTES ? EARLY_CONFIDENCE : CONFIDENCE;
+    const needed = this.count < T.fullNotes ? T.earlyConfidence : T.confidence;
     return best.confidence >= needed ? best.key : null;
   }
 

@@ -15,8 +15,9 @@
 import { Listener, type Source } from '../../src/listener/listener';
 import { OnsetDetector } from '../../src/listener/onset';
 import { FFT_SIZE, HOP_SIZE, magnitudeSpectrum } from '../../src/listener/fft';
-import { detectPitch } from '../../src/listener/pitch';
+import { detectPitch, type PitchEstimate } from '../../src/listener/pitch';
 import { PitchTracker, type PitchTrackerOptions, type StablePitch } from '../../src/listener/pitchTracker';
+import { DEFAULT_TUNING, type ListenerTuning } from '../../src/listener/tuning';
 import type { Chord, Dynamics, Key } from '../../src/types';
 import { SR } from './synth';
 
@@ -51,6 +52,8 @@ export interface RawFrame {
 export interface RunResult {
   detectedNotes: DetectedNote[];
   rawFrames: RawFrame[];
+  /** the tracker's reading at every poll, as the Listener saw it (null = no stable pitch) */
+  pitchFrames: { t: number; midi: number | null }[];
   /** simulated time the key first locked (non-null), or null if never */
   keyLockT: number | null;
   key: Key | null;
@@ -66,13 +69,70 @@ export interface RunResult {
 }
 
 /**
- * Runs one clip through the pipeline with the given pitch-tracker profile.
+ * The signal-processing half of a run, which no listener constant influences: spectral flux
+ * and rms per onset hop, and the raw McLeod estimate per pitch poll with its clarity gate
+ * left open (`peak` carries the tallest NSDF peak so any minClarity can be applied later).
+ * Computing this once per clip is what lets bench/calibrate try thousands of tunings.
  */
-export function runClip(audio: Float32Array, profile: PitchTrackerOptions, clock?: { bpm: number; t0: number }): RunResult {
+export interface Analysis {
+  hops: { flux: number; rms: number }[];
+  /** one per pitch poll: the hop index it fired on, window rms, and the ungated estimate */
+  polls: { h: number; rms: number; est: PitchEstimate | null }[];
+}
+
+export function analyse(audio: Float32Array): Analysis {
+  const sr = SR;
+  const onset = new OnsetDetector({ sampleRate: sr });
+  const nHops = Math.floor(audio.length / HOP_SIZE);
+  const hops: Analysis['hops'] = [];
+  const polls: Analysis['polls'] = [];
+  const frame = new Float32Array(FFT_SIZE);
+  const pitchWin = new Float32Array(PITCH_WINDOW);
+  let nextPollT = 0;
+  for (let h = 0; h < nHops; h++) {
+    const hopStart = h * HOP_SIZE;
+    const t = hopStart / sr;
+    const fStart = hopStart + HOP_SIZE - FFT_SIZE;
+    frame.fill(0);
+    for (let i = Math.max(0, -fStart); i < FFT_SIZE; i++) {
+      const src = fStart + i;
+      if (src < audio.length) frame[i] = audio[src];
+    }
+    let sumSq = 0;
+    for (let i = hopStart; i < hopStart + HOP_SIZE && i < audio.length; i++) sumSq += audio[i] * audio[i];
+    hops.push({ flux: onset.flux(magnitudeSpectrum(frame)), rms: Math.sqrt(sumSq / HOP_SIZE) });
+    if (t >= nextPollT) {
+      nextPollT += PITCH_POLL_SEC;
+      const winStart = hopStart + HOP_SIZE - PITCH_WINDOW;
+      pitchWin.fill(0);
+      for (let i = Math.max(0, -winStart); i < PITCH_WINDOW; i++) {
+        const src = winStart + i;
+        if (src < audio.length) pitchWin[i] = audio[src];
+      }
+      let pSumSq = 0;
+      for (let i = 0; i < PITCH_WINDOW; i++) pSumSq += pitchWin[i] * pitchWin[i];
+      const pRms = Math.sqrt(pSumSq / PITCH_WINDOW);
+      polls.push({ h, rms: pRms, est: pRms > PITCH_RMS_FLOOR ? detectPitch(pitchWin, sr, 0) : null });
+    }
+  }
+  return { hops, polls };
+}
+
+/**
+ * Runs one clip through the pipeline with the given pitch-tracker profile. `tuning` replaces
+ * the listener constants (defaults = the app's); `pre` is a cached `analyse(audio)`.
+ */
+export function runClip(
+  audio: Float32Array,
+  profile: PitchTrackerOptions,
+  clock?: { bpm: number; t0: number },
+  tuning: ListenerTuning = DEFAULT_TUNING,
+  pre: Analysis = analyse(audio),
+): RunResult {
   const sr = SR;
   const source = new SimSource();
   let currentSimT = 0;
-  const listener = new Listener([source], ['mic'], () => currentSimT);
+  const listener = new Listener([source], ['mic'], () => currentSimT, tuning);
   const detectedNotes: DetectedNote[] = [];
   let keyLockT: number | null = null;
   let tempoLockT: number | null = null;
@@ -88,15 +148,13 @@ export function runClip(audio: Float32Array, profile: PitchTrackerOptions, clock
   void listener.start();
 
   const onset = new OnsetDetector({ sampleRate: sr });
-  const tracker = new PitchTracker(profile);
+  const tracker = new PitchTracker(profile, tuning.tracker);
   const rawFrames: RawFrame[] = [];
+  const pitchFrames: RunResult['pitchFrames'] = [];
 
-  const hopSec = HOP_SIZE / sr;
-  const nHops = Math.floor(audio.length / HOP_SIZE);
-  let nextPollT = 0;
+  const nHops = pre.hops.length;
+  let poll = 0;
   let lastBeat = -1;
-  const frame = new Float32Array(FFT_SIZE);
-  const pitchWin = new Float32Array(PITCH_WINDOW);
 
   for (let h = 0; h < nHops; h++) {
     const hopStart = h * HOP_SIZE;
@@ -104,17 +162,8 @@ export function runClip(audio: Float32Array, profile: PitchTrackerOptions, clock
     currentSimT = t;
 
     // --- onset path: same 1024-sample analysis frame ending at this hop ---
-    const fStart = hopStart + HOP_SIZE - FFT_SIZE;
-    frame.fill(0);
-    for (let i = Math.max(0, -fStart); i < FFT_SIZE; i++) {
-      const src = fStart + i;
-      if (src < audio.length) frame[i] = audio[src];
-    }
-    let sumSq = 0;
-    for (let i = hopStart; i < hopStart + HOP_SIZE && i < audio.length; i++) sumSq += audio[i] * audio[i];
-    const rms = Math.sqrt(sumSq / HOP_SIZE);
-    const mag = magnitudeSpectrum(frame);
-    const at = onset.pushFlux(onset.flux(mag), t, rms);
+    const { flux, rms } = pre.hops[h];
+    const at = onset.pushFlux(flux, t, rms);
     if (at !== null) {
       currentSimT = at;
       source.note(-1, Math.min(1, rms * 8), at);
@@ -133,24 +182,15 @@ export function runClip(audio: Float32Array, profile: PitchTrackerOptions, clock
     }
 
     // --- pitch path: poll every 50ms of simulated time ---
-    if (t >= nextPollT) {
-      nextPollT += PITCH_POLL_SEC;
-      const winStart = hopStart + HOP_SIZE - PITCH_WINDOW;
-      pitchWin.fill(0);
-      for (let i = Math.max(0, -winStart); i < PITCH_WINDOW; i++) {
-        const src = winStart + i;
-        if (src < audio.length) pitchWin[i] = audio[src];
-      }
-      let pSumSq = 0;
-      for (let i = 0; i < PITCH_WINDOW; i++) pSumSq += pitchWin[i] * pitchWin[i];
-      const pRms = Math.sqrt(pSumSq / PITCH_WINDOW);
-      let est: ReturnType<typeof detectPitch> = null;
-      if (pRms > PITCH_RMS_FLOOR) {
-        est = detectPitch(pitchWin, sr);
-      }
+    if (poll < pre.polls.length && pre.polls[poll].h === h) {
+      const p = pre.polls[poll++];
+      // the same gate detectPitch applies when called with this minClarity
+      const est = p.est && p.est.peak >= tuning.pitch.minClarity ? p.est : null;
       rawFrames.push({ t, hz: est?.hz ?? null });
       currentSimT = t;
-      source.pitch?.(pRms > PITCH_RMS_FLOOR ? tracker.push(est ? { hz: est.hz, clarity: est.clarity, t } : null) : tracker.push(null));
+      const reading = tracker.push(est ? { hz: est.hz, clarity: est.clarity, t } : null);
+      pitchFrames.push({ t, midi: reading && reading.stable ? reading.midi : null });
+      source.pitch?.(reading);
 
       const c = listener.input.chord;
       const last = chords[chords.length - 1];
@@ -163,6 +203,7 @@ export function runClip(audio: Float32Array, profile: PitchTrackerOptions, clock
   return {
     detectedNotes,
     rawFrames,
+    pitchFrames,
     keyLockT,
     key: listener.input.key,
     tempoLockT,
