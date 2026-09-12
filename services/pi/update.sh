@@ -19,6 +19,7 @@ test -f "$tmp/pkg/services/pi/install.sh"
 [ "$(tr -d '[:space:]' < "$tmp/pkg/COMMIT")" = "$latest" ]
 rm -rf site.new && mv "$tmp/pkg/site" site.new
 rm -rf services/pi.new && mv "$tmp/pkg/services/pi" services/pi.new
+rm -rf services/unoq && mv "$tmp/pkg/services/unoq" services/unoq
 rm -rf site.old services/pi.old
 mv site site.old 2>/dev/null || true
 mv site.new site

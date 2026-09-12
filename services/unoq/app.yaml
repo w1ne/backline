@@ -1,0 +1,6 @@
+# Arduino App Lab manifest. Lives at /home/arduino/ArduinoApps/duet-hearts on the UNO Q.
+name: duet-hearts
+description: Hearts on the LED matrix that beat with the duet.ai band.
+icon: ❤️
+ports: []
+bricks: []
