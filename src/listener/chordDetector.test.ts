@@ -5,12 +5,13 @@ import {
   chordDegreeToMidi,
   chordName,
   chordScale,
+  parseChordName,
   pitchClassWeights,
   chordTones,
   scoreChord,
   tonicTriad,
 } from './chordDetector';
-import type { Chord, Key } from '../types';
+import type { Chord, ChordQuality, Key } from '../types';
 import { degreeToMidi } from '../music/scales';
 
 const C_MAJOR: Key = { root: 0, mode: 'major' };
@@ -204,6 +205,32 @@ describe('ChordDetector melody harmonizer (single voice)', () => {
     d.windowSec = 1.33;
     d.addNote(64, 0.5, 0.8); // E alone: Am, C and Em all hold it
     expect(d.tick(1.3, Am)).toEqual({ root: 9, quality: 'min' });
+  });
+});
+
+describe('parseChordName', () => {
+  const ROOTS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  const QUALITIES: ChordQuality[] = ['maj', 'min', 'dom7', 'min7', 'maj7', 'sus4', 'dim'];
+
+  it('round-trips every root and quality through chordName', () => {
+    for (let root = 0; root < ROOTS.length; root++) {
+      for (const quality of QUALITIES) {
+        const chord: Chord = { root, quality };
+        expect(parseChordName(chordName(chord))).toEqual(chord);
+      }
+    }
+  });
+
+  it('parses each root name directly', () => {
+    ROOTS.forEach((name, root) => {
+      expect(parseChordName(name)).toEqual({ root, quality: 'maj' });
+    });
+  });
+
+  it('returns null for an unrecognized string', () => {
+    expect(parseChordName('nonsense')).toBeNull();
+    expect(parseChordName('')).toBeNull();
+    expect(parseChordName('Hmaj9')).toBeNull();
   });
 });
 

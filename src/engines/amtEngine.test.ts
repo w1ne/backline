@@ -233,6 +233,91 @@ describe('AmtEngine', () => {
     engine.stop();
   });
 
+  function cues(ws: FakeWebSocket) {
+    return ws.sent.filter((m: any) => m.type === 'tick' || m.type === 'bar');
+  }
+
+  it('cues the server every half bar with tick once it has said ready', async () => {
+    vi.useFakeTimers();
+    try {
+      const { engine, clock } = mk();
+      await engine.start(120, 0); // 0.5 s/beat, a half bar is 1 s
+      const ws = startedSocket();
+      ws.open();
+      ws.receiveJson({ type: 'ready', tick: true });
+      now = 2;
+      clock.tick(1, 2);
+      expect(cues(ws)).toEqual([{ type: 'tick', beat: 4 }]);
+      vi.advanceTimersByTime(999);
+      expect(cues(ws)).toHaveLength(1);
+      vi.advanceTimersByTime(2);
+      expect(cues(ws)).toEqual([{ type: 'tick', beat: 4 }, { type: 'tick', beat: 6 }]);
+      now = 4;
+      clock.tick(2, 4);
+      expect(cues(ws).at(-1)).toEqual({ type: 'tick', beat: 8 });
+      engine.stop();
+      vi.advanceTimersByTime(5000);
+      expect(cues(ws)).toHaveLength(3); // no half-bar cue after stop
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps cueing with bar against a server that never says ready', async () => {
+    vi.useFakeTimers();
+    try {
+      const { engine, clock } = mk();
+      await engine.start(120, 0);
+      const ws = startedSocket();
+      ws.open();
+      now = 2;
+      clock.tick(1, 2);
+      vi.advanceTimersByTime(1500);
+      expect(cues(ws)).toEqual([{ type: 'bar', bar: 1 }]);
+      engine.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('flushes pending input before a half-bar tick', async () => {
+    vi.useFakeTimers();
+    try {
+      const { engine, clock, notes } = mk();
+      await engine.start(120, 0);
+      const ws = startedSocket();
+      ws.open();
+      ws.receiveJson({ type: 'ready', tick: true });
+      now = 2;
+      clock.tick(1, 2);
+      notes.fire({ midi: 62, velocity: 0.8, timeSec: 2.5 });
+      vi.advanceTimersByTime(1001);
+      expect(ws.sent.slice(-2).map((m: any) => m.type)).toEqual(['notes', 'tick']);
+      engine.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('schedules a half-bar plan that arrives mid-bar', async () => {
+    const { engine, players } = mk();
+    now = 0;
+    await engine.start(120, 0);
+    startedSocket().open();
+    engine.setEnabled('keys', true);
+    engine.setEnabled('bass', true);
+    startedSocket().receiveJson({
+      type: 'plan', fromBeat: 6, toBeat: 8,
+      notes: [
+        { beat: 6, pitch: 45, dur: 2, vel: 0.5, voice: 'bass' },
+        { beat: 7, pitch: 64, dur: 1, vel: 0.5, voice: 'keys' },
+      ],
+    });
+    expect(players.calls.map(c => [c.i, c.barStart, c.events[0].time])).toEqual(
+      expect.arrayContaining([['bass', 2, 2], ['keys', 2, 3]]),
+    );
+  });
+
   it('sends the last input batch before asking the model for a bar', async () => {
     const { engine, notes, clock } = mk();
     await engine.start(120, 0);
@@ -465,5 +550,56 @@ describe('AmtEngine', () => {
     ws.open();
     engine.stop();
     expect(ws.closed).toBe(true);
+  });
+
+  it('calls onChord with the parsed chord and fromBeat when a plan carries one', async () => {
+    const { engine } = mk();
+    const onChord = vi.fn(); engine.onChord = onChord;
+    await engine.start(120, 0);
+    const ws = startedSocket(); ws.open();
+    ws.receiveJson({ type: 'plan', notes: [], chord: 'F', chordFrom: 8 });
+    expect(onChord).toHaveBeenCalledTimes(1);
+    expect(onChord).toHaveBeenCalledWith({ root: 5, quality: 'maj' }, 8);
+    engine.stop();
+  });
+
+  it('ignores an unparseable chord name safely', async () => {
+    const { engine } = mk();
+    const onChord = vi.fn(); engine.onChord = onChord;
+    await engine.start(120, 0);
+    const ws = startedSocket(); ws.open();
+    ws.receiveJson({ type: 'plan', notes: [], chord: 'nonsense', chordFrom: 8 });
+    expect(onChord).not.toHaveBeenCalled();
+    engine.stop();
+  });
+
+  it('does not call onChord when the plan carries no chord', async () => {
+    const { engine } = mk();
+    const onChord = vi.fn(); engine.onChord = onChord;
+    await engine.start(120, 0);
+    const ws = startedSocket(); ws.open();
+    ws.receiveJson({ type: 'plan', notes: [] });
+    expect(onChord).not.toHaveBeenCalled();
+    engine.stop();
+  });
+
+  it('calls onSection when a plan carries a section', async () => {
+    const { engine } = mk();
+    const onSection = vi.fn(); engine.onSection = onSection;
+    await engine.start(120, 0);
+    const ws = startedSocket(); ws.open();
+    ws.receiveJson({ type: 'plan', notes: [], section: 'lift' });
+    expect(onSection).toHaveBeenCalledWith('lift');
+    engine.stop();
+  });
+
+  it('does not call onSection when the plan carries no section', async () => {
+    const { engine } = mk();
+    const onSection = vi.fn(); engine.onSection = onSection;
+    await engine.start(120, 0);
+    const ws = startedSocket(); ws.open();
+    ws.receiveJson({ type: 'plan', notes: [] });
+    expect(onSection).not.toHaveBeenCalled();
+    engine.stop();
   });
 });

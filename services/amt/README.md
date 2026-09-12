@@ -3,9 +3,9 @@
 FastAPI/uvicorn WebSocket service wrapping the lookahead/commit scheduler
 prototyped in `bench/amt/live_duet.py`. Unlike that prototype (which drives
 its own synthetic melody on a wall-clock transport), this service is driven
-by the client -- the browser sends the human's real notes and a `bar` cue
-each bar, and the server replies with the accompaniment plan for the next
-bar.
+by the client -- the browser sends the human's real notes and a `tick` cue
+every half bar, and the server replies with the accompaniment plan for the
+half bar one bar ahead.
 
 Model: `stanford-crfm/music-small-800k`, loaded once at process start (CUDA
 if available, else CPU).
@@ -14,10 +14,13 @@ if available, else CPU).
 
 - client -> `{type:'start', bpm, key, genre, lookaheadBeats, commitBeats, listenBeats}`
 - client -> `{type:'notes', notes:[{beat, pitch, dur, vel}]}`
-- client -> `{type:'bar', bar}` -- server replies with the plan for `bar+1`
+- client -> `{type:'tick', beat}` every `commitBeats` -- server replies with the plan for
+  `[beat+4, beat+4+commitBeats)`, i.e. the half bar one bar ahead
+- client -> `{type:'bar', bar}` (older clients) -- server replies with the plan for the whole of `bar+1`
 - client -> `{type:'set', genre?, creativity?, instruments?}` (accepted, no-op on generation)
 - client -> `{type:'ping'}` -> server `{type:'pong'}`
-- server -> `{type:'plan', fromBeat, notes:[{beat, pitch, dur, vel, voice:'keys'|'bass'}]}`
+- server -> `{type:'ready', tick:true}` after `start`; a client cues with `tick` only once it has seen this
+- server -> `{type:'plan', fromBeat, toBeat, notes:[{beat, pitch, dur, vel, voice:'keys'|'bass'}]}`
 - server -> `{type:'status', latencyMs, tokensPerSec}` after each generation
 - server -> `{type:'error', message}`
 
