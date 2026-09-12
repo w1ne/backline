@@ -1,3 +1,4 @@
+import { audioRecorder } from '../export/audioRecorder';
 import * as Tone from 'tone';
 import type { Source } from './listener';
 import { OnsetDetector } from './onset';
@@ -89,6 +90,7 @@ export class MicSource implements Source {
     this.stream = await navigator.mediaDevices.getUserMedia({ audio: micConstraints(this.deviceId) });
     const src = ctx.createMediaStreamSource(this.stream);
     this.srcNode = src;
+    audioRecorder.addSource(src);
     // kept for pitch only: continuously polled independently of onset timing
     const an = ctx.createAnalyser();
     an.fftSize = 4096; // longer window than the onset hop for better low-note resolution
@@ -177,6 +179,7 @@ export class MicSource implements Source {
       this.node.disconnect();
       this.node = undefined;
     }
+    if (this.srcNode) audioRecorder.removeSource(this.srcNode);
     this.srcNode?.disconnect();
     this.srcNode = undefined;
     this.stream?.getTracks().forEach(t => t.stop());
