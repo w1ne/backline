@@ -1,5 +1,5 @@
 import unittest
-from arrangement import shape_notes, bass_pitch, voice_chord, harmony_classes
+from arrangement import shape_notes, bass_pitch, voice_chord, harmony_classes, early_entry_plan
 
 
 class ArrangementTest(unittest.TestCase):
@@ -77,6 +77,24 @@ class ArrangementTest(unittest.TestCase):
 
     def test_voice_chord_falls_back_to_monophonic_without_a_chord(self):
         self.assertEqual(voice_chord(66, set()), [66])
+
+    def test_early_entry_plan_covers_bar_1_with_key_and_chord_but_no_melody(self):
+        # bar 1 spans beats 4..8, matching plan_window(0) in server.py.
+        notes = early_entry_plan('A minor', 'Am', 4.0, 8.0)
+        self.assertTrue(notes)
+        self.assertTrue(all(n['beat'] < 8.0 for n in notes))
+        bass = [n for n in notes if n['voice'] == 'bass']
+        keys = [n for n in notes if n['voice'] == 'keys']
+        self.assertEqual(sorted(n['beat'] for n in bass), [4.0, 6.0])
+        self.assertTrue(all(n['pitch'] % 12 == 9 for n in bass))  # A
+        self.assertGreaterEqual(len(keys), 2)
+        self.assertLessEqual(len(keys), 3)
+        self.assertTrue(all(n['beat'] == 4.0 for n in keys))
+        chord_tones = harmony_classes('A minor', 'Am')
+        self.assertTrue(all(n['pitch'] % 12 in chord_tones for n in keys))
+
+    def test_early_entry_plan_is_empty_without_key_or_chord(self):
+        self.assertEqual(early_entry_plan(None, None, 4.0, 8.0), [])
 
     def test_bass_uses_the_players_harmony_in_a_fixed_bass_register(self):
         self.assertEqual(bass_pitch('Dm', 'C major'), 38)

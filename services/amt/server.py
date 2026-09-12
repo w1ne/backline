@@ -51,7 +51,7 @@ from amt import (  # noqa: E402
     generate_duet,
 )
 from live_duet import AccompanimentCommitter  # noqa: E402
-from arrangement import shape_notes, bass_pitch
+from arrangement import shape_notes, bass_pitch, harmony_classes, voice_chord, early_entry_plan
 from cached import cached_generate  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -235,7 +235,7 @@ class Session:
                     "type": "plan",
                     "fromBeat": target_start_beat,
                     "toBeat": target_end_beat,
-                    "notes": [],
+                    "notes": early_entry_plan(self.key, self.chord, target_start_beat, target_end_beat),
                 },
                 "status": {"type": "status", "latencyMs": 0.0, "tokensPerSec": 0.0},
             }
@@ -296,17 +296,22 @@ class Session:
             " (hit generation budget)" if latency_ms >= deadline_s * 1000.0 else "",
         )
 
+        # Up to 3 simultaneous chord-tone notes per keys onset (a voicing), built
+        # from the same key/chord the arrangement filter already restricted this
+        # pitch to -- bass (below) stays a single note per onset, monophonic.
+        chord_tones = harmony_classes(self.key, self.chord) or harmony_classes(self.key)
         notes_out = []
         for onset_s, dur_s, _instr, pitch in committed:
-            notes_out.append(
-                {
-                    "beat": onset_s / self.beat_s,
-                    "pitch": pitch,
-                    "dur": dur_s / self.beat_s,
-                    "vel": 0.65 if self.space else 0.5,
-                    "voice": "keys",
-                }
-            )
+            for voiced_pitch in voice_chord(pitch, chord_tones, want=3):
+                notes_out.append(
+                    {
+                        "beat": onset_s / self.beat_s,
+                        "pitch": voiced_pitch,
+                        "dur": dur_s / self.beat_s,
+                        "vel": 0.65 if self.space else 0.5,
+                        "voice": "keys",
+                    }
+                )
 
         root = bass_pitch(self.chord, self.key)
         if root is not None and committed:

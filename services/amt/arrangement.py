@@ -82,6 +82,32 @@ def voice_chord(pitch, chord_tones, want=3):
     return sorted(notes)
 
 
+def early_entry_plan(key, chord, start_beat, end_beat):
+    """Key-only fallback plan for a bar still inside the listen window (fewer
+    than `listenBeats` of human input): a singer waiting on the model's
+    first `plan` message otherwise hears nothing until beat 8
+    (listenBeats=4 + one bar lead time). Bass hits the chord root on beats 1
+    and 3 of the bar; keys holds a voiced chord from beat 1 through the bar.
+    Both come straight from the key/chord the client already sent with
+    `start`/`set` -- no melody needed -- so this can cover bar 1, before the
+    model has anything to answer. Returns [] if neither key nor chord is
+    known yet (nothing to build a plan from).
+    """
+    root = bass_pitch(chord, key)
+    if root is None:
+        return []
+    bar_len = end_beat - start_beat
+    half = bar_len / 2.0
+    notes = [
+        {"beat": start_beat, "pitch": root, "dur": half, "vel": 0.5, "voice": "bass"},
+        {"beat": start_beat + half, "pitch": root, "dur": half, "vel": 0.5, "voice": "bass"},
+    ]
+    chord_tones = harmony_classes(key, chord) or harmony_classes(key)
+    for pitch in voice_chord(60, chord_tones, want=3):
+        notes.append({"beat": start_beat, "pitch": pitch, "dur": bar_len, "vel": 0.45, "voice": "keys"})
+    return notes
+
+
 def bass_pitch(chord, key):
     for harmony in (chord, key):
         match = re.match(r'^([A-G])([#b]?)', harmony or '')
