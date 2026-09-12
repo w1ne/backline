@@ -20,6 +20,7 @@ Env vars:
 """
 
 import argparse
+import asyncio
 import json
 import logging
 import os
@@ -55,6 +56,8 @@ log = logging.getLogger("amt-server")
 
 PORT = int(os.environ.get("PORT", "8080"))
 MODEL_NAME = "stanford-crfm/music-small-800k"
+# Fraction of the committed window's own duration that generation may spend in wall time.
+GENERATION_BUDGET = 0.8
 
 app = FastAPI()
 _model = None
@@ -138,31 +141,84 @@ class Session:
 
     def generate_next_bar_plan(self, bar: int) -> dict:
         """Generate the accompaniment plan covering bar `bar + 1` (4 beats,
-        4/4 assumed -- matches the app's Players.schedule bar granularity)."""
-        start_beat = self.committed_horizon_beats
+        4/4 assumed -- matches the app's Players.schedule bar granularity).
+
+        The window is anchored to the bar that just started. It used to start
+        at a horizon that only crept forward by `commit_beats` per `bar`
+        message: a bar is four beats but only two were ever committed, so the
+        plan slipped two beats further into the past every bar (by bar 7 it
+        was writing beat 14 while the player was at beat 32) and the model's
+        sampling budget was spread over an ever-widening generate span while
+        the kept window stayed two beats -- which is why most bars came back
+        with no notes at all.
+        """
         beats_per_bar = 4.0
-        target_end_beat = (bar + 2) * beats_per_bar  # end of the *next* bar
-        end_beat = max(target_end_beat, start_beat + self.lookahead_beats)
+        target_start_beat = (bar + 1) * beats_per_bar
+        target_end_beat = target_start_beat + beats_per_bar
+
+        # Listen-first (ReaLJam): commit nothing until `listen_beats` of the
+        # player's melody have been heard, so the model answers real material
+        # instead of guessing from a nearly empty bar. This was parsed from
+        # the `start` message and then never used.
+        if target_end_beat <= self.listen_beats:
+            log.info("bar %d: listening (target bar ends at beat %.1f, listen=%.1f)",
+                     bar, target_end_beat, self.listen_beats)
+            return {
+                "plan": {
+                    "type": "plan",
+                    "fromBeat": target_start_beat,
+                    "toBeat": target_end_beat,
+                    "notes": [],
+                },
+                "status": {"type": "status", "latencyMs": 0.0, "tokensPerSec": 0.0},
+            }
+
+        # Never re-commit music already frozen, never fall behind the live bar.
+        start_beat = max(target_start_beat, self.committed_horizon_beats, self.listen_beats)
+        commit_end_beat = max(target_end_beat, start_beat + self.commit_beats)
+        # Generate at least `lookahead_beats`; anything past the commit point is
+        # discarded and rewritten next bar with fresher melody.
+        end_beat = max(commit_end_beat, start_beat + self.lookahead_beats)
 
         start_s = start_beat * self.beat_s
         end_s = end_beat * self.beat_s
-
-        history_before = list(self.history)
-        t0 = time.monotonic()
-        result = generate_duet(self.model, start_s, end_s, history_before, self.top_p, ACCOMP_BIAS)
-        latency_ms = (time.monotonic() - t0) * 1000.0
-
-        commit_end_beat = start_beat + self.commit_beats
         commit_end_s = commit_end_beat * self.beat_s
 
+        history_before = list(self.history)
+        human_in_context = sum(1 for (onset_beat, _, _) in self.human_notes if onset_beat <= start_beat)
+        # The plan for bar N+1 is asked for at the downbeat of bar N, so there is one bar of
+        # wall time before its first note is due. Spend at most most of it.
+        deadline_s = GENERATION_BUDGET * (commit_end_beat - start_beat) * self.beat_s
+        t0 = time.monotonic()
+        result = generate_duet(
+            self.model, start_s, end_s, history_before, self.top_p, ACCOMP_BIAS,
+            deadline_s=deadline_s,
+            # The committed voice is monophonic and the app plays to a beat grid, so a
+            # sixteenth note is the shortest onset gap worth sampling.
+            min_interval_ticks=max(1, round(self.beat_s / 4.0 * TIME_RESOLUTION)),
+        )
+        latency_ms = (time.monotonic() - t0) * 1000.0
+
+        # Compare on the model's own tick grid: the window bounds are bar lines
+        # here, and a float `start_s < t` comparison dropped any note landing
+        # exactly on one.
+        start_tick = round(start_s * TIME_RESOLUTION)
+        commit_end_tick = round(commit_end_s * TIME_RESOLUTION)
+        accomp = [(t, d, p) for (t, d, instr, p) in parse_events(result) if instr == ACCOMP_INSTR]
         raw_notes = [
-            (t, d, p)
-            for (t, d, instr, p) in parse_events(result)
-            if instr == ACCOMP_INSTR and start_s < t <= commit_end_s
+            (t, d, p) for (t, d, p) in accomp if start_tick <= round(t * TIME_RESOLUTION) < commit_end_tick
         ]
         committed = self.committer.commit(raw_notes)  # (onset_s, dur_s, pitch), trimmed/monophonic
         self.committed_horizon_beats = commit_end_beat
         self.last_accomp_notes = committed
+
+        log.info(
+            "bar %d: window [%.1f..%.1f) beats (generate to %.1f), human events in context=%d, "
+            "accompaniment generated=%d, in window=%d, committed=%d, %.0f ms%s",
+            bar, start_beat, commit_end_beat, end_beat, human_in_context,
+            len(accomp), len(raw_notes), len(committed), latency_ms,
+            " (hit generation budget)" if latency_ms >= deadline_s * 1000.0 else "",
+        )
 
         notes_out = []
         for onset_s, dur_s, pitch in committed:
@@ -184,7 +240,7 @@ class Session:
                 {
                     "beat": start_beat,
                     "pitch": root,
-                    "dur": self.commit_beats,
+                    "dur": commit_end_beat - start_beat,
                     "vel": 0.75,
                     "voice": "bass",
                 }
@@ -198,7 +254,12 @@ class Session:
         tokens_per_sec = (tokens_generated / (latency_ms / 1000.0)) if latency_ms > 0 else 0.0
 
         return {
-            "plan": {"type": "plan", "fromBeat": start_beat, "notes": notes_out},
+            "plan": {
+                "type": "plan",
+                "fromBeat": start_beat,
+                "toBeat": commit_end_beat,
+                "notes": notes_out,
+            },
             "status": {"type": "status", "latencyMs": latency_ms, "tokensPerSec": tokens_per_sec},
         }
 
@@ -208,6 +269,11 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     model = load_model()
     session = Session(model)
+    # One generation at a time per connection, but off the event loop: the
+    # model call takes ~0.5-1.5 s and used to block the receive loop, so every
+    # `notes` message the player sent while a bar was being written arrived
+    # only *after* it and was missing from that generation's context.
+    gen_lock = asyncio.Lock()
     log.info("connection opened")
     try:
         while True:
@@ -237,7 +303,8 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 elif mtype == "bar":
                     bar = int(msg.get("bar", 0))
-                    out = session.generate_next_bar_plan(bar)
+                    async with gen_lock:
+                        out = await asyncio.to_thread(session.generate_next_bar_plan, bar)
                     await websocket.send_text(json.dumps(out["plan"]))
                     await websocket.send_text(json.dumps(out["status"]))
 
@@ -248,6 +315,8 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 else:
                     await websocket.send_text(json.dumps({"type": "error", "message": f"unknown type {mtype}"}))
+            except WebSocketDisconnect:
+                raise
             except Exception as e:  # noqa: BLE001
                 log.exception("error handling message %s", mtype)
                 await websocket.send_text(json.dumps({"type": "error", "message": str(e)}))

@@ -178,7 +178,8 @@ class LiveDuet:
         wall_start = time.monotonic()
         future = self.pool.submit(
             generate_duet, self.model, gen_start, gen_end, hist_snapshot,
-            self.top_p, self.accomp_bias,
+            self.top_p, self.accomp_bias, True, self.lookahead_s,
+            max(1, round(self.beat_s / 4.0 * TIME_RESOLUTION)),
         )
         self.pending = (future, gen_start, gen_end, wall_start)
 

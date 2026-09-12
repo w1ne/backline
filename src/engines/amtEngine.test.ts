@@ -181,6 +181,62 @@ describe('AmtEngine', () => {
     expect(players.calls[0].events[0].time).toBeCloseTo(1); // beat 5 - bar*4(=4) = 1
   });
 
+  function setFrames(ws: FakeWebSocket) {
+    return ws.sent.filter(m => (m as { type: string }).type === 'set');
+  }
+
+  it('collapses repeated identical set() calls into a single set message', async () => {
+    const { engine } = mk();
+    await engine.start(100, 0);
+    startedSocket().open();
+
+    for (let i = 0; i < 200; i++) engine.set({ genre: 'lofi', creativity: 0.3 });
+    engine.flushSetForTest();
+
+    expect(setFrames(startedSocket())).toHaveLength(1);
+  });
+
+  it('sends at most one set message per 250ms while values keep changing', async () => {
+    vi.useFakeTimers();
+    try {
+      const { engine } = mk();
+      await engine.start(100, 0);
+      startedSocket().open();
+
+      // 40 distinct values over 400ms of wall time — one per 10ms, as the store churns.
+      for (let i = 0; i < 40; i++) {
+        engine.set({ creativity: i / 100 });
+        vi.advanceTimersByTime(10);
+      }
+      vi.advanceTimersByTime(300); // let the trailing coalesced frame go out
+
+      const frames = setFrames(startedSocket());
+      expect(frames.length).toBeGreaterThanOrEqual(1);
+      expect(frames.length).toBeLessThanOrEqual(3); // 400ms / 250ms, plus the trailing flush
+      // The last frame carries the newest value, not a stale one.
+      expect(frames[frames.length - 1]).toMatchObject({ type: 'set', creativity: 0.39 });
+      engine.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('sends a set message again when a value actually changes', async () => {
+    const { engine } = mk();
+    await engine.start(100, 0);
+    startedSocket().open();
+
+    engine.set({ genre: 'jazz' });
+    engine.flushSetForTest();
+    engine.setEnabled('keys', true);
+    engine.flushSetForTest();
+
+    const frames = setFrames(startedSocket());
+    expect(frames).toHaveLength(2);
+    expect(frames[0]).toMatchObject({ type: 'set', genre: 'jazz' });
+    expect(frames[1]).toMatchObject({ type: 'set', instruments: { keys: true } });
+  });
+
   it('stop closes the socket', async () => {
     const { engine } = mk();
     await engine.start(120, 0);

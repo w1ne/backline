@@ -13,6 +13,8 @@ const COMMIT_BEATS = 2;
 const LISTEN_BEATS = 8;
 const NOTE_BATCH_MS = 100;
 const DEFAULT_NOTE_DUR_BEATS = 0.5;
+/** Upper bound on how often a `set` frame goes out, however fast the store churns. */
+const SET_THROTTLE_MS = 250;
 
 function keyString(k: Key): string {
   return `${KEY_NAMES[k.root]} ${k.mode === 'major' ? 'major' : 'minor'}`;
@@ -61,6 +63,11 @@ export class AmtEngine implements BandEngine {
   private noteBuf: { beat: number; pitch: number; dur: number; vel: number }[] = [];
   private noteFlushTimer?: ReturnType<typeof setInterval>;
   private commitPollTimer?: ReturnType<typeof setInterval>;
+  /** Last `set` payload the server was actually told, and the throttle bookkeeping for it. */
+  private lastSetPayload?: string;
+  private pendingSet?: string;
+  private setTimer?: ReturnType<typeof setTimeout>;
+  private lastSetAt = 0;
   /** Plan notes not yet scheduled, keyed by bar they land in. */
   private pending: PlanNote[] = [];
   /** bar -> voice -> scheduled beats, so a later plan for the same bar doesn't re-schedule
@@ -92,6 +99,9 @@ export class AmtEngine implements BandEngine {
     this.firstBarAt = firstBarAt;
     this.pending = [];
     this.scheduled.clear();
+    // A fresh socket means a fresh server session, so nothing has been told to it yet.
+    this.lastSetPayload = undefined;
+    this.lastSetAt = 0;
 
     const wsUrl = RELAY_URL.replace(/^http/, 'ws') + '/amt';
     this.ws = new WebSocket(wsUrl);
@@ -105,6 +115,7 @@ export class AmtEngine implements BandEngine {
         commitBeats: COMMIT_BEATS,
         listenBeats: LISTEN_BEATS,
       });
+      this.flushSet();
     });
     this.ws.addEventListener('message', ev => this.onMessage(ev));
     this.ws.addEventListener('error', () => {
@@ -140,6 +151,10 @@ export class AmtEngine implements BandEngine {
     this.noteFlushTimer = undefined;
     if (this.commitPollTimer !== undefined) clearInterval(this.commitPollTimer);
     this.commitPollTimer = undefined;
+    if (this.setTimer !== undefined) clearTimeout(this.setTimer);
+    this.setTimer = undefined;
+    this.pendingSet = undefined;
+    this.lastSetPayload = undefined;
     this.ws?.close();
     this.ws = undefined;
     this.pending = [];
@@ -150,11 +165,61 @@ export class AmtEngine implements BandEngine {
     if (p.genre !== undefined) this.state.genre = p.genre;
     if (p.key !== undefined) this.state.key = p.key;
     if (p.creativity !== undefined) this.state.creativity = p.creativity;
-    this.send({ type: 'set', genre: this.state.genre, creativity: this.state.creativity });
+    this.queueSet();
   }
 
   setEnabled(i: Instrument, on: boolean): void {
     this.state.enabled[i] = on;
+    this.queueSet();
+  }
+
+  /** The store re-emits on every update, and `set()` used to put a frame on the wire for each
+   *  one — 1255 `set` messages in 40 seconds of playing. Send only when the payload actually
+   *  differs from what the server was last told, and never more than once per
+   *  `SET_THROTTLE_MS`; changes arriving inside that window are coalesced into one frame
+   *  carrying the latest values. */
+  private queueSet(): void {
+    const payload = JSON.stringify({
+      type: 'set',
+      genre: this.state.genre,
+      creativity: this.state.creativity,
+      instruments: { ...this.state.enabled },
+    });
+    if (payload === this.lastSetPayload) {
+      // Back to what the server already has — drop anything queued in between.
+      this.pendingSet = undefined;
+      return;
+    }
+    this.pendingSet = payload;
+    if (this.setTimer !== undefined) return;
+    const wait = SET_THROTTLE_MS - (Date.now() - this.lastSetAt);
+    if (wait <= 0) {
+      this.flushSet();
+      return;
+    }
+    this.setTimer = setTimeout(() => {
+      this.setTimer = undefined;
+      this.flushSet();
+    }, wait);
+  }
+
+  private flushSet(): void {
+    const payload = this.pendingSet;
+    if (payload === undefined) return;
+    if (payload === this.lastSetPayload) {
+      this.pendingSet = undefined;
+      return;
+    }
+    // Socket not open yet: keep it pending, the `open` handler flushes it.
+    if (!this.sendRaw(payload)) return;
+    this.pendingSet = undefined;
+    this.lastSetPayload = payload;
+    this.lastSetAt = Date.now();
+  }
+
+  /** Test-only: force an immediate `set` flush instead of waiting for the throttle timer. */
+  flushSetForTest(): void {
+    this.flushSet();
   }
 
   setBpm(bpm: number): void {
@@ -224,7 +289,14 @@ export class AmtEngine implements BandEngine {
   }
 
   private send(msg: unknown): void {
-    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(msg));
+    this.sendRaw(JSON.stringify(msg));
+  }
+
+  /** Returns false when the socket isn't open, so the caller can keep the payload queued. */
+  private sendRaw(payload: string): boolean {
+    if (this.ws?.readyState !== WebSocket.OPEN) return false;
+    this.ws.send(payload);
+    return true;
   }
 
   private onMessage(ev: MessageEvent): void {

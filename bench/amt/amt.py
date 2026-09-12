@@ -5,6 +5,8 @@ autoregressive sampling. Nothing here knows about real time or scheduling --
 that's the scheduler's job.
 """
 
+import time
+
 import torch
 import torch.nn.functional as F
 
@@ -43,19 +45,30 @@ def parse_events(tokens):
         )
 
 
-def _instr_mask_logits(logits, accomp_bias):
+def _instr_mask_logits(logits, accomp_bias, accomp_only=True):
     # Lakh MIDI is full of multi-track songs, so a base AMT checkpoint given
     # only a sparse two-instrument prompt tends to free-associate across
     # dozens of unrelated GM instruments instead of staying in character as a
-    # duet partner. Mask note logits down to just the two voices in play.
+    # duet partner. Mask note logits down to just the voices in play.
+    #
+    # `accomp_bias` alone is not enough. Measured on the pod with a plain
+    # C-major quarter-note melody, a +2.0 logit nudge still left the model
+    # writing *only* melody-instrument notes: over four 4-beat windows it
+    # produced 16 events and zero accompaniment ones, so the caller -- which
+    # keeps nothing but accompaniment -- got an empty plan. Since every
+    # melody-instrument note the model invents past the playhead is discarded
+    # anyway (the real performer supplies that part), drop the instrument from
+    # the vocabulary outright and spend the whole window on the voice we keep.
+    # REST stays available, so the model can still choose silence.
     keep = torch.full((MAX_NOTE,), float("-inf"), device=logits.device, dtype=logits.dtype)
-    keep[MELODY_INSTR * 128:(MELODY_INSTR + 1) * 128] = 0.0
+    if not accomp_only:
+        keep[MELODY_INSTR * 128:(MELODY_INSTR + 1) * 128] = 0.0
     keep[ACCOMP_INSTR * 128:(ACCOMP_INSTR + 1) * 128] = accomp_bias
     logits[NOTE_OFFSET:NOTE_OFFSET + MAX_NOTE] += keep
     return logits
 
 
-def _add_token(model, tokens, top_p, current_time, accomp_bias):
+def _add_token(model, tokens, top_p, current_time, accomp_bias, accomp_only=True):
     """anticipation.sample.add_token, plus the instrument mask above."""
     history = tokens.copy()
     lookback = max(len(tokens) - 1017, 0)
@@ -73,7 +86,7 @@ def _add_token(model, tokens, top_p, current_time, accomp_bias):
             if i == 0:
                 logits = future_logits(logits, current_time - offset)
             elif i == 2:
-                logits = _instr_mask_logits(logits, accomp_bias)
+                logits = _instr_mask_logits(logits, accomp_bias, accomp_only)
             logits = nucleus(logits, top_p)
             probs = F.softmax(logits, dim=-1)
             token = torch.multinomial(probs, 1)
@@ -83,13 +96,32 @@ def _add_token(model, tokens, top_p, current_time, accomp_bias):
     return new_token
 
 
-def generate_duet(model, start_time, end_time, inputs, top_p=1.0, accomp_bias=ACCOMP_BIAS):
+def generate_duet(model, start_time, end_time, inputs, top_p=1.0, accomp_bias=ACCOMP_BIAS,
+                  accomp_only=True, deadline_s=None, min_interval_ticks=1):
     """
     anticipation.sample.generate_ar, restricted to a two-instrument duet.
 
-    Jointly continues both the melody instrument (discarded by the caller)
-    and the accompaniment instrument (kept) from start_time to end_time,
-    given the prior events in `inputs`.
+    Continues the accompaniment instrument from start_time to end_time given
+    the prior events in `inputs` (both parts). With `accomp_only=False` it
+    jointly continues the melody instrument too, in the model's own
+    imagine-both-parts style -- which every caller then throws away, and which
+    in practice crowds the accompaniment out of the window entirely.
+
+    `deadline_s` bounds the sampling loop in wall-clock seconds. Only the time
+    token is constrained during sampling (to be no earlier than the previous
+    event), so the model is free to keep stacking notes on one tick and never
+    advance to `end_time` -- observed live as a window that never returned.
+    Past the deadline, generation stops and returns what it has, which is the
+    same underrun the schedulers above it already know how to report.
+
+    `min_interval_ticks` is how far the clock must advance between events.
+    Callers commit a single voice and drop every note sharing an onset with
+    the one before it, so simultaneity is sampling budget spent on notes that
+    are thrown away -- and it is exactly how the loop stalls: with nothing
+    forcing the clock forward, the model piles a whole window's budget onto
+    the first tick and the deadline expires on a one-note "plan". A caller
+    playing to a beat grid should pass its shortest note value rather than the
+    1-tick default, which still admits 10ms flams.
     """
     start_time = int(TIME_RESOLUTION * start_time)
     end_time = int(TIME_RESOLUTION * end_time)
@@ -98,12 +130,16 @@ def generate_duet(model, start_time, end_time, inputs, top_p=1.0, accomp_bias=AC
     tokens = ops.pad(ops.clip(inputs, 0, start_time, clip_duration=False, seconds=False), start_time)
     current_time = ops.max_time(tokens, seconds=False)
 
+    began = time.monotonic()
     while True:
-        new_token = _add_token(model, tokens, top_p, max(start_time, current_time), accomp_bias)
+        if deadline_s is not None and time.monotonic() - began >= deadline_s:
+            break
+        new_token = _add_token(model, tokens, top_p, max(start_time, current_time), accomp_bias,
+                               accomp_only)
         new_time = new_token[0] - TIME_OFFSET
         if new_time >= end_time:
             break
         tokens.extend(new_token)
-        current_time = new_time
+        current_time = new_time + max(1, min_interval_ticks)
 
     return ops.sort(ops.unpad(tokens))
