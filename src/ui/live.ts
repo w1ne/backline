@@ -7,6 +7,7 @@ import { DEBUG } from '../debug';
 import type { AppState, Store } from './state';
 import type { SourceState } from '../listener/listener';
 import { shortDeviceName } from '../audio/devices';
+import { isPhoneUA } from '../listener/micConstraints';
 
 const KEY_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const ALL_KEYS: { root: number; mode: 'major' | 'minor' }[] = [
@@ -43,6 +44,9 @@ export interface LiveActions {
   setDroneVolume?(volume: number): void;
   /** gate the mic out of the listener (onsets/pitch/level); MIDI keeps working */
   setMicMuted?(muted: boolean): void;
+  /** monitor the singer's own mic back through the vocal chain — only ever actually
+   *  audible where monitorAllowed() says it is safe */
+  setVoiceMonitor?(enabled: boolean): void;
   /** ms a toggled instrument spends showing "joining…"/"leaving…" before it settles */
   changeLatencyMs?: number;
 }
@@ -95,6 +99,7 @@ function skeleton(): string {
           <span class="pill" id="live-pill"></span>
           <span class="pill" id="playback-target"></span>
           <button type="button" class="morph-key" id="mic-mute" aria-label="Mute the mic from the listener">MIC<span class="morph-led"></span></button>
+          <button type="button" class="morph-key" id="voice-monitor" aria-label="Monitor your own mic through the mix" title="Headphones only">VOICE<span class="morph-led"></span></button>
         </div>
         <span class="lcd" id="lcd"></span>
         <div class="bar-input">
@@ -291,6 +296,11 @@ function wireControls(screen: HTMLElement, store: Store): void {
     if (micMute.disabled) return;
     actions().setMicMuted?.(!store.state.micMuted);
   });
+  const voiceMonitor = screen.querySelector<HTMLButtonElement>('#voice-monitor')!;
+  voiceMonitor.addEventListener('click', () => {
+    if (voiceMonitor.disabled) return;
+    actions().setVoiceMonitor?.(!store.state.voiceMonitor);
+  });
   // The band boots on page load; browsers keep the AudioContext suspended until
   // a gesture, so the first tap anywhere on the panel wakes it. Capture phase,
   // so a tap on any control counts.
@@ -401,6 +411,7 @@ function update(screen: HTMLElement, s: AppState, changeLatencyMs: number): void
   updateEngine(screen, s);
   updateReadouts(screen, s);
   updateMicMute(screen, s);
+  updateVoiceMonitor(screen, s);
   updateTiles(screen, s, changeLatencyMs);
   const audio = screen.querySelector<HTMLButtonElement>('#enable-audio')!;
   audio.hidden = !s.audioSuspended && s.power === 'on';
@@ -619,6 +630,19 @@ function updateMicMute(screen: HTMLElement, s: AppState): void {
   micMute.disabled = midiOnly;
   micMute.classList.toggle('on', s.micMuted);
   micMute.firstChild!.textContent = s.micMuted ? 'MIC MUTED' : 'MIC';
+}
+
+/** VOICE chip: same look and place as MIC, off by default, and disabled on a phone
+ *  (headphones-only monitoring) regardless of anything else about the current state. */
+function updateVoiceMonitor(screen: HTMLElement, s: AppState): void {
+  const voice = screen.querySelector<HTMLButtonElement>('#voice-monitor')!;
+  const midiOnly = s.sources.mic === 'denied' || s.sources.mic === 'none';
+  const phone = isPhoneUA();
+  voice.hidden = midiOnly;
+  voice.disabled = midiOnly || phone;
+  voice.title = phone ? 'Headphones only' : 'Monitor your own mic through the mix';
+  voice.classList.toggle('on', s.voiceMonitor && !phone);
+  voice.firstChild!.textContent = s.voiceMonitor && !phone ? 'VOICE ON' : 'VOICE';
 }
 
 const enabledAtBar = new WeakMap<HTMLElement, Partial<Record<Instrument, number>>>();

@@ -327,6 +327,55 @@ describe('tap tempo', () => {
   });
 });
 
+describe('the VOICE chip', () => {
+  const noop = (): void => {};
+  const baseActions: LiveActions = { wake: noop, toggle: noop, setGenre: noop, setEngine: noop, setCreativity: noop };
+
+  it('is off by default, sits next to MIC, and shows the state MIC uses', () => {
+    const store = new Store();
+    const root = document.createElement('div');
+    renderLive(root, store, baseActions);
+    const voice = root.querySelector<HTMLButtonElement>('#voice-monitor')!;
+    expect(voice).not.toBeNull();
+    expect(voice.classList.contains('on')).toBe(false);
+    expect(voice.previousElementSibling!.id).toBe('mic-mute');
+  });
+
+  it('calls setVoiceMonitor with the flipped value on click', () => {
+    const calls: boolean[] = [];
+    const store = new Store();
+    const root = document.createElement('div');
+    renderLive(root, store, { ...baseActions, setVoiceMonitor: v => calls.push(v) });
+    root.querySelector<HTMLButtonElement>('#voice-monitor')!.click();
+    expect(calls).toEqual([true]);
+  });
+
+  it('reflects store.voiceMonitor once toggled on', () => {
+    const store = new Store();
+    store.update({ voiceMonitor: true });
+    const root = document.createElement('div');
+    renderLive(root, store, baseActions);
+    expect(root.querySelector<HTMLButtonElement>('#voice-monitor')!.classList.contains('on')).toBe(true);
+  });
+
+  it('hides alongside MIC when there is no mic source at all', () => {
+    const store = new Store();
+    store.update({ sources: { mic: 'none', midi: 'off' } });
+    const root = document.createElement('div');
+    renderLive(root, store, baseActions);
+    expect(root.querySelector<HTMLButtonElement>('#voice-monitor')!.hidden).toBe(true);
+    expect(root.querySelector<HTMLButtonElement>('#mic-mute')!.hidden).toBe(true);
+  });
+
+  it('carries a headphones-only tooltip', () => {
+    const store = new Store();
+    const root = document.createElement('div');
+    renderLive(root, store, baseActions);
+    const voice = root.querySelector<HTMLButtonElement>('#voice-monitor')!;
+    expect(voice.title.length).toBeGreaterThan(0);
+  });
+});
+
 it('only offers RunPod models and offline Patterns', () => {
   const root = document.createElement('div');
   renderLive(root, new Store(), { wake: () => {}, toggle: () => {}, setGenre: () => {}, setEngine: () => {}, setCreativity: () => {} });

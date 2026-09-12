@@ -35,6 +35,8 @@ import { RELAY_URL } from './config';
 import type { EngineChoice } from './ui/state';
 import { parseHealth } from './engines/health';
 import { MorphBus, setSinkSupported } from './audio/morphBus';
+import { VocalChain } from './audio/vocalChain';
+import { monitorAllowed } from './audio/monitorSafety';
 import {
   listInputs,
   listOutputs,
@@ -45,6 +47,7 @@ import {
   MIDI_INPUT_KEY,
   MORPH_SINK_KEY,
   MIC_MUTE_KEY,
+  VOICE_MONITOR_KEY,
   COUNT_IN_DISABLED_KEY,
   loadBool,
   saveBool,
@@ -73,6 +76,7 @@ const whiteNoise = new WhiteNoise();
 const drone = new Drone();
 let morph: MorphBus | undefined;
 let mic: MicSource | undefined;
+let vocalChain: VocalChain | undefined;
 let midi: MidiSource | undefined;
 /** true once players.init() has built the AudioContext the morph bus has to live in */
 let audioReady = false;
@@ -172,6 +176,7 @@ async function applyMorph(): Promise<void> {
     morph?.dispose();
     morph = undefined;
     applyRouting();
+    applyVoiceMonitor();
     return;
   }
   morph ??= new MorphBus(players.rawContext());
@@ -182,6 +187,27 @@ async function applyMorph(): Promise<void> {
   }
   players.setMorphBus(morph.input);
   applyRouting();
+  applyVoiceMonitor();
+}
+
+/**
+ * Builds the vocal chain the first time the mic's source node exists, then keeps it in
+ * sync with whether monitoring is currently safe: never on a phone speaker, and even off
+ * a phone only with the singer's opt-in or a chosen output device — and always off while
+ * the mic itself is muted.
+ */
+function applyVoiceMonitor(): void {
+  if (!audioReady || !mic?.sourceNode) return;
+  const reverbBus = players.reverbBus();
+  const masterInput = players.preLimiterInput();
+  if (!reverbBus || !masterInput) return;
+  vocalChain ??= new VocalChain(mic.sourceNode, reverbBus, masterInput);
+  const allowed = monitorAllowed({
+    userAgent: navigator.userAgent,
+    optedIn: store.state.voiceMonitor,
+    outputDeviceId: store.state.morphOut,
+  });
+  vocalChain.setEnabled(allowed && !store.state.micMuted);
 }
 
 /** Pushes the store's routing into the audio graph: pads via Players, engines via the band. */
@@ -406,6 +432,7 @@ async function power() {
   store.update({ power: 'on', error: null });
   await listener.start();
   store.update({ sources: { ...listener.sourceStatus } });
+  applyVoiceMonitor();
   // labels only come back from enumerateDevices() once a media permission has been
   // granted, so the pickers are worth re-reading right after the mic starts
   void refreshDevices().catch(() => undefined);
@@ -424,6 +451,8 @@ function powerOff() {
   playbackActivity.clear();
   listener?.stop();
   listener = undefined;
+  vocalChain?.dispose();
+  vocalChain = undefined;
   monitor?.stop();
   monitor = undefined;
   lastFollowedBpm = undefined;
@@ -605,6 +634,12 @@ store.subscribe(s => {
       saveBool(MIC_MUTE_KEY, muted);
       store.update({ micMuted: muted });
       listener?.setMicMuted(muted);
+      applyVoiceMonitor();
+    },
+    setVoiceMonitor: enabled => {
+      saveBool(VOICE_MONITOR_KEY, enabled);
+      store.update({ voiceMonitor: enabled });
+      applyVoiceMonitor();
     },
     setDroneVolume: value => {
       const droneVolume = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
@@ -639,6 +674,7 @@ store.update({
   micIn: loadDeviceId(MIC_DEVICE_KEY),
   midiIn: loadDeviceId(MIDI_INPUT_KEY),
   micMuted: loadBool(MIC_MUTE_KEY),
+  voiceMonitor: loadBool(VOICE_MONITOR_KEY),
   countIn: !loadBool(COUNT_IN_DISABLED_KEY),
 });
 if (store.state.morphOut) store.update({ routing: defaultRouting(true) });
