@@ -11,6 +11,7 @@ export interface AppState {
   power: 'off' | 'on';
   accompanimentStatus: string;
   modelLatencyMs: number | null;
+  responseLatencyMs: number | null;
   activeParts: Partial<Record<Instrument, boolean>>;
   sources: SourceStatus;
   genre: Genre;
@@ -81,6 +82,7 @@ const defaults: AppState = {
   power: 'off',
   accompanimentStatus: 'Listening',
   modelLatencyMs: null,
+  responseLatencyMs: null,
   activeParts: {},
   sources: { mic: 'off', midi: 'off' },
   genre: 'lofi',

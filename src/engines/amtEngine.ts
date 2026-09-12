@@ -43,6 +43,7 @@ interface PlanNote {
   voice: 'keys' | 'bass' | 'lead';
   /** Preserve the model instrument within any melodic role. */
   gmInstr?: number;
+  captureTimeSec?: number;
 }
 
 /** Minimal notifier interface the engine needs from the app's Listener, kept narrow so
@@ -70,6 +71,8 @@ export class AmtEngine implements BandEngine {
   onFirstBlock?: () => void;
   onConnected?: () => void;
   onStatus?: (message: string, latencyMs?: number) => void;
+  onResponseTiming?: (estimatedMs: number | null) => void;
+  private lastResponseCapture = -Infinity;
   onChord?: (chord: Chord, fromBeat: number) => void;
   onSection?: (section: Section) => void;
   private amount = 1;
@@ -136,6 +139,7 @@ export class AmtEngine implements BandEngine {
     private now: () => number = () => Tone.getContext().currentTime,
     /** Listener timestamps use performance time, independently of AudioContext startup. */
     private inputNow: () => number = () => performance.now() / 1000,
+    private outputDelayMs: () => number = () => 0,
   ) {
     this.clock = clock;
   }
@@ -147,7 +151,10 @@ export class AmtEngine implements BandEngine {
 
   async start(bpm: number, firstBarAt: number): Promise<void> {
     this.stopping = false;
+    this.lastResponseCapture = -Infinity;
+    this.onResponseTiming?.(null);
     this.players.setBandAmount?.(this.amount);
+    for (const i of ['drums', 'bass', 'keys', 'lead'] as const) this.players.setEnabled?.(i, this.state.enabled[i]);
     this.onStatus?.('Listening');
     this.bpm = bpm;
     this.bar = 0;
@@ -250,6 +257,7 @@ export class AmtEngine implements BandEngine {
 
   stop(): void {
     this.stopping = true;
+    this.onResponseTiming?.(null);
     this.players.cancelScheduled?.();
     this.players.setBandAmount?.(1);
     clearTimeout(this.responseTimer);
@@ -288,6 +296,7 @@ export class AmtEngine implements BandEngine {
 
   setEnabled(i: Instrument, on: boolean): void {
     this.state.enabled[i] = on;
+    this.players.setEnabled?.(i, on);
     this.queueSet();
   }
 
@@ -463,6 +472,19 @@ export class AmtEngine implements BandEngine {
         this.onFirstBlock?.();
       }
       this.onStatus?.('Playing');
+      // Clock offset maps capture time into AudioContext time. Report once per
+      // input event, only when an enabled, future note actually reaches Players.
+      const candidates = list.filter(n => n.vel > 0 && n.captureTimeSec !== undefined && n.captureTimeSec > this.lastResponseCapture);
+      if (candidates.length) {
+        const latest = Math.max(...candidates.map(n => n.captureTimeSec!));
+        const firstBeat = Math.min(...candidates.filter(n => n.captureTimeSec === latest).map(n => n.beat));
+        const captureAudio = latest + this.now() - this.inputNow();
+        const estimate = (this.firstBarAt + firstBeat * spb - captureAudio) * 1000 + this.outputDelayMs();
+        if (Number.isFinite(estimate) && estimate >= 0) {
+          this.lastResponseCapture = latest;
+          this.onResponseTiming?.(estimate);
+        }
+      }
       for (const n of list) this.scheduled.set(AmtEngine.noteKey(n), n.beat);
     }
   }
@@ -514,14 +536,14 @@ export class AmtEngine implements BandEngine {
         n && ['keys','bass','lead'].includes(n.voice) && Number.isFinite(n.beat) && n.beat >= 0 &&
         Number.isInteger(n.pitch) && n.pitch >= 0 && n.pitch <= 127 &&
         Number.isFinite(n.dur) && n.dur > 0 && Number.isFinite(n.vel) && n.vel >= 0 && n.vel <= 1) : [];
-      if (!notes.length) this.onStatus?.('Waiting for a model phrase');
+      if (!notes.length) this.onStatus?.('Listening · resting');
       for (const n of notes) {
         // Already handed to Players (or already queued): Tone has no way to cancel a
         // triggered event, so the first scheduling of a note is the one that stands.
         const key = AmtEngine.noteKey(n);
         if (this.scheduled.has(key)) continue;
         if (this.pending.some(p => AmtEngine.noteKey(p) === key)) continue;
-        this.pending.push(n);
+        this.pending.push({ ...n, captureTimeSec: typeof msg.latestCaptureTimeSec === 'number' && Number.isFinite(msg.latestCaptureTimeSec) ? msg.latestCaptureTimeSec : undefined });
       }
       this.pruneScheduled();
       this.scheduleDue();

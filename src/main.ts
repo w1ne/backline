@@ -6,6 +6,7 @@ import { renderLive, type LiveActions } from './ui/live';
 import { PI_EDITION, applyDeviceProfile } from './device/profile';
 import { startArturiaControls } from './device/arturia';
 import { startDeviceRuntime } from './device/runtime';
+import { PerformanceGuard } from './device/performanceGuard';
 import { Listener } from './listener/listener';
 import { MidiSource } from './listener/midiSource';
 import { TapTempo } from './listener/tapTempo';
@@ -70,6 +71,7 @@ const YOU_NOTE_SEC = 0.25;
 
 const root = document.getElementById('app')!;
 const store = new Store();
+const performanceGuard = new PerformanceGuard();
 let liveActions: LiveActions;
 const demo = new URLSearchParams(location.search).has('demo');
 let listener: Listener | undefined;
@@ -301,10 +303,10 @@ function setBandBpm(b: BandEngine, bpm: number): void {
 function makeBand(engine: EngineChoice): BandEngine {
   playbackActivity.clear();
   accompActivity.clear();
-  store.update({activeParts: {}, accompActive: {}, modelLatencyMs:null, accompanimentStatus: 'Listening'});
+  store.update({activeParts: {}, accompActive: {}, modelLatencyMs:null, responseLatencyMs:null, accompanimentStatus: 'Listening'});
   if (engine === 'lyria') return new LyriaEngine(players.rawContext());
   if (engine === 'acestep') return new AceStepEngine(players.rawContext());
-  if (engine === 'amt') return new AmtEngine(players, listener!);
+  if (engine === 'amt') return new AmtEngine(players, listener!, undefined, undefined, undefined, () => outputLatencyMs(players.rawContext()));
   return new PatternEngine(players, PATTERNS);
 }
 
@@ -333,6 +335,9 @@ function wireBand(b: BandEngine): void {
     if (band !== b) return;
     store.update({ ...(message ? {accompanimentStatus:message} : {}),
       ...(latencyMs !== undefined ? {modelLatencyMs:latencyMs} : {}) });
+  };
+  b.onResponseTiming = responseLatencyMs => {
+    if (band === b) store.update({ responseLatencyMs });
   };
   b.onStats = s => {
     const increased = s.loops > store.state.loops;
@@ -469,6 +474,10 @@ async function power() {
   const perfOffset = (): number => Tone.now() - performance.now() / 1000 - (store.state.outputLatencyMs ?? 0) / 1000;
 
   listener = new Listener([midi, mic], ['midi', 'mic']);
+  listener.onPerformance(e => {
+    if (e.type === 'note_on') performanceGuard.noteOn(e.id);
+    else performanceGuard.noteOff(e.id);
+  });
   listener.setMicMuted(store.state.micMuted);
   monitor = new MidiMonitor(players.rawContext(), store.state.sound);
   const activeMonitor = monitor;
@@ -492,6 +501,7 @@ async function power() {
   });
 
   listener.onChange(input => {
+    performanceGuard.observeOnsets(input.onsets);
     if (store.state.paused) return;
     // The strip's voice line: the continuous reading, not the snapped note, so a slide looks
     // like a slide. Runs on every listener emit (~20 Hz from the mic's pitch poll).
@@ -547,6 +557,7 @@ async function power() {
 }
 
 function powerOff() {
+  performanceGuard.clear();
   whiteNoise.setEnabled(false);
   drone.setEnabled(false);
   if (toastTimer !== undefined) clearTimeout(toastTimer);
@@ -839,7 +850,7 @@ if (PI_EDITION && !demo) {
     Tone.getDestination().mute = !playing;
     if (playing) await power();
     else powerOff();
-  });
+  }, () => performanceGuard.snapshot(store.state));
 }
 
 // The strip runs on the AudioContext clock, the same one every scheduled note is timed

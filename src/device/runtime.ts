@@ -18,7 +18,8 @@ export interface DeviceCommand {
 
 /** Local control plane for the Pi renderer. Never installed in the public web build. */
 export function startDeviceRuntime(store: Store, actions: () => LiveActions,
-  transport: (playing: boolean) => Promise<void>): () => void {
+  transport: (playing: boolean) => Promise<void>,
+  performanceStatus: () => { performanceActive: boolean; performanceLastAt: number } = () => ({ performanceActive: true, performanceLastAt: Date.now() })): () => void {
   let stopped = false;
   let ack = 0;
   let epoch = '';
@@ -53,7 +54,7 @@ export function startDeviceRuntime(store: Store, actions: () => LiveActions,
       await fetch('/api/status', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         signal: AbortSignal.timeout(2000),
-        body: JSON.stringify({ state: s, accompanimentStatus: s.accompanimentStatus, modelLatencyMs: s.modelLatencyMs, activeParts: s.activeParts, noiseVolume: s.noiseVolume, droneVolume: s.droneVolume, sound: s.sound, soundLabel: soundDef(s.sound).label, power: s.power, engine: s.engine, genre: s.genre,
+        body: JSON.stringify({ ...performanceStatus(), state: s, accompanimentStatus: s.accompanimentStatus, modelLatencyMs: s.modelLatencyMs, activeParts: s.activeParts, noiseVolume: s.noiseVolume, droneVolume: s.droneVolume, sound: s.sound, soundLabel: soundDef(s.sound).label, power: s.power, engine: s.engine, genre: s.genre,
           bpm: s.input.bpm, key: s.input.key ? keyName(s.input.key) : null,
           chord: s.input.chord ? chordName(s.input.chord) : null,
           inputLevel: s.input.inputLevel, locked: s.locked, bar: s.bar,

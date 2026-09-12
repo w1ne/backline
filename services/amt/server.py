@@ -366,78 +366,82 @@ class Session:
         return plan
 
 
+def apply_session_message(session, msg):
+    kind = msg.get("type")
+    if kind == "start":
+        session.reset(
+            bpm=float(msg.get("bpm", 100.0)),
+            lookahead_beats=float(msg.get("lookaheadBeats", PLAN_LOOKAHEAD_BEATS)),
+            commit_beats=float(msg.get("commitBeats", 2.0)),
+            listen_beats=float(msg.get("listenBeats", 8.0)),
+            top_p=0.95, instrument_names=msg.get("accompInstruments"),
+            accomp_bias=float(msg.get("accompBias", ACCOMP_BIAS)),
+            key=msg.get("key"), genre=msg.get("genre"),
+        )
+        session.set_controls(msg)
+    elif kind == "notes":
+        session.add_human_notes(msg.get("notes", []))
+    elif kind == "note_updates":
+        session.update_human_notes(msg.get("notes", []))
+    elif kind == "set":
+        session.set_controls(msg)
+
+
+def generate_session_plan(session, msg):
+    if msg["type"] == "bar":
+        return session.generate_next_bar_plan(int(msg.get("bar", 0)))
+    return session.generate_tick_plan(float(msg.get("beat", 0.0)))
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+    from live_session import LatestPlanner, InputOverflow
+
     await websocket.accept()
-    model = load_model()
-    session = Session(model)
-    # Offload inference so other sockets and health requests stay responsive.
-    # The global lock serializes GPU work; this connection consumes buffered
-    # incoming messages after its current plan completes.
+    async with inference_lock:
+        model = await asyncio.to_thread(load_model)
+    send_lock = asyncio.Lock()
+
+    async def send(msg):
+        async with send_lock:
+            await websocket.send_text(json.dumps(msg))
+
+    async def emit(out):
+        if "error" in out:
+            await send({"type": "error", "message": out["error"]})
+        else:
+            async with send_lock:
+                await websocket.send_text(json.dumps(out["plan"]))
+                await websocket.send_text(json.dumps(out["status"]))
+
+    planner = LatestPlanner(Session(model), inference_lock, apply_session_message, generate_session_plan, emit)
     log.info("connection opened")
     try:
         while True:
             raw = await websocket.receive_text()
             try:
                 msg = json.loads(raw)
-            except json.JSONDecodeError:
-                await websocket.send_text(json.dumps({"type": "error", "message": "invalid JSON"}))
-                continue
-
-            mtype = msg.get("type")
-            try:
-                if mtype == "ping":
-                    await websocket.send_text(json.dumps({"type": "pong"}))
-
-                elif mtype == "start":
-                    session.reset(
-                        bpm=float(msg.get("bpm", 100.0)),
-                        lookahead_beats=float(msg.get("lookaheadBeats", PLAN_LOOKAHEAD_BEATS)),
-                        commit_beats=float(msg.get("commitBeats", 2.0)),
-                        listen_beats=float(msg.get("listenBeats", 8.0)),
-                        top_p=0.95,
-                        instrument_names=msg.get("accompInstruments"),
-                        accomp_bias=float(msg.get("accompBias", ACCOMP_BIAS)),
-                        key=msg.get("key"),
-                        genre=msg.get("genre"),
-                    )
-                    session.set_controls(msg)
-                    # Tells a new client it may cue with `tick` every commitBeats instead of
-                    # `bar` every bar. An old client ignores unknown message types.
-                    await websocket.send_text(json.dumps({"type": "ready", "tick": True, "performanceEvents": True}))
-
-                elif mtype == "notes":
-                    session.add_human_notes(msg.get("notes", []))
-
-                elif mtype == "note_updates":
-                    session.update_human_notes(msg.get("notes", []))
-
-                elif mtype == "bar":
-                    bar = int(msg.get("bar", 0))
-                    async with inference_lock:
-                        out = await asyncio.to_thread(session.generate_next_bar_plan, bar)
-                    await websocket.send_text(json.dumps(out["plan"]))
-                    await websocket.send_text(json.dumps(out["status"]))
-
-                elif mtype == "tick":
-                    beat = float(msg.get("beat", 0.0))
-                    async with inference_lock:
-                        out = await asyncio.to_thread(session.generate_tick_plan, beat)
-                    await websocket.send_text(json.dumps(out["plan"]))
-                    await websocket.send_text(json.dumps(out["status"]))
-
-                elif mtype == "set":
-                    session.set_controls(msg)
-
+                if not isinstance(msg, dict):
+                    raise ValueError("expected a JSON object")
+                kind = msg.get("type")
+                if kind == "ping":
+                    await send({"type": "pong"})
+                elif kind in ("start", "notes", "note_updates", "bar", "tick", "set"):
+                    planner.submit(msg)
+                    if kind == "start":
+                        await send({"type": "ready", "tick": True, "performanceEvents": True})
                 else:
-                    await websocket.send_text(json.dumps({"type": "error", "message": f"unknown type {mtype}"}))
-            except WebSocketDisconnect:
-                raise
-            except Exception as e:  # noqa: BLE001
-                log.exception("error handling message %s", mtype)
-                await websocket.send_text(json.dumps({"type": "error", "message": str(e)}))
+                    await send({"type": "error", "message": f"unknown type {kind}"})
+            except InputOverflow as error:
+                await send({"type": "error", "message": str(error)})
+                await websocket.close(code=1009)
+                break
+            except (ValueError, TypeError) as error:
+                await send({"type": "error", "message": str(error)})
     except WebSocketDisconnect:
         log.info("connection closed")
+    finally:
+        await planner.close()
 
 
 def run_bench(n_bars=16):

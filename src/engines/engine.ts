@@ -22,6 +22,7 @@ export interface BandEngine {
   /** called once the engine has actually produced/received its first audio block */
   onFirstBlock?: () => void;
   onConnected?: () => void;
+  onResponseTiming?: (estimatedMs: number | null) => void;
   onStatus?: (message: string, latencyMs?: number) => void;
   /** periodic playback stats (e.g. Lyria's audio-buffer loop/underrun counters) */
   onStats?: (s: { loops: number; starvedSec: number }) => void;

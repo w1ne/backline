@@ -36,6 +36,7 @@ export function humanize(inst: Instrument, events: NoteEvent[], spb: number, rng
 }
 
 export interface PlayersLike {
+  setEnabled?(instrument: Instrument, on: boolean): void;
   setBandAmount?(amount: number): void;
   cancelScheduled?(): void;
   schedule(instrument: Instrument, events: NoteEvent[], barStartTime: number, bpm: number): void;

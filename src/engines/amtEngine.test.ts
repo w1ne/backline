@@ -662,3 +662,27 @@ it('plays server lead and distinct model instruments without a second local melo
   expect(players.calls).toHaveLength(0);
   engine.stop();
 });
+
+
+describe('AMT response timing', () => {
+  it('maps capture and audio clocks and reports only the first playable response', async () => {
+    const players = new FakePlayers();
+    const engine = new AmtEngine(players, new FakeNoteSource(), new FakeClock(), () => 10, () => 100, () => 20);
+    const timing = vi.fn(); engine.onResponseTiming = timing;
+    engine.setEnabled('keys', true);
+    const starting = engine.start(120, 10);
+    const ws = startedSocket(); ws.open(); await starting;
+    timing.mockClear();
+    const note = {voice:'keys', beat:2, pitch:60, dur:1, vel:.8};
+    ws.receiveJson({type:'plan', latestCaptureTimeSec:99.5, notes:[]});
+    expect(timing).not.toHaveBeenCalled();
+    ws.receiveJson({type:'plan', latestCaptureTimeSec:99.5, notes:[note]});
+    expect(timing).toHaveBeenCalledWith(1520);
+    ws.receiveJson({type:'plan', latestCaptureTimeSec:99.5, notes:[{...note,beat:3}]});
+    expect(timing).toHaveBeenCalledTimes(1);
+    engine.setEnabled('keys', false);
+    ws.receiveJson({type:'plan', latestCaptureTimeSec:100, notes:[{...note,beat:4}]});
+    expect(timing).toHaveBeenCalledTimes(1);
+    engine.stop();
+  });
+});
