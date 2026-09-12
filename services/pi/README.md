@@ -3,7 +3,7 @@
 One codebase produces two editions. `npm run build` creates the public web app
 in `dist/`; its existing relay settings and hosting workflow are unchanged.
 `npm run build:pi` creates `dist-pi/` with `.env.pi`: local sampled keyboard sounds,
-local AMT by default, physical LYDIA audio, and a local AMT endpoint.
+RunPod AMT by default and physical LYDIA audio. Both editions use the public relay; the Pi needs internet for model accompaniment.
 Never upload `dist-pi/` to public hosting.
 
 ## Use the installed pedal
@@ -33,7 +33,7 @@ provided interactively or through your SSH agent/control connection, not stored
 in the project. This deployment replaces PiMorpho at boot. Vendor firmware and
 the `bento_ttymidi` hardware bridge remain installed.
 
-Local AMT is an optional separate installation under `/home/test/duet-ai-model`.
+Local AMT is disabled in the cloud deployment. It remains an optional separate installation under `/home/test/duet-ai-model`.
 Its dependencies, checkpoint and shared source files are documented in
 [the benchmark and installation notes](../../docs/pi-amt-benchmark/README.md).
 A frontend deployment does not install or update that model environment.
@@ -80,8 +80,7 @@ port at 100 BPM. The Pi detected the melody/key, the browser received local AMT
 plans and scheduled keys/bass without JavaScript errors or late-note drops in
 that short run. See `docs/pi-amt-benchmark/browser-midi-check.json`. Longer
 concurrent benchmarks did show occasional late or empty windows, so AMT remains
-experimental. The Pi now starts with AMT and does not automatically switch to Patterns when
-AMT has no output. Patterns remains a manual option in the controller.
+experimental. The Pi now starts with cloud AMT. Empty model phrases are shown honestly; connection errors or stalled responses switch to offline Patterns. Patterns is also selectable manually.
 Wi-Fi reachability and internet HTTPS were checked from the installed Pi.
 
 ## Arturia MiniLab 3
@@ -111,7 +110,7 @@ The CC assignments are documented in Arturia's MIDI implementation chart:
 https://support.arturia.com/hc/en-us/articles/6189475866396-MiniLab-3-General-Questions
 CC114 values64/65/66 were captured from the attached keyboard during testing.
 
-At tempos above 110 BPM the Pi AMT plans two bars with two bars of lead,
+In the optional legacy CPU backend, tempos above 110 BPM use two bars with two bars of lead,
 every other bar. This trades a longer response delay for time to finish CPU
 inference. Padding is relative to retained history so inference does not grow
 slower merely because a session has run longer. Web AMT retains one-bar planning.
@@ -119,3 +118,9 @@ slower merely because a session has run longer. Web AMT retains one-bar planning
 Rotary 2 controls a continuous low triangle drone, following the detected tonic
 with a short pitch glide. It starts silent; volume uses a gentle squared curve
 and mutes when transport pauses. The Arturia display shows N (noise) and D (drone).
+
+## Cloud edition update (2026-09-12)
+
+Both clients use RunPod `stanford-crfm/music-small-800k` with corrected retained-context padding and GPU caching. See [measured comparison](../../docs/cloud-model-review/README.md). The Pi's `duet-amt` CPU unit is disabled; keep the model files only for optional offline experiments. Default AMT includes local drums, model keys/bass and optional short pattern guitar answers. ACE-Step is an optional RunPod audio-texture engine. Lyria is not offered because it would use Google inference.
+
+The main UI and remote controller separate Your instrument and Your band, expose sampled keyboard/noise/drone controls, and show model phrase status and latency. Activity lamps reflect scheduled note times. A ready phrase is not a listening-quality guarantee. Arturia mappings are unchanged.

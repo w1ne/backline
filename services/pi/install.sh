@@ -9,6 +9,9 @@ fi
 sudo install -m 644 services/pi/duet-web.service services/pi/duet-browser.service services/pi/duet-lcd.service services/pi/duet-arturia.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl disable --now PiMorpho.service
+if systemctl cat duet-amt.service >/dev/null 2>&1; then
+  sudo systemctl disable --now duet-amt.service
+fi
 sudo systemctl enable duet-web.service duet-browser.service duet-lcd.service duet-arturia.service
 sudo systemctl restart duet-web.service duet-browser.service duet-lcd.service duet-arturia.service
 python3 - <<'PY'

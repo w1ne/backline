@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build on the development computer; the Pi does not need Node or internet access.
+# Build on the development computer; the Pi needs internet for RunPod inference but does not need Node.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 target=${1:-test@192.168.10.1}

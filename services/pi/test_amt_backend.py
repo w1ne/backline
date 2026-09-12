@@ -58,6 +58,10 @@ class CacheTests(unittest.TestCase):
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_no_model_phrase_before_any_performer_notes(self):
+        session = backend.shared.Session(object())
+        self.assertEqual(session.generate_next_bar_plan(4)['plan']['notes'], [])
+
     def test_fast_tempo_plans_are_contiguous_with_two_bars_of_lead(self):
         self.assertEqual(backend.shared.plan_window(3), (16.0, 20.0))
         self.assertEqual(backend.shared.plan_window(2, 2), (16.0, 24.0))

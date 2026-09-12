@@ -215,7 +215,7 @@ class Session:
         # player's melody have been heard, so the model answers real material
         # instead of guessing from a nearly empty bar. This was parsed from
         # the `start` message and then never used.
-        if (bar + 2) * 4.0 <= self.listen_beats:
+        if not self.human_notes or (bar + 2) * 4.0 <= self.listen_beats:
             log.info("bar %d: listening (target bar ends at beat %.1f, listen=%.1f)",
                      bar, target_end_beat, self.listen_beats)
             return {
