@@ -4,13 +4,16 @@
  * Instruments want the raw signal: no echo cancellation, noise suppression or auto gain,
  * all of which colour pitch and onsets. A phone is different: the band plays out of the
  * same box the mic sits in, so without the echo canceller the listener hears the band
- * and follows itself. Phones get the canceller; the other two stay off everywhere.
+ * and follows itself. iOS gets the canceller. Android does not: Chrome there implements
+ * echo cancellation by switching the phone into call mode, which moves the band onto the
+ * call-volume path and the earpiece, and the user hears nothing (seen on Android Chrome,
+ * 2026-09-12). The other two stay off everywhere.
  */
 export function micConstraints(deviceId: string | null, userAgent: string = navigator.userAgent): MediaTrackConstraints {
-  const phone = /iPhone|iPad|iPod|Android/i.test(userAgent);
+  const ios = /iPhone|iPad|iPod/i.test(userAgent);
   return {
     ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
-    echoCancellation: false, // TEST: Android call-mode routing
+    echoCancellation: ios,
     noiseSuppression: false,
     autoGainControl: false,
   };
