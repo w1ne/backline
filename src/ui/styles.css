@@ -69,15 +69,15 @@ body {
   font-size: 14px;
 }
 
-/* Above the phone/tablet breakpoint the panel fits one viewport with no page
-   scroll: a fixed grid of rows, the middle one (controls) doing the flexing. */
+/* Above the phone/tablet breakpoint the panel tries to fill one viewport, but
+   it is sized by its content: the controls row grows to its tallest zone and
+   the page scrolls on a short screen. Nothing is ever clipped. */
 @media (min-width: 901px) {
   .screen {
     display: grid;
-    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
-    height: calc(100vh - 32px);
-    max-height: 860px;
-    overflow: hidden;
+    grid-template-rows: auto auto auto minmax(max-content, 1fr) auto;
+    min-height: calc(100vh - 32px);
+    height: auto;
   }
 }
 
@@ -808,7 +808,6 @@ body {
 .row2 .zone {
   min-height: 0;
   height: 100%;
-  overflow: hidden;
 }
 
 .bottom {
