@@ -92,6 +92,19 @@ def predict_next(key: Key, recent_chords: Sequence[Chord], genre: Optional[str] 
     return degree_chord(key, best)
 
 
+def rejected(predicted: Chord, in_force: Chord, recent_chords: Sequence[Chord]) -> bool:
+    """True when the band already tried `predicted` after `in_force` and the singer pulled it back.
+
+    `recent_chords` is one entry per half bar; the pattern in_force, predicted, ..., in_force
+    means the move was made and corrected, so a singer holding one chord is not pushed off it
+    on every downbeat.
+    """
+    history = list(recent_chords)
+    if predicted not in history or history[-1] != in_force:
+        return False
+    return in_force in history[history.index(predicted) + 1:]
+
+
 def decide(key: Key, genre: Optional[str], harmonizer_reading: Optional[Reading],
            recent_chords: Sequence[Chord], coverage: float, downbeat: bool = False) -> tuple[Chord, str]:
     """The chord for the coming half bar and where it came from (HEARD or PREDICTED).
@@ -108,7 +121,10 @@ def decide(key: Key, genre: Optional[str], harmonizer_reading: Optional[Reading]
     heard = harmonizer_reading.chord
     in_force = recent_chords[-1] if recent_chords else None
     if downbeat and in_force is not None and heard == in_force:
-        return predict_next(key, recent_chords, genre), PREDICTED
+        predicted = predict_next(key, recent_chords, genre)
+        if not rejected(predicted, in_force, recent_chords):
+            return predicted, PREDICTED
+        return heard, HEARD
     if coverage >= READING_TRUST or harmonizer_reading.energy <= 0:
         return heard, HEARD
     predicted = predict_next(key, recent_chords, genre)

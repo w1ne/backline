@@ -2,7 +2,7 @@ import pytest
 
 from harmony import Chord, Key, Reading, chord_name, diatonic_triads
 from predict import (
-    MAJOR_TABLE, MINOR_TABLE, chord_degree, decide, degree_chord, predict_next,
+    MAJOR_TABLE, MINOR_TABLE, chord_degree, decide, degree_chord, predict_next, rejected,
     transitions, HEARD, PREDICTED,
 )
 
@@ -122,8 +122,18 @@ class TestDecide:
 
     def test_downbeat_with_the_reading_confirming_the_chord_in_force_moves_to_the_prediction(self):
         r = reading((9, 'min'), [4, 0])  # E C: the tail of an Am bar
-        chord, source = decide(A_MINOR, None, r, [Chord(5, 'maj'), Chord(9, 'min')], r.coverage, downbeat=True)
+        chord, source = decide(A_MINOR, None, r, [Chord(7, 'maj'), Chord(9, 'min')], r.coverage, downbeat=True)
         assert chord == Chord(5, 'maj') and source == PREDICTED
+
+    def test_a_move_the_singer_pulled_back_is_not_tried_again(self):
+        # the band went Am -> F on a downbeat, the singer stayed on Am and the reading corrected
+        # it; the next downbeat keeps Am instead of pushing F again
+        r = reading((9, 'min'), [4, 0])
+        recent = [Chord(9, 'min'), Chord(5, 'maj'), Chord(9, 'min'), Chord(9, 'min')]
+        chord, source = decide(A_MINOR, None, r, recent, r.coverage, downbeat=True)
+        assert chord == Chord(9, 'min') and source == HEARD
+        assert rejected(Chord(5, 'maj'), Chord(9, 'min'), recent)
+        assert not rejected(Chord(5, 'maj'), Chord(9, 'min'), [Chord(5, 'maj'), Chord(7, 'maj'), Chord(9, 'min')][1:])
 
     def test_downbeat_where_the_reading_corrects_the_chord_in_force_keeps_the_reading(self):
         # the band was on F (predicted) but the singer stayed on Am: the correction wins
