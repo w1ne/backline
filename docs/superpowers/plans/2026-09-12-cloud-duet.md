@@ -13,4 +13,4 @@
 - [x] Run npm test, npm run build, npm run build:pi, Python Pi tests and relay tests/typecheck. Review all diffs for spec compliance and then quality.
 - [x] Deploy Pi and run deterministic MIDI with captured audio and browser diagnostics; exercise public MIDI workflow. Merge/push verified changes, check public deployments, update deployment documentation with evidence and remaining limits.
 
-Final Pi remote-controller browser check could not run after the Ethernet interface went DOWN; deployed hardware audio and main UI verification completed beforehand.
+Final Pi remote-controller browser check passed over Wi-Fi at 172.16.22.3 after Ethernet disconnected.
