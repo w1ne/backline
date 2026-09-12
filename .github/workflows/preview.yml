@@ -4,7 +4,25 @@ on:
     branches-ignore: [main]
 permissions: { contents: read }
 jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - name: Cache MIR-1K subset
+        id: mir1k-cache
+        uses: actions/cache@v4
+        with:
+          path: bench/realvoice/data
+          key: mir1k-subset-v1
+      - name: Fetch MIR-1K subset (best effort)
+        if: steps.mir1k-cache.outputs.cache-hit != 'true'
+        run: bash bench/realvoice/fetch.sh
+      - run: npm run bench:gate
   preview:
+    needs: gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
