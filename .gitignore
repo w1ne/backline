@@ -8,3 +8,4 @@ __pycache__/
 # local relay secrets written by scripts/run-local.sh
 relay/.dev.vars
 COMMIT.pi
+.claude/
