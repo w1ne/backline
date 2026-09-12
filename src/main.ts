@@ -24,7 +24,8 @@ import { AceStepEngine } from './engines/acestepEngine';
 import { AmtEngine } from './engines/amtEngine';
 import { forwardBpm } from './band/bpmForward';
 import { MidiRecorder } from './export/midiRecorder';
-import { downloadMidi } from './export/download';
+import { downloadBlob, downloadMidi } from './export/download';
+import { audioRecorder } from './export/audioRecorder';
 import { DEBUG, installDebug, recordToggle } from './debug';
 import { chooseFallback } from './engines/fallback';
 import { RELAY_URL } from './config';
@@ -61,6 +62,8 @@ let monitor: MidiMonitor | undefined;
 const players = new Players();
 const playbackActivity = new PlaybackActivity();
 const midiRecorder = new MidiRecorder();
+/** native tap on Tone's master output so the audio recorder can capture the synth band */
+let masterTap: GainNode | undefined;
 const whiteNoise = new WhiteNoise();
 const drone = new Drone();
 let morph: MorphBus | undefined;
@@ -366,16 +369,30 @@ store.subscribe(s => {
     toggleRecord: () => {
       if (!store.state.recording) {
         midiRecorder.reset();
+        const ctx = Tone.getContext().rawContext as AudioContext;
+        // the synth band plays through Tone's destination; generated audio and the mic
+        // register themselves with the recorder when they are created
+        if (!masterTap) {
+          masterTap = ctx.createGain();
+          Tone.getDestination().connect(masterTap);
+          audioRecorder.addSource(masterTap);
+        }
+        audioRecorder.start(ctx);
         store.update({ recording: true });
         return;
       }
       store.update({ recording: false });
+      const name = `duetai-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}`;
+      const hadAudio = audioRecorder.recording;
+      void audioRecorder.stop().then(audio => {
+        if (audio && audio.blob.size) downloadBlob(audio.blob, `${name}.${audio.ext}`);
+      });
       if (midiRecorder.empty) {
-        store.update({ error: 'Nothing was played while recording' });
+        if (!hadAudio) store.update({ error: 'Nothing was played while recording' });
         return;
       }
       const bpm = lastFollowedBpm ?? store.state.input.bpm ?? undefined;
-      downloadMidi(midiRecorder.toMidi(bpm), `duetai-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}.mid`);
+      downloadMidi(midiRecorder.toMidi(bpm), `${name}.mid`);
     },
     wake: () => {
       if (store.state.audioSuspended) {
