@@ -10,7 +10,7 @@ export function micConstraints(deviceId: string | null, userAgent: string = navi
   const phone = /iPhone|iPad|iPod|Android/i.test(userAgent);
   return {
     ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
-    echoCancellation: phone,
+    echoCancellation: false, // TEST: Android call-mode routing
     noiseSuppression: false,
     autoGainControl: false,
   };
