@@ -120,7 +120,7 @@ function skeleton(): string {
             <button type="button" class="engine-key" id="engine-acestep" data-engine="acestep">
               <span class="engine-key-text">
                 <span class="engine-key-name">Ace</span>
-                <span class="engine-key-desc">GPU · 2-bar blocks · default</span>
+                <span class="engine-key-desc">GPU · 2-bar blocks</span>
               </span>
               <span class="engine-led" data-engine-led="acestep"></span>
             </button>
@@ -303,6 +303,12 @@ function mark(state: SourceState): string {
   return state === 'on' ? '✓' : '✗';
 }
 
+const ENGINE_NAMES: Record<AppState['engine'], string> = {
+  patterns: 'PATTERNS',
+  lyria: 'LYRIA',
+  acestep: 'ACE',
+};
+
 function lcdText(s: AppState): string {
   if (s.power === 'off') return 'OFF · PRESS POWER';
   if (s.locked) return `LIVE · BAR ${s.bar}`;
@@ -330,9 +336,14 @@ function updateEngine(screen: HTMLElement, s: AppState): void {
     const offline = s.offlineEngines.includes(e);
     btn.title = offline ? 'OFFLINE' : '';
     const led = btn.querySelector<HTMLElement>('.engine-led')!;
-    const connecting = selected && s.power === 'on' && s.engineConnecting;
-    led.classList.toggle('offline', offline && !connecting);
-    led.classList.toggle('online', !offline && !connecting);
+    const live = selected && s.power === 'on';
+    const connecting = live && s.engineConnecting;
+    // While this engine is the one actually running, its socket/session state wins over the
+    // boot-time /health probe: connected -> solid green, connecting -> blinking green.
+    const connected = live && !s.engineConnecting;
+    const online = connected || (!offline && !live);
+    led.classList.toggle('offline', !online && !connecting);
+    led.classList.toggle('online', online);
     led.classList.toggle('connecting', connecting);
   });
 }
@@ -344,8 +355,7 @@ function updateHeader(screen: HTMLElement, s: AppState): void {
     pill.textContent = s.error;
     pill.className = 'pill error';
   } else if (s.locked) {
-    const looping = s.loopsUpdatedAt !== undefined && Date.now() - s.loopsUpdatedAt < 3000 ? ' · looping' : '';
-    pill.textContent = `live · bar ${s.bar}${looping}`;
+    pill.textContent = `● ${ENGINE_NAMES[s.engine]}`;
     pill.className = 'pill live';
   } else if (s.power === 'on') {
     pill.textContent = `listening… onsets ${s.input.onsets}/12`;
