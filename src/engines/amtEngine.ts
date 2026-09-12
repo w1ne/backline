@@ -122,7 +122,7 @@ export class AmtEngine implements BandEngine {
 
   async start(bpm: number, firstBarAt: number): Promise<void> {
     this.stopping = false;
-    this.onStatus?.('Listening for your melody');
+    this.onStatus?.('Listening');
     this.bpm = bpm;
     this.bar = 0;
     this.gotFirstNotes = false;
@@ -366,7 +366,7 @@ export class AmtEngine implements BandEngine {
         this.gotFirstNotes = true;
         this.onFirstBlock?.();
       }
-      this.onStatus?.('Band phrase ready');
+      this.onStatus?.('Playing');
       for (const n of list) this.scheduled.set(AmtEngine.noteKey(n), n.beat);
     }
   }

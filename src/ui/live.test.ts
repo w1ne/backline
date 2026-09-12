@@ -261,7 +261,7 @@ describe('instrument controls and model feedback', () => {
     store.update({ bar: 2 });
     renderLive(root, store, actions);
     expect(root.querySelector('#band-status')!.textContent).toContain('Waiting for a model phrase');
-    expect(root.querySelector('#model-latency')!.textContent).toContain('1.2 s');
+    expect(root.querySelector('#model-latency')!.textContent).toContain('1234 ms');
     expect(root.querySelector('[data-inst="drums"] .st-text')!.textContent).toBe('ready');
     expect(root.querySelector('[data-inst="drums"] .meter')).toBeNull();
   });

@@ -16,7 +16,7 @@
 </div><button id="transport" disabled>Start sound</button><button id="mic" disabled>Mute microphone</button><p id="error" role="alert"></p></section>
 <section><h2>Your band</h2><p id="band-status" role="status">Waiting for the pedal…</p><p class="muted" id="latency"></p><p class="readout" id="music">Tempo — · Key —</p><div id="parts"></div></section>
 <section class="panel"><div class="grid"><label>Band amount<input id="intensity" type="range" min="0" max="1" step="0.05"></label><label>Creativity<input id="creativity" type="range" min="0" max="1" step="0.05"></label><label class="full">Style<select id="genre"><option value="lofi">Lo-fi</option><option value="funk">Funk</option><option value="rock">Rock</option><option value="jazz">Jazz</option></select></label></div>
-<div class="tempo-controls"><label>Tempo<input id="bpm" type="number" min="40" max="240" value="100"></label><button id="tempo">Set tempo</button><button id="auto">Follow input</button></div><p class="muted">Play a steady MIDI melody to let the band find your tempo and key, or set the tempo yourself.</p></section>
+<div class="tempo-controls"><label>Tempo<input id="bpm" type="number" min="40" max="240" value="100"></label><button id="tempo">Set tempo</button><button id="auto">Follow input</button></div></section>
 <details><summary>Models &amp; connection</summary><label>Accompaniment model<select id="engine"><option value="amt">AMT · cloud, follows your notes</option><option value="patterns">Patterns · offline, instant band</option><option value="acestep">ACE-Step · cloud backing texture</option></select></label><p class="muted">AMT turns your notes into a band phrase through the configured model service. ACE-Step creates backing textures. Patterns runs on the pedal without a cloud connection.</p><p class="muted" id="engine-status"></p></details>
 </main><script>
 let state={};const $=id=>document.getElementById(id);let commandError='';
@@ -34,8 +34,8 @@ async function poll(){try{
  const r=await fetch('/api/status');if(!r.ok)throw new Error('Status unavailable');state=await r.json();connected(!!state.online);
  $('status').textContent=!state.online?'Starting audio engine…':state.audioSuspended?'Sound suspended · press Start sound':state.power!=='on'?'Pedal connected · paused':'Pedal connected · audio running';
  $('music').textContent=[state.bpm?Math.round(state.bpm)+' BPM':'Tempo —',state.key||'Key —',state.chord||''].filter(Boolean).join(' · ');
- $('band-status').textContent=state.accompanimentStatus||(state.locked?'Band ready':'Listening for your melody');
- $('latency').textContent=state.modelLatencyMs==null?'':'Last model response '+(state.modelLatencyMs/1000).toFixed(1)+' s';
+ $('band-status').textContent=state.accompanimentStatus||'';
+ $('latency').textContent=state.modelLatencyMs==null?'':Math.round(state.modelLatencyMs)+' ms';
  $('error').textContent=commandError||state.error||'';
  $('input').textContent=(state.sources?.midi==='on'?'MIDI connected':'MIDI not connected')+' · '+(state.sources?.mic==='on'?(state.micMuted?'Microphone muted':'Microphone connected'):'Microphone unavailable');
  $('transport').textContent=state.audioSuspended||state.power!=='on'?'Start sound':'Pause';$('mic').textContent=state.micMuted?'Unmute microphone':'Mute microphone';

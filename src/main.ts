@@ -155,7 +155,7 @@ function setBandBpm(b: BandEngine, bpm: number): void {
 
 function makeBand(engine: EngineChoice): BandEngine {
   playbackActivity.clear();
-  store.update({activeParts: {}, modelLatencyMs:null, accompanimentStatus: engine === 'amt' ? 'Listening for your melody' : 'Ready to accompany'});
+  store.update({activeParts: {}, modelLatencyMs:null, accompanimentStatus: 'Listening'});
   if (engine === 'lyria') return new LyriaEngine(players.rawContext());
   if (engine === 'acestep') return new AceStepEngine(players.rawContext());
   if (engine === 'amt') return new AmtEngine(players, listener!);
@@ -181,7 +181,7 @@ function wireBand(b: BandEngine): void {
       for (let b = 1; b < BEATS_PER_BAR; b++)
         beatTimers.push(setTimeout(() => tickBeat(beat + b), (b * 60000) / bpm));
   };
-  b.onError = msg => store.update({ error: msg, accompanimentStatus: 'Band connection interrupted' });
+  b.onError = msg => store.update({ error: msg, accompanimentStatus: 'Reconnecting' });
   b.onStatus = (message, latencyMs) => {
     if (band !== b) return;
     store.update({ ...(message ? {accompanimentStatus:message} : {}),
@@ -389,7 +389,8 @@ store.subscribe(s => {
     },
     setEngine: e => {
       const prevEngine = store.state.engine;
-      store.update({ engine: e });
+      // A fresh pick clears any stale "<ENGINE> OFFLINE" fallback note.
+      store.update({ engine: e, error: null });
       if (store.state.power !== 'on' || !band || e === prevEngine) return;
       // Power-cycle the band engine in place, at the same bpm/key, instead of
       // making the user power off first.
@@ -541,7 +542,7 @@ if (demo) {
     power: 'on',
     sources: { mic: 'on', midi: 'on' },
     genre: 'funk',
-    accompanimentStatus: 'Band phrase ready',
+    accompanimentStatus: 'Playing',
     creativity: 0.65,
     locked: true,
     bar: 9,

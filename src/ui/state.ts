@@ -57,7 +57,7 @@ export interface AppState {
 
 const defaults: AppState = {
   power: 'off',
-  accompanimentStatus: 'Listening for your melody',
+  accompanimentStatus: 'Listening',
   modelLatencyMs: null,
   activeParts: {},
   sources: { mic: 'off', midi: 'off' },

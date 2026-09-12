@@ -73,7 +73,7 @@ function skeleton(): string {
         <span class="lcd" id="lcd"></span>
       </div>
       <section class="instrument-section" aria-labelledby="instrument-heading">
-        <div class="section-heading"><div><h2 id="instrument-heading">Your instrument</h2><p>Play a melody. Make room for the band.</p></div><button type="button" id="enable-audio" class="audio-start">Enable sound</button></div>
+        <div class="section-heading"><div><h2 id="instrument-heading">Your instrument</h2></div><button type="button" id="enable-audio" class="audio-start">Enable sound</button></div>
         <p class="connection-line" id="input-status"></p>
         <div class="instrument-controls">          <div class="field">
             <label for="sound">Keyboard sound</label>
@@ -163,24 +163,24 @@ function skeleton(): string {
 
         </div>
       </div>
-      <details class="model-details"><summary>Models &amp; connection</summary><p>AMT turns your MIDI melody into a band phrase. ACE-Step generates backing textures; Patterns works without a cloud connection.</p>        <div class="zone zone--orange engine">
+      <details class="model-details"><summary>Models &amp; connection</summary>        <div class="zone zone--orange engine">
           <span class="zone-label">Accompaniment model</span>
           <div class="engine-keys" id="engine-choice">
             <button type="button" class="engine-key" id="engine-patterns" data-engine="patterns">
               <span class="engine-key-text">
-                <span class="engine-key-name">Patterns</span><small>Offline · instant band</small>
+                <span class="engine-key-name">Patterns</span>
               </span>
               <span class="engine-led" data-engine-led="patterns"></span>
             </button>
             <button type="button" class="engine-key" id="engine-acestep" data-engine="acestep">
               <span class="engine-key-text">
-                <span class="engine-key-name">ACE-Step</span><small>Cloud · backing texture</small>
+                <span class="engine-key-name">ACE-Step</span>
               </span>
               <span class="engine-led" data-engine-led="acestep"></span>
             </button>
             <button type="button" class="engine-key" id="engine-amt" data-engine="amt">
               <span class="engine-key-text">
-                <span class="engine-key-name">AMT</span><small>Cloud · follows your notes</small>
+                <span class="engine-key-name">AMT</span>
               </span>
               <span class="engine-led" data-engine-led="amt"></span>
             </button>
@@ -321,10 +321,10 @@ function update(screen: HTMLElement, s: AppState, changeLatencyMs: number): void
   updateTiles(screen, s, changeLatencyMs);
   const audio = screen.querySelector<HTMLButtonElement>('#enable-audio')!;
   audio.hidden = !s.audioSuspended && s.power === 'on';
-  screen.querySelector<HTMLElement>('#input-status')!.textContent = `${midiLabel(s)} · ${s.audioSuspended ? 'Sound paused by browser' : s.power === 'on' ? 'Audio running' : 'Starting audio…'}`;
-  screen.querySelector<HTMLElement>('#band-status')!.textContent = s.accompanimentStatus || (s.locked ? 'Band ready' : 'Play a steady phrase to find the tempo');
-  screen.querySelector<HTMLElement>('#model-latency')!.textContent = s.modelLatencyMs == null ? '' : `Last model response ${(s.modelLatencyMs / 1000).toFixed(1)} s`;
-  screen.querySelector<HTMLElement>('#engine-status')!.textContent = s.engine === 'patterns' ? 'Patterns · runs on this device, no cloud needed' : s.engineConnecting ? `${ENGINE_NAMES[s.engine]} · connecting…` : s.offlineEngines.includes(s.engine) ? `${ENGINE_NAMES[s.engine]} · unavailable` : `${ENGINE_NAMES[s.engine]} · selected`;
+  screen.querySelector<HTMLElement>('#input-status')!.textContent = `${midiLabel(s)}${s.audioSuspended ? ' · TAP TO ENABLE SOUND' : ''}`;
+  screen.querySelector<HTMLElement>('#band-status')!.textContent = s.accompanimentStatus;
+  screen.querySelector<HTMLElement>('#model-latency')!.textContent = s.modelLatencyMs == null ? '' : `${Math.round(s.modelLatencyMs)} ms`;
+  screen.querySelector<HTMLElement>('#engine-status')!.textContent = s.engineConnecting ? `${ENGINE_NAMES[s.engine]} · connecting…` : s.offlineEngines.includes(s.engine) ? `${ENGINE_NAMES[s.engine]} · offline` : '';
   for (const [id, value] of [['noise', s.noiseVolume], ['drone', s.droneVolume]] as const) {
     const input = screen.querySelector<HTMLInputElement>(`#${id}-volume`)!;
     if (document.activeElement !== input) input.value = String(value);
