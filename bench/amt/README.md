@@ -41,7 +41,15 @@ package. Not on PyPI — install from GitHub (see below).
   constraint on its own; `--multi-voice` disables this per instrument
   ("multiple violins", a section instead of a soloist). Different
   instruments in an ensemble may always sound together regardless. Output
-  is a MIDI file of exactly what was decided live.
+  is a MIDI file of exactly what was decided live. `LiveDuet` itself doesn't
+  know or care where the melody comes from -- see `midi_io.py`/`live_midi.py`
+  below.
+- `midi_io.py` / `live_midi.py` — the same `LiveDuet` scheduler wired to a
+  real MIDI keyboard instead of a synthetic melody: `midi_io.py` is pure
+  hardware plumbing (open a port, turn note-on/note-off into
+  `(onset_s, dur_s, pitch)`, schedule companion notes to a real output at
+  the right wall-clock time); `live_midi.py` is the CLI entry point. See
+  **SETUP.md** for how to actually wire up a keyboard and hear the result.
 
 ## Run
 
@@ -62,8 +70,32 @@ violin + steel guitar) and `--multi-voice` picks *how many notes at once* a
 given instrument may play (one at a time, "one violin", the default; or
 overlapping, "multiple violins", a section). All four combinations work.
 
+For an actual physical MIDI keyboard instead of the synthetic melody, see
+**SETUP.md** and run `live_midi.py` instead (same flags, plus `--midi-in`/
+`--midi-out`).
+
 ## Findings
 
+- **Live (unbounded) sessions had an unbounded performance regression --
+  found while building `live_midi.py`, fixed.** `_maybe_kick_generation`
+  handed the model's preprocessing (`ops.sort`/`clip`/`pad`, all O(history
+  length)) the *entire* accumulated history every cycle. Invisible for a
+  ~20s synthetic demo, but a real bug for a live session with no fixed
+  length: verified with a scripted end-to-end test (a real MIDI performance
+  sent over a virtual port into `live_midi.py`) that generation time
+  escalated 19s → 36s → 53s per call as the session ran past ~100s of music
+  time -- the model was drowning in a growing list most of which it
+  couldn't even use (`amt._add_token` already only looks at its own
+  trailing ~1017-token window internally). Fixed by clipping the history
+  handed to the model to a trailing `HISTORY_LOOKBACK_S` (90s, generously
+  above what that token window could span at any realistic density) and
+  re-basing it to start near zero -- clipping alone isn't enough, since
+  `ops.pad` pads silence from absolute time zero, so an old absolute
+  timestamp keeps the O(session length) scaling even after trimming the
+  event list itself. Re-verified with the same scripted test past 190s of
+  music time: generation time stayed in the 0.3-1.3s range throughout,
+  realtime factor 2.44x, 0 underruns, 297 companion notes actually
+  delivered over the (virtual) output port.
 - **The output used to run much longer than the input melody -- fixed.**
   `_maybe_kick_generation` had no upper bound on `committed_horizon`, so once
   the melody ended it kept pipelining new lookahead windows every cycle

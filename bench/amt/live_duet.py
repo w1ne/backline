@@ -68,6 +68,19 @@ INSTR_NAMES = {40: "violin", 25: "guitar"}
 # enough to blow the scheduling buffer (near-100% underrun on one melody).
 MAX_GENERATION_ATTEMPTS = 2
 
+# amt._add_token already only looks at the model's own trailing ~1017-token
+# (~339-event) context window internally -- anything older is invisible to
+# it anyway. Without this, _maybe_kick_generation hands the model's
+# preprocessing (sort/clip/pad, all O(history length)) the *entire* history
+# every single cycle, which is invisible for a short synthetic demo but is a
+# genuine, measured bug for an unbounded live session: generation time
+# escalated 19s -> 36s -> 53s per call over one ~4-minute test as history
+# kept growing, well past anything the model could even use. 90s is
+# generously above what ~339 events could span at any realistic note
+# density, so nothing musically relevant is lost by not looking further back
+# than this before generation even starts.
+HISTORY_LOOKBACK_S = 90.0
+
 
 def _generate_nonsilent(model, gen_start, gen_end, commit_end, inputs, accomp_instrs, top_p, accomp_bias):
     """generate_duet, retried up to MAX_GENERATION_ATTEMPTS times if the
@@ -82,19 +95,47 @@ def _generate_nonsilent(model, gen_start, gen_end, commit_end, inputs, accomp_in
             return result, attempt
 
 
+class SyntheticMelodySource:
+    """Wraps a precomputed (onset_s, dur_s, pitch) list -- melody.py's
+    output -- behind the same poll/exhausted interface a real MIDI keyboard
+    input exposes (see midi_io.MidiKeyboardInput), so LiveDuet doesn't need
+    to know or care which one it's talking to."""
+
+    def __init__(self, melody):
+        self._melody = melody
+        self._idx = 0
+
+    def poll(self, playhead):
+        new = []
+        while self._idx < len(self._melody) and self._melody[self._idx][0] <= playhead:
+            new.append(self._melody[self._idx])
+            self._idx += 1
+        return new
+
+    def exhausted(self):
+        return self._idx >= len(self._melody)
+
+
 class LiveDuet:
     """The scheduling loop: transport, lookahead/commit buffer, live logging.
 
-    Knows nothing about *how* the melody is produced or *how* the model
-    generates -- both are passed in, which is what keeps this swappable for
-    a real MIDI input or a different model later.
+    Knows nothing about *how* the melody is produced (melody_source is
+    SyntheticMelodySource for the demo, midi_io.MidiKeyboardInput for a real
+    keyboard -- both expose the same poll(playhead)/exhausted() shape) or
+    *how* the model generates, which is what keeps this swappable for a
+    real MIDI input or a different model without touching the scheduler.
+
+    melody_len_s=None means an unbounded live session: the only way to stop
+    is request_stop() (see live_midi.py's Ctrl+C handler), since there's no
+    known length to run a tail past.
     """
 
-    def __init__(self, model, melody, melody_len_s, bpm, lookahead_beats,
+    def __init__(self, model, melody_source, melody_len_s, bpm, lookahead_beats,
                  commit_beats, listen_first_beats, top_p, accomp_instrs=SOLO_ACCOMP_INSTRS,
-                 accomp_bias=ACCOMP_BIAS, polyphonic=False, poll_interval=0.05):
+                 accomp_bias=ACCOMP_BIAS, polyphonic=False, on_played=None, t0=None,
+                 poll_interval=0.05):
         self.model = model
-        self.melody = melody
+        self.melody_source = melody_source
         self.melody_len_s = melody_len_s
         self.beat_s = 60.0 / bpm
         self.lookahead_s = lookahead_beats * self.beat_s
@@ -104,20 +145,25 @@ class LiveDuet:
         self.accomp_instrs = accomp_instrs
         self.accomp_bias = accomp_bias
         self.polyphonic = polyphonic
+        self.on_played = on_played or (lambda onset_s, dur_s, role, pitch: None)
         self.poll_interval = poll_interval
 
         self.history = []            # revealed melody + committed accompaniment (raw tokens)
         self.committed_horizon = self.listen_first_s
-        self.melody_idx = 0
         self.played = []             # (onset_s, dur_s, role, pitch) -- for the live log only
         self.announced = 0           # index into self.played already logged as "sounding"
+        self._stop_requested = False
 
         self.pool = ThreadPoolExecutor(max_workers=1)
         self.pending = None          # (future, gen_start, gen_end, wall_start)
 
         self.gen_stats = []          # (music_s_requested, wall_s_taken)
         self.underruns = 0
-        self.t0 = None
+        # Normally set fresh in run(). Injectable so a caller (live_midi.py)
+        # can open real MIDI ports against the exact same clock *before*
+        # the blocking run() call starts -- there's no other way to hand
+        # them a consistent t0 once run() is already looping.
+        self.t0 = t0
 
         # Bookkeeping for monophony (self.polyphonic=False, the "one violin"
         # mode): one violin can't double-stop across notes, but the model has
@@ -134,8 +180,16 @@ class LiveDuet:
         t = time.monotonic() - self.t0
         print(f"[{t:6.2f}s] {msg}")
 
+    def request_stop(self):
+        """Ask the loop to stop at its next iteration (within one
+        poll_interval) instead of running to melody_len_s + tail_s, and
+        return from run() normally so callers can still export a MIDI file
+        etc. afterward. The only way to end an unbounded live session
+        (melody_len_s=None) -- see live_midi.py's Ctrl+C handler."""
+        self._stop_requested = True
+
     def run(self):
-        self.t0 = time.monotonic()
+        self.t0 = self.t0 or time.monotonic()
         # How far past the end of the melody the companion is allowed to run:
         # just enough to flush whatever was already in flight when the
         # melody ended, not indefinitely. Without a cap on committed_horizon
@@ -146,8 +200,10 @@ class LiveDuet:
         self.tail_s = self.lookahead_s + 2.0
         while True:
             playhead = time.monotonic() - self.t0
-            done_with_melody = self.melody_idx >= len(self.melody)
-            if done_with_melody and playhead > self.melody_len_s + self.tail_s:
+            if self._stop_requested:
+                break
+            if self.melody_len_s is not None and self.melody_source.exhausted() \
+                    and playhead > self.melody_len_s + self.tail_s:
                 break
 
             self._reveal_melody(playhead)
@@ -160,11 +216,10 @@ class LiveDuet:
         self.pool.shutdown(wait=True)
 
     def _reveal_melody(self, playhead):
-        while self.melody_idx < len(self.melody) and self.melody[self.melody_idx][0] <= playhead:
-            onset_s, dur_s, pitch = self.melody[self.melody_idx]
+        for onset_s, dur_s, pitch in self.melody_source.poll(playhead):
             self.history.extend(make_event(onset_s, dur_s, MELODY_INSTR, pitch))
             self.played.append((onset_s, dur_s, "melody", pitch))
-            self.melody_idx += 1
+            self.on_played(onset_s, dur_s, "melody", pitch)
 
     def _maybe_kick_generation(self, playhead):
         if self.pending is not None:
@@ -178,8 +233,10 @@ class LiveDuet:
         # Stop asking for more once we've already planned past the end of the
         # melody's tail: there's no more melody to inform further windows
         # anyway, and without this a model running faster than real time
-        # would otherwise keep pipelining new windows indefinitely.
-        if self.committed_horizon >= self.melody_len_s + self.tail_s:
+        # would otherwise keep pipelining new windows indefinitely. Doesn't
+        # apply to an unbounded live session (melody_len_s=None) -- there's
+        # always more melody potentially coming until the player stops.
+        if self.melody_len_s is not None and self.committed_horizon >= self.melody_len_s + self.tail_s:
             return
 
         # Pipeline continuously from then on: start the next chunk the moment
@@ -188,22 +245,36 @@ class LiveDuet:
         gen_start = self.committed_horizon
         gen_end = gen_start + self.lookahead_s
         commit_end = gen_start + self.commit_s
-        hist_snapshot = list(self.history)
+
+        # Bound what gets handed to the model to a recent window (see
+        # HISTORY_LOOKBACK_S above), and re-base it to start near zero.
+        # Rebasing matters, not just clipping: anticipation.ops.pad pads
+        # silence from absolute time zero up to the first real event, so
+        # without this an old absolute gen_start (e.g. 150s into a long live
+        # session) would still make padding -- and everything downstream of
+        # it -- scale with total session length even after clipping the
+        # event list itself.
+        window_start = max(0.0, gen_start - HISTORY_LOOKBACK_S)
+        hist_snapshot = ops.clip(self.history, window_start, gen_start, clip_duration=False)
+        if window_start > 0:
+            hist_snapshot = ops.translate(hist_snapshot, -window_start, seconds=True)
 
         wall_start = time.monotonic()
         future = self.pool.submit(
-            _generate_nonsilent, self.model, gen_start, gen_end, commit_end, hist_snapshot,
-            self.accomp_instrs, self.top_p, self.accomp_bias,
+            _generate_nonsilent, self.model, gen_start - window_start, gen_end - window_start,
+            commit_end - window_start, hist_snapshot, self.accomp_instrs, self.top_p, self.accomp_bias,
         )
-        self.pending = (future, gen_start, gen_end, wall_start)
+        self.pending = (future, gen_start, gen_end, wall_start, window_start)
 
     def _collect_generation(self):
         if self.pending is None or not self.pending[0].done():
             return
 
-        future, gen_start, gen_end, wall_start = self.pending
+        future, gen_start, gen_end, wall_start, window_start = self.pending
         self.pending = None
         result, attempts = future.result()
+        if window_start > 0:
+            result = ops.translate(result, window_start, seconds=True)  # back to absolute time
         wall_dt = time.monotonic() - wall_start
         self.gen_stats.append((gen_end - gen_start, wall_dt))
 
@@ -272,7 +343,9 @@ class LiveDuet:
                 self._voice_prev_onset[instr] = onset_s
                 self._voice_last_end[instr] = onset_s + dur_s
 
-            self.played.append((onset_s, dur_s, f"accomp:{instr}", pitch))
+            role = f"accomp:{instr}"
+            self.played.append((onset_s, dur_s, role, pitch))
+            self.on_played(onset_s, dur_s, role, pitch)
 
     def _announce_due(self, playhead):
         while self.announced < len(self.played) and self.played[self.announced][0] <= playhead:
@@ -350,7 +423,7 @@ def main():
 
     duet = LiveDuet(
         model=model,
-        melody=melody,
+        melody_source=SyntheticMelodySource(melody),
         melody_len_s=melody_len_s,
         bpm=args.bpm,
         lookahead_beats=args.lookahead_beats,
