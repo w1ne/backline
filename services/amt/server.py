@@ -51,6 +51,7 @@ from amt import (  # noqa: E402
     generate_duet,
 )
 from live_duet import AccompanimentCommitter  # noqa: E402
+from arrangement import shape_notes, bass_pitch  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("amt-server")
@@ -135,6 +136,9 @@ class Session:
         self.human_notes: list[tuple[float, float, int]] = []  # (onset_beat, dur_beat, pitch)
         self.committed_horizon_beats = 0.0
         self.last_accomp_notes: list[tuple[float, float, int]] = []
+        self.key = None
+        self.chord = None
+        self.space = False
 
     def add_human_notes(self, notes):
         for n in notes:
@@ -240,7 +244,8 @@ class Session:
         raw_notes = [
             (t, d, p) for (t, d, p) in accomp if start_tick <= round(t * TIME_RESOLUTION) < commit_end_tick
         ]
-        committed = self.committer.commit(raw_notes)  # (onset_s, dur_s, pitch), trimmed/monophonic
+        raw_notes = shape_notes(raw_notes, start_s, commit_end_s, self.beat_s, self.space, TIME_RESOLUTION)
+        committed = self.committer.commit(raw_notes)
         self.committed_horizon_beats = commit_end_beat
         self.last_accomp_notes = committed
 
@@ -259,21 +264,21 @@ class Session:
                     "beat": onset_s / self.beat_s,
                     "pitch": pitch,
                     "dur": dur_s / self.beat_s,
-                    "vel": 0.85,
+                    "vel": 0.65 if self.space else 0.5,
                     "voice": "keys",
                 }
             )
 
-        root = ChordInference.root_below([(o, d, p) for o, d, p in committed])
+        root = bass_pitch(self.chord, self.key)
         if root is not None and committed:
-            # One held bass note per bar, an octave below the inferred root,
-            # starting at the same commit window as the keys voice above.
+            # One held bass note per bar, anchored to the performer's detected harmony
+            # rather than the most frequent pitch in the generated counter-melody.
             notes_out.append(
                 {
                     "beat": start_beat,
                     "pitch": root,
                     "dur": commit_end_beat - start_beat,
-                    "vel": 0.75,
+                    "vel": 0.55,
                     "voice": "bass",
                 }
             )
@@ -329,6 +334,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         listen_beats=float(msg.get("listenBeats", 8.0)),
                         top_p=0.95,
                     )
+                    session.key = msg.get("key")
 
                 elif mtype == "notes":
                     session.add_human_notes(msg.get("notes", []))
@@ -341,12 +347,11 @@ async def websocket_endpoint(websocket: WebSocket):
                     await websocket.send_text(json.dumps(out["status"]))
 
                 elif mtype == "set":
-                    # genre/creativity/instruments have no effect on this PoC's
-                    # generation path yet -- acknowledged but not applied. The
-                    # client also sends `intensity` (0-1, how hard the player is
-                    # working) as a density hint; the anticipation scheduler has
-                    # no density control, so it is ignored here for now.
-                    pass
+                    session.key = msg.get("key", session.key)
+                    session.chord = msg.get("chord", session.chord)
+                    session.space = bool(msg.get("space", False))
+                    creativity = max(0.0, min(1.0, float(msg.get("creativity", 0.3))))
+                    session.top_p = 0.75 + creativity * 0.2
 
                 else:
                     await websocket.send_text(json.dumps({"type": "error", "message": f"unknown type {mtype}"}))

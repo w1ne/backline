@@ -39,7 +39,7 @@ interface PlanNote {
 /** Minimal notifier interface the engine needs from the app's Listener, kept narrow so
  *  tests can pass a fake without pulling in the real Listener. */
 export interface NoteSource {
-  onNote(cb: (n: { midi: number; velocity: number; timeSec: number }) => void): void;
+  onNote(cb: (n: { midi: number; velocity: number; timeSec: number }) => void): void | (() => void);
 }
 
 /** Follows the player's notes through the AMT relay and plays the model's accompaniment
@@ -92,6 +92,7 @@ export class AmtEngine implements BandEngine {
   /** Plan notes that arrived too late to play (their time was already past). Diagnostic. */
   tooLate = 0;
   private detach?: () => void;
+  private inputSession = 0;
 
   constructor(
     private players: PlayersLike,
@@ -100,6 +101,8 @@ export class AmtEngine implements BandEngine {
     /** Returns "now" in the same time base as `firstBarAt`/note timestamps. Defaults to
      *  Tone's clock; tests inject a fake for determinism. */
     private now: () => number = () => Tone.getContext().currentTime,
+    /** Listener timestamps use performance time, independently of AudioContext startup. */
+    private inputNow: () => number = () => performance.now() / 1000,
   ) {
     this.clock = clock;
   }
@@ -115,6 +118,7 @@ export class AmtEngine implements BandEngine {
     this.bar = 0;
     this.gotFirstNotes = false;
     this.firstBarAt = firstBarAt;
+    this.noteBuf = [];
     this.pending = [];
     this.scheduled.clear();
     this.tooLate = 0;
@@ -147,17 +151,21 @@ export class AmtEngine implements BandEngine {
 
     this.clock.onBar((bar) => {
       this.bar = bar;
+      this.flushNotes();
       this.send({ type: 'bar', bar });
       this.onBar?.(bar);
     });
     this.clock.start(bpm, firstBarAt);
 
-    this.detach = undefined;
-    this.notes.onNote(n => {
-      const beat = ((n.timeSec - this.firstBarAt) * this.bpm) / 60;
+    this.detach?.();
+    const session = ++this.inputSession;
+    const inputOffset = this.now() - this.inputNow();
+    this.detach = this.notes.onNote(n => {
+      if (this.stopping || session !== this.inputSession) return;
+      const beat = ((n.timeSec + inputOffset - this.firstBarAt) * this.bpm) / 60;
       if (beat < 0) return;
       this.noteBuf.push({ beat, pitch: n.midi, dur: DEFAULT_NOTE_DUR_BEATS, vel: n.velocity });
-    });
+    }) || undefined;
 
     this.noteFlushTimer = setInterval(() => this.flushNotes(), NOTE_BATCH_MS);
     this.commitPollTimer = setInterval(() => this.scheduleDue(), NOTE_BATCH_MS);
@@ -165,6 +173,10 @@ export class AmtEngine implements BandEngine {
 
   stop(): void {
     this.stopping = true;
+    ++this.inputSession;
+    this.detach?.();
+    this.detach = undefined;
+    this.noteBuf = [];
     this.clock.stop();
     if (this.noteFlushTimer !== undefined) clearInterval(this.noteFlushTimer);
     this.noteFlushTimer = undefined;
@@ -184,8 +196,7 @@ export class AmtEngine implements BandEngine {
     if (p.dynamics !== undefined) this.state.dynamics = p.dynamics;
     if (p.genre !== undefined) this.state.genre = p.genre;
     if (p.key !== undefined) this.state.key = p.key;
-    // AMT already follows the player's actual notes, so it needs nothing from the chord
-    // detector to stay in harmony; the chord rides along in `set` for the server to use later.
+    // The model follows actual notes; detected harmony also anchors the supporting bass.
     if (p.chord !== undefined) this.state.chord = p.chord;
     if (p.creativity !== undefined) this.state.creativity = p.creativity;
     this.queueSet();
@@ -205,7 +216,9 @@ export class AmtEngine implements BandEngine {
     const payload = JSON.stringify({
       type: 'set',
       genre: this.state.genre,
+      key: keyString(this.state.key),
       chord: this.state.chord ? chordName(this.state.chord) : null,
+      space: this.state.dynamics.space,
       creativity: this.state.creativity,
       instruments: { ...this.state.enabled },
       // Density hint for the model. `services/amt/server.py` ignores it for now — the

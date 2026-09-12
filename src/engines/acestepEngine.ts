@@ -19,8 +19,6 @@ function keyString(k: Key): string {
 
 /** intensity above which the player is "busy" and the band should lay back to drums + bass */
 export const BUSY_INTENSITY = 0.6;
-/** intensity below which (or on space) the band fills out and answers with a lead fill */
-export const QUIET_INTENSITY = 0.3;
 
 /** What the ACE block should ask for, chosen from the player's effective dynamics. */
 export interface BlockSelection {
@@ -37,8 +35,8 @@ export interface BlockSelection {
  * user's on/off toggles (never adding an instrument the user turned off).
  *
  * - busy (intensity > 0.6, not space): rhythm section only — drums + bass.
- * - medium (0.3–0.6): drums + bass + keys.
- * - space (space) or quiet (intensity < 0.3): full set incl. guitar lead, marked as a FILL.
+ * - soft/medium playing: drums + bass + keys, leaving the melody to the player.
+ * - space: full set incl. guitar lead, marked as a FILL.
  *
  * Pure so it can be unit-tested and reasoned about independently of the WebSocket engine.
  */
@@ -47,7 +45,7 @@ export function selectBlockInstruments(
   enabled: Record<Instrument, boolean>,
 ): BlockSelection {
   const intensity = Math.min(1, Math.max(0, dyn.intensity));
-  const quiet = dyn.space || intensity < QUIET_INTENSITY;
+  const quiet = dyn.space;
   const busy = !quiet && intensity > BUSY_INTENSITY;
 
   let base: Instrument[];

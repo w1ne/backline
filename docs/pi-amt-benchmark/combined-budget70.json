@@ -1,0 +1,312 @@
+{
+  "measurement": "websocket service round trip at real bar cadence",
+  "url": "ws://127.0.0.1:18081/amt",
+  "bpm": 100,
+  "rows": [
+    {
+      "bar": 1,
+      "seconds": 1.725563462000082,
+      "notes": 1,
+      "notes_per_second": 0.579520847550232,
+      "late": false,
+      "deadline_seconds": 2.4,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 8.0,
+        "toBeat": 12.0,
+        "notes": [
+          {
+            "beat": 8.0,
+            "pitch": 69,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 8.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      },
+      "status": {
+        "type": "status",
+        "latencyMs": 1722.6165919998948,
+        "tokensPerSec": 1.7415366912942072
+      }
+    },
+    {
+      "bar": 2,
+      "seconds": 2.2836923500001376,
+      "notes": 0,
+      "notes_per_second": 0.0,
+      "late": false,
+      "deadline_seconds": 2.4,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 12.0,
+        "toBeat": 16.0,
+        "notes": []
+      },
+      "status": {
+        "type": "status",
+        "latencyMs": 2281.954110000015,
+        "tokensPerSec": 2.6293254424822594
+      }
+    },
+    {
+      "bar": 3,
+      "seconds": 1.7251452949999475,
+      "notes": 0,
+      "notes_per_second": 0.0,
+      "late": false,
+      "deadline_seconds": 2.4,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 16.0,
+        "toBeat": 20.0,
+        "notes": []
+      },
+      "status": {
+        "type": "status",
+        "latencyMs": 1723.3612029999676,
+        "tokensPerSec": 1.7407842272285714
+      }
+    },
+    {
+      "bar": 4,
+      "seconds": 2.1249137209999844,
+      "notes": 0,
+      "notes_per_second": 0.0,
+      "late": false,
+      "deadline_seconds": 2.4,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 20.0,
+        "toBeat": 24.0,
+        "notes": []
+      },
+      "status": {
+        "type": "status",
+        "latencyMs": 2121.252257999913,
+        "tokensPerSec": 1.414258954203137
+      }
+    },
+    {
+      "bar": 5,
+      "seconds": 2.0577953699998943,
+      "notes": 0,
+      "notes_per_second": 0.0,
+      "late": false,
+      "deadline_seconds": 2.4,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 24.0,
+        "toBeat": 28.0,
+        "notes": []
+      },
+      "status": {
+        "type": "status",
+        "latencyMs": 2054.0372760001446,
+        "tokensPerSec": 1.460538245850115
+      }
+    },
+    {
+      "bar": 6,
+      "seconds": 1.9386554620000425,
+      "notes": 0,
+      "notes_per_second": 0.0,
+      "late": false,
+      "deadline_seconds": 2.4,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 28.0,
+        "toBeat": 32.0,
+        "notes": []
+      },
+      "status": {
+        "type": "status",
+        "latencyMs": 1937.1986659998583,
+        "tokensPerSec": 1.5486279505832674
+      }
+    },
+    {
+      "bar": 7,
+      "seconds": 1.8152556840000216,
+      "notes": 0,
+      "notes_per_second": 0.0,
+      "late": false,
+      "deadline_seconds": 2.4,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 32.0,
+        "toBeat": 36.0,
+        "notes": []
+      },
+      "status": {
+        "type": "status",
+        "latencyMs": 1813.719812999807,
+        "tokensPerSec": 1.6540592314742053
+      }
+    },
+    {
+      "bar": 8,
+      "seconds": 1.7918988129999889,
+      "notes": 0,
+      "notes_per_second": 0.0,
+      "late": false,
+      "deadline_seconds": 2.4,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 36.0,
+        "toBeat": 40.0,
+        "notes": []
+      },
+      "status": {
+        "type": "status",
+        "latencyMs": 1790.2310550000493,
+        "tokensPerSec": 1.6757613446717454
+      }
+    },
+    {
+      "bar": 9,
+      "seconds": 2.1431990359999418,
+      "notes": 0,
+      "notes_per_second": 0.0,
+      "late": false,
+      "deadline_seconds": 2.4,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 40.0,
+        "toBeat": 44.0,
+        "notes": []
+      },
+      "status": {
+        "type": "status",
+        "latencyMs": 2141.201406000164,
+        "tokensPerSec": 1.401082584568306
+      }
+    },
+    {
+      "bar": 10,
+      "seconds": 2.1241373880000083,
+      "notes": 0,
+      "notes_per_second": 0.0,
+      "late": false,
+      "deadline_seconds": 2.4,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 44.0,
+        "toBeat": 48.0,
+        "notes": []
+      },
+      "status": {
+        "type": "status",
+        "latencyMs": 2122.2945540000637,
+        "tokensPerSec": 1.4135643868781798
+      }
+    },
+    {
+      "bar": 11,
+      "seconds": 2.3439281470000424,
+      "notes": 0,
+      "notes_per_second": 0.0,
+      "late": false,
+      "deadline_seconds": 2.4,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 48.0,
+        "toBeat": 52.0,
+        "notes": []
+      },
+      "status": {
+        "type": "status",
+        "latencyMs": 2342.161794999811,
+        "tokensPerSec": 1.2808679598499908
+      }
+    },
+    {
+      "bar": 12,
+      "seconds": 2.236046406000014,
+      "notes": 0,
+      "notes_per_second": 0.0,
+      "late": false,
+      "deadline_seconds": 2.4,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 52.0,
+        "toBeat": 56.0,
+        "notes": []
+      },
+      "status": {
+        "type": "status",
+        "latencyMs": 2232.8490360000615,
+        "tokensPerSec": 1.3435749357127238
+      }
+    },
+    {
+      "bar": 13,
+      "seconds": 2.629116646000057,
+      "notes": 0,
+      "notes_per_second": 0.0,
+      "late": true,
+      "deadline_seconds": 2.4,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 56.0,
+        "toBeat": 60.0,
+        "notes": []
+      },
+      "status": {
+        "type": "status",
+        "latencyMs": 2627.0156830000815,
+        "tokensPerSec": 1.141980239940542
+      }
+    },
+    {
+      "bar": 14,
+      "seconds": 2.932065775999945,
+      "notes": 0,
+      "notes_per_second": 0.0,
+      "late": true,
+      "deadline_seconds": 2.4,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 60.0,
+        "toBeat": 64.0,
+        "notes": []
+      },
+      "status": {
+        "type": "status",
+        "latencyMs": 2930.3620349999164,
+        "tokensPerSec": 1.023764287200126
+      }
+    },
+    {
+      "bar": 15,
+      "seconds": 1.8598852759998863,
+      "notes": 0,
+      "notes_per_second": 0.0,
+      "late": false,
+      "deadline_seconds": 2.4,
+      "plan": {
+        "type": "plan",
+        "fromBeat": 64.0,
+        "toBeat": 68.0,
+        "notes": []
+      },
+      "status": {
+        "type": "status",
+        "latencyMs": 1858.3565540000109,
+        "tokensPerSec": 1.6143296040486224
+      }
+    }
+  ],
+  "generation_seconds_median": 2.1241373880000083,
+  "generation_seconds_max": 2.932065775999945,
+  "late_windows": 2,
+  "empty_windows": 14,
+  "notes_per_second": 0.031514625521459345
+}

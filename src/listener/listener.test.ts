@@ -259,3 +259,40 @@ describe('Listener activity tracking', () => {
     expect(emitted).toBe(2);
   });
 });
+
+
+describe('microphone melody events', () => {
+  it('forwards each distinct stable pitch to engines without adding tempo onsets', async () => {
+    const mic = new Fake();
+    const listener = new Listener([mic], ['mic']);
+    const notes: number[] = [];
+    listener.onNote(n => { notes.push(n.midi); expect(n.timeSec).toBeGreaterThanOrEqual(0); });
+    await listener.start();
+    mic.pitch!({ midi: 60, cents: 0, stable: false });
+    mic.pitch!({ midi: 60, cents: 0, stable: true });
+    mic.pitch!({ midi: 60, cents: 2, stable: true });
+    mic.pitch!({ midi: 64, cents: 0, stable: true });
+    mic.pitch!(null);
+    mic.pitch!({ midi: 64, cents: 0, stable: true });
+    expect(notes).toEqual([60, 64, 64]);
+    expect(listener.input.onsets).toBe(0);
+  });
+});
+
+
+describe('independent source readiness', () => {
+  it('publishes microphone readiness while MIDI permission is still pending', async () => {
+    let ready!: () => void;
+    const pending: Source = { start: () => new Promise<void>(resolve => { ready = resolve; }), stop() {} };
+    const mic = new Fake();
+    const listener = new Listener([pending, mic], ['midi', 'mic']);
+    const seen: string[] = [];
+    listener.onSourceStatus(s => seen.push(s.mic));
+    const started = listener.start();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(seen).toContain('on');
+    ready();
+    await started;
+  });
+});

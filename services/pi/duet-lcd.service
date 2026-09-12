@@ -1,0 +1,14 @@
+[Unit]
+Description=duet.ai LYDIA display and controls
+After=duet-web.service bento_ttymidi.service
+Requires=duet-web.service
+
+[Service]
+User=test
+WorkingDirectory=/home/test/duet-ai
+ExecStart=/home/test/Desktop/LYDIA/.venv/bin/python /home/test/duet-ai/services/pi/lcd.py
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

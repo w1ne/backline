@@ -109,6 +109,7 @@ export class Listener {
           this.keyDet.addNote(p.midi, 0.8);
           this.chordDet.addNote(p.midi, now, 0.8);
           this.pitchNotes.push({ n: p.midi, t: now });
+          this.noteCbs.forEach(cb => cb({ midi: p.midi, velocity: 0.8, timeSec: now }));
         }
       } else {
         this.lastStableMidi = null;
@@ -126,6 +127,8 @@ export class Listener {
           this.status = { ...this.status, [kind]: getStatus ? getStatus.call(source) : 'on' };
         } catch {
           this.status = { ...this.status, [kind]: 'denied' };
+        } finally {
+          this.emitStatus();
         }
       }),
     );
@@ -153,7 +156,10 @@ export class Listener {
   onChange(cb: (i: BandInput) => void) { this.cbs.push(cb); }
 
   /** Fires for every pitched note (rests, i.e. midi < 0, are excluded). */
-  onNote(cb: (n: { midi: number; velocity: number; timeSec: number }) => void) { this.noteCbs.push(cb); }
+  onNote(cb: (n: { midi: number; velocity: number; timeSec: number }) => void) {
+    this.noteCbs.push(cb);
+    return () => { this.noteCbs = this.noteCbs.filter(fn => fn !== cb); };
+  }
 
   onSourceStatus(cb: (s: SourceStatus) => void) { this.statusCbs.push(cb); }
 

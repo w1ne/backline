@@ -1,0 +1,871 @@
+{
+  "platform": "Linux-6.12.62+rpt-rpi-2712-aarch64-with-glibc2.36",
+  "machine": "aarch64",
+  "torch": "2.6.0+cpu",
+  "sampler": "cached",
+  "quantized": false,
+  "threads": 4,
+  "load_seconds": 0.5301935190000222,
+  "max_rss_mib": 865.25,
+  "bpm": 100,
+  "rows": [
+    {
+      "bar": 0,
+      "seconds": 0.0001877590000276541,
+      "notes": 0,
+      "notes_per_second": 0.0,
+      "context_tokens": 0,
+      "deadline_seconds": 2.4,
+      "late": false,
+      "status": {
+        "type": "status",
+        "latencyMs": 0.0,
+        "tokensPerSec": 0.0
+      },
+      "plan": {
+        "type": "plan",
+        "fromBeat": 4.0,
+        "toBeat": 8.0,
+        "notes": []
+      }
+    },
+    {
+      "bar": 1,
+      "seconds": 2.2041816470000413,
+      "notes": 3,
+      "notes_per_second": 1.3610493509385182,
+      "context_tokens": 21,
+      "deadline_seconds": 2.4,
+      "late": false,
+      "status": {
+        "type": "status",
+        "latencyMs": 2203.750739000043,
+        "tokensPerSec": 9.529208375684448
+      },
+      "plan": {
+        "type": "plan",
+        "fromBeat": 8.0,
+        "toBeat": 12.0,
+        "notes": [
+          {
+            "beat": 9.000000000000002,
+            "pitch": 74,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 10.0,
+            "pitch": 72,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 11.0,
+            "pitch": 72,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 8.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "bar": 2,
+      "seconds": 1.4523655550001422,
+      "notes": 4,
+      "notes_per_second": 2.7541275584710547,
+      "context_tokens": 45,
+      "deadline_seconds": 2.4,
+      "late": false,
+      "status": {
+        "type": "status",
+        "latencyMs": 1452.0596840000053,
+        "tokensPerSec": 8.95280004206766
+      },
+      "plan": {
+        "type": "plan",
+        "fromBeat": 12.0,
+        "toBeat": 16.0,
+        "notes": [
+          {
+            "beat": 12.0,
+            "pitch": 71,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 13.0,
+            "pitch": 71,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 14.000000000000002,
+            "pitch": 69,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 15.0,
+            "pitch": 67,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 12.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "bar": 3,
+      "seconds": 1.535405424999908,
+      "notes": 4,
+      "notes_per_second": 2.605175111974246,
+      "context_tokens": 69,
+      "deadline_seconds": 2.4,
+      "late": false,
+      "status": {
+        "type": "status",
+        "latencyMs": 1535.1003880000462,
+        "tokensPerSec": 8.468501540108795
+      },
+      "plan": {
+        "type": "plan",
+        "fromBeat": 16.0,
+        "toBeat": 20.0,
+        "notes": [
+          {
+            "beat": 16.0,
+            "pitch": 67,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 17.0,
+            "pitch": 65,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 18.000000000000004,
+            "pitch": 64,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 19.0,
+            "pitch": 67,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 16.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "bar": 4,
+      "seconds": 1.621542628000043,
+      "notes": 4,
+      "notes_per_second": 2.4667868305956704,
+      "context_tokens": 81,
+      "deadline_seconds": 2.4,
+      "late": false,
+      "status": {
+        "type": "status",
+        "latencyMs": 1621.234480999874,
+        "tokensPerSec": 8.018580996366689
+      },
+      "plan": {
+        "type": "plan",
+        "fromBeat": 20.0,
+        "toBeat": 24.0,
+        "notes": [
+          {
+            "beat": 20.0,
+            "pitch": 65,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 21.0,
+            "pitch": 64,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 22.0,
+            "pitch": 62,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 23.000000000000004,
+            "pitch": 67,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 20.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "bar": 5,
+      "seconds": 1.7173926660000234,
+      "notes": 4,
+      "notes_per_second": 2.3291120773890306,
+      "context_tokens": 105,
+      "deadline_seconds": 2.4,
+      "late": false,
+      "status": {
+        "type": "status",
+        "latencyMs": 1717.0742390001124,
+        "tokensPerSec": 7.571018017002088
+      },
+      "plan": {
+        "type": "plan",
+        "fromBeat": 24.0,
+        "toBeat": 28.0,
+        "notes": [
+          {
+            "beat": 24.0,
+            "pitch": 64,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 25.0,
+            "pitch": 60,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 26.0,
+            "pitch": 64,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 27.0,
+            "pitch": 67,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 24.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "bar": 6,
+      "seconds": 1.7111573699999099,
+      "notes": 4,
+      "notes_per_second": 2.3375991420357853,
+      "context_tokens": 108,
+      "deadline_seconds": 2.4,
+      "late": false,
+      "status": {
+        "type": "status",
+        "latencyMs": 1710.8383690001574,
+        "tokensPerSec": 7.598613776471133
+      },
+      "plan": {
+        "type": "plan",
+        "fromBeat": 28.0,
+        "toBeat": 32.0,
+        "notes": [
+          {
+            "beat": 28.000000000000004,
+            "pitch": 65,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 29.0,
+            "pitch": 62,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 30.0,
+            "pitch": 64,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 31.000000000000004,
+            "pitch": 60,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 28.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "bar": 7,
+      "seconds": 1.9388043140002083,
+      "notes": 4,
+      "notes_per_second": 2.063127243484961,
+      "context_tokens": 108,
+      "deadline_seconds": 2.4,
+      "late": false,
+      "status": {
+        "type": "status",
+        "latencyMs": 1938.4649620001255,
+        "tokensPerSec": 6.706337362211841
+      },
+      "plan": {
+        "type": "plan",
+        "fromBeat": 32.0,
+        "toBeat": 36.0,
+        "notes": [
+          {
+            "beat": 32.0,
+            "pitch": 64,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 33.0,
+            "pitch": 67,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 34.0,
+            "pitch": 67,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 35.0,
+            "pitch": 69,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 32.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "bar": 8,
+      "seconds": 1.7709750540000186,
+      "notes": 4,
+      "notes_per_second": 2.2586427691148936,
+      "context_tokens": 108,
+      "deadline_seconds": 2.4,
+      "late": false,
+      "status": {
+        "type": "status",
+        "latencyMs": 1770.6738130000303,
+        "tokensPerSec": 7.341837838542529
+      },
+      "plan": {
+        "type": "plan",
+        "fromBeat": 36.0,
+        "toBeat": 40.0,
+        "notes": [
+          {
+            "beat": 36.00000000000001,
+            "pitch": 67,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 37.0,
+            "pitch": 65,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 38.0,
+            "pitch": 64,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 39.0,
+            "pitch": 67,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 36.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "bar": 9,
+      "seconds": 1.7747644430000946,
+      "notes": 4,
+      "notes_per_second": 2.2538202271160706,
+      "context_tokens": 108,
+      "deadline_seconds": 2.4,
+      "late": false,
+      "status": {
+        "type": "status",
+        "latencyMs": 1774.4697579998956,
+        "tokensPerSec": 7.326132181961235
+      },
+      "plan": {
+        "type": "plan",
+        "fromBeat": 40.0,
+        "toBeat": 44.0,
+        "notes": [
+          {
+            "beat": 40.0,
+            "pitch": 65,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 41.00000000000001,
+            "pitch": 64,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 42.0,
+            "pitch": 67,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 43.0,
+            "pitch": 64,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 40.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "bar": 10,
+      "seconds": 1.8121973510001226,
+      "notes": 4,
+      "notes_per_second": 2.207265118113358,
+      "context_tokens": 108,
+      "deadline_seconds": 2.4,
+      "late": false,
+      "status": {
+        "type": "status",
+        "latencyMs": 1811.9004620000396,
+        "tokensPerSec": 7.174787066200172
+      },
+      "plan": {
+        "type": "plan",
+        "fromBeat": 44.0,
+        "toBeat": 48.0,
+        "notes": [
+          {
+            "beat": 44.0,
+            "pitch": 67,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 45.0,
+            "pitch": 64,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 46.00000000000001,
+            "pitch": 67,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 47.0,
+            "pitch": 65,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 44.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "bar": 11,
+      "seconds": 1.857612220999954,
+      "notes": 4,
+      "notes_per_second": 2.1533019404054077,
+      "context_tokens": 108,
+      "deadline_seconds": 2.4,
+      "late": false,
+      "status": {
+        "type": "status",
+        "latencyMs": 1857.3198690000936,
+        "tokensPerSec": 6.999332865048538
+      },
+      "plan": {
+        "type": "plan",
+        "fromBeat": 48.0,
+        "toBeat": 52.0,
+        "notes": [
+          {
+            "beat": 48.0,
+            "pitch": 64,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 49.0,
+            "pitch": 67,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 50.0,
+            "pitch": 64,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 51.00000000000001,
+            "pitch": 67,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 48.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "bar": 12,
+      "seconds": 2.0310926470001505,
+      "notes": 4,
+      "notes_per_second": 1.969383329661428,
+      "context_tokens": 108,
+      "deadline_seconds": 2.4,
+      "late": false,
+      "status": {
+        "type": "status",
+        "latencyMs": 2030.8070169999155,
+        "tokensPerSec": 6.401396041660684
+      },
+      "plan": {
+        "type": "plan",
+        "fromBeat": 52.0,
+        "toBeat": 56.0,
+        "notes": [
+          {
+            "beat": 52.0,
+            "pitch": 65,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 53.0,
+            "pitch": 64,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 54.0,
+            "pitch": 67,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 55.0,
+            "pitch": 65,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 52.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "bar": 13,
+      "seconds": 1.8766018690000692,
+      "notes": 4,
+      "notes_per_second": 2.1315123181303046,
+      "context_tokens": 108,
+      "deadline_seconds": 2.4,
+      "late": false,
+      "status": {
+        "type": "status",
+        "latencyMs": 1876.3148139998975,
+        "tokensPerSec": 6.928474850276756
+      },
+      "plan": {
+        "type": "plan",
+        "fromBeat": 56.0,
+        "toBeat": 60.0,
+        "notes": [
+          {
+            "beat": 56.00000000000001,
+            "pitch": 64,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 57.00000000000001,
+            "pitch": 62,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 58.0,
+            "pitch": 64,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 59.0,
+            "pitch": 67,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 56.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "bar": 14,
+      "seconds": 1.865080406000061,
+      "notes": 4,
+      "notes_per_second": 2.144679654095229,
+      "context_tokens": 108,
+      "deadline_seconds": 2.4,
+      "late": false,
+      "status": {
+        "type": "status",
+        "latencyMs": 1864.7941290000745,
+        "tokensPerSec": 6.971278919121629
+      },
+      "plan": {
+        "type": "plan",
+        "fromBeat": 60.0,
+        "toBeat": 64.0,
+        "notes": [
+          {
+            "beat": 60.0,
+            "pitch": 65,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 61.00000000000001,
+            "pitch": 64,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 62.00000000000001,
+            "pitch": 67,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 63.0,
+            "pitch": 65,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 60.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    },
+    {
+      "bar": 15,
+      "seconds": 1.9284395350000523,
+      "notes": 4,
+      "notes_per_second": 2.0742159281648886,
+      "context_tokens": 108,
+      "deadline_seconds": 2.4,
+      "late": false,
+      "status": {
+        "type": "status",
+        "latencyMs": 1928.1503140000495,
+        "tokensPerSec": 6.742212941391905
+      },
+      "plan": {
+        "type": "plan",
+        "fromBeat": 64.0,
+        "toBeat": 68.0,
+        "notes": [
+          {
+            "beat": 64.0,
+            "pitch": 64,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 65.0,
+            "pitch": 62,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 66.0,
+            "pitch": 60,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 67.00000000000001,
+            "pitch": 62,
+            "dur": 0.7,
+            "vel": 0.5,
+            "voice": "keys"
+          },
+          {
+            "beat": 64.0,
+            "pitch": 36,
+            "dur": 4.0,
+            "vel": 0.55,
+            "voice": "bass"
+          }
+        ]
+      }
+    }
+  ],
+  "generation_seconds_median": 1.8121973510001226,
+  "generation_seconds_max": 2.2041816470000413,
+  "late_windows": 0,
+  "empty_windows": 0,
+  "notes_per_second": 2.177313541040319
+}

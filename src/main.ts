@@ -1,7 +1,9 @@
 import './ui/styles.css';
 import * as Tone from 'tone';
 import { Store } from './ui/state';
-import { renderLive } from './ui/live';
+import { renderLive, type LiveActions } from './ui/live';
+import { PI_EDITION, applyDeviceProfile } from './device/profile';
+import { startDeviceRuntime } from './device/runtime';
 import { Listener } from './listener/listener';
 import { MidiSource } from './listener/midiSource';
 import { MidiMonitor } from './players/monitor';
@@ -44,6 +46,7 @@ const YOU_NOTE_SEC = 0.25;
 
 const root = document.getElementById('app')!;
 const store = new Store();
+let liveActions: LiveActions;
 const demo = new URLSearchParams(location.search).has('demo');
 let listener: Listener | undefined;
 let band: BandEngine | undefined;
@@ -293,7 +296,7 @@ async function power() {
   store.update({ sources: { ...listener.sourceStatus } });
   // labels only come back from enumerateDevices() once a media permission has been
   // granted, so the pickers are worth re-reading right after the mic starts
-  await refreshDevices();
+  void refreshDevices().catch(() => undefined);
 }
 
 function powerOff() {
@@ -323,7 +326,7 @@ function powerOff() {
 }
 
 store.subscribe(s => {
-  renderLive(root, store, {
+  liveActions = {
     wake: () => {
       if (store.state.audioSuspended) {
         Tone.start()
@@ -410,7 +413,8 @@ store.subscribe(s => {
       listener?.setMicMuted(muted);
     },
     changeLatencyMs: band?.changeLatencyMs,
-  });
+  };
+  renderLive(root, store, liveActions);
   void s;
 });
 
@@ -426,6 +430,7 @@ store.update({
   micMuted: loadBool(MIC_MUTE_KEY),
 });
 if (store.state.morphOut) store.update({ routing: defaultRouting(true) });
+applyDeviceProfile(store, PI_EDITION ? 'lydia' : 'web');
 void refreshDevices();
 onDeviceChange(() => void refreshDevices());
 
@@ -444,6 +449,14 @@ store.update({}); // first render, which is what puts the canvas in the DOM
 if (!demo) {
   power().catch(err => {
     store.update({ error: err instanceof Error ? err.message : String(err) });
+  });
+}
+if (PI_EDITION && !demo) {
+  startDeviceRuntime(store, () => liveActions, async playing => {
+    if (playing === (store.state.power === 'on')) return;
+    Tone.getDestination().mute = !playing;
+    if (playing) await power();
+    else powerOff();
   });
 }
 

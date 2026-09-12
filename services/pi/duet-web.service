@@ -1,0 +1,14 @@
+[Unit]
+Description=duet.ai LYDIA app and controls
+After=network.target
+Conflicts=PiMorpho.service
+
+[Service]
+User=test
+WorkingDirectory=/home/test/duet-ai
+ExecStart=/usr/bin/python3 /home/test/duet-ai/services/pi/server.py --root /home/test/duet-ai/site
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

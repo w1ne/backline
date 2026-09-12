@@ -278,10 +278,10 @@ describe('selectBlockInstruments', () => {
     expect(sel.density).toBe(0);
   });
 
-  it('quiet player (low intensity) → full set + fill even without space', () => {
+  it('soft playing still owns the melody; low intensity alone does not invite a fill', () => {
     const sel = selectBlockInstruments({ intensity: 0.1, space: false }, allOn);
-    expect(sel.instruments).toEqual(['drums', 'bass', 'keys', 'lead']);
-    expect(sel.fill).toBe(true);
+    expect(sel.instruments).toEqual(['drums', 'bass', 'keys']);
+    expect(sel.fill).toBe(false);
   });
 
   it('user-muted instruments are never added (hard mask)', () => {

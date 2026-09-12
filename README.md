@@ -109,3 +109,10 @@ Headphones. MIDI is the most reliable input in a loud room. Patterns works with 
 ## Licences
 
 MIT for this repo. Tone.js MIT. ACE-Step 1.5 MIT (code and weights). Magenta RealTime 2 weights CC-BY-4.0 if used.
+
+### LYDIA / Raspberry Pi edition
+
+The public web app and the pedal share the same music engine code. The pedal has
+its own offline build (`npm run build:pi`), local audio, LCD controls and optional
+local AMT model. See [Pi installation and controls](services/pi/README.md).
+The normal web build (`npm run build`) remains separate.

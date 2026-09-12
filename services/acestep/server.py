@@ -85,7 +85,7 @@ def density_words(density: float) -> str:
     if density > 0.6:
         return "sparse, laid back, leave space"
     if density < 0.3:
-        return "full band, energetic, expressive"
+        return "restrained accompaniment, leave space between phrases"
     return "medium"
 
 
@@ -118,9 +118,9 @@ def build_prompt(
     ]
     # density defaults to intensity for callers that only pass intensity (e.g. warmup).
     d = intensity if density is None else density
-    parts = [genre_text, density_words(d)]
-    if fill:
-        parts.append("answer with a guitar lead fill, expressive")
+    parts = [genre_text, "cohesive backing for a live melody, steady recurring groove", density_words(d)]
+    if fill and INSTRUMENT_WORDS["lead"] in words:
+        parts.append("one brief guitar answer in the melody's gap, then leave space")
     if words:
         parts.append(", ".join(words))
     if chords:
@@ -201,7 +201,7 @@ def float_to_pcm16(audio: np.ndarray) -> bytes:
 
 @dataclass
 class GenParams:
-    task_type: str  # 'text2music' | 'complete'
+    task_type: str  # 'text2music' | 'repaint'
     prompt: str
     bpm: int
     key_scale: str
@@ -211,6 +211,8 @@ class GenParams:
     seed: int
     src_audio_path: Optional[str] = None
     track_classes: Optional[list[str]] = None
+    repainting_start: Optional[float] = None
+    repainting_end: Optional[float] = None
 
 
 class AceStepModel:
@@ -306,6 +308,9 @@ class AceStepModel:
             body["src_audio_path"] = params.src_audio_path
         if params.track_classes:
             body["track_classes"] = params.track_classes
+        if params.task_type == "repaint":
+            body.update(repainting_start=params.repainting_start,
+                        repainting_end=params.repainting_end, chunk_mask_mode="explicit")
 
         import urllib.request
 
@@ -369,7 +374,7 @@ class Session:
         self.model = model
         self.last_bpm: Optional[int] = None
         self.last_key: Optional[str] = None
-        self.prev_audio_path: Optional[str] = None
+        self.prev_audio: Optional[np.ndarray] = None
         self._task: Optional[asyncio.Task] = None
         self._latest_seq = -1
 
@@ -402,10 +407,21 @@ class Session:
         density = float(msg.get("density", intensity))
 
         duration = bars * 240.0 / bpm
-        needs_restart = bpm != self.last_bpm or key != self.last_key or self.prev_audio_path is None
-        # A fill keeps the stream continuous: still `complete` from the previous block, so the
-        # answering guitar rides on the existing groove rather than restarting cold.
-        task_type = "text2music" if needs_restart else "complete"
+        needs_restart = bpm != self.last_bpm or key != self.last_key or self.prev_audio is None
+        # `complete` adds tracks over source audio. Feeding its mix back repeatedly layers
+        # instruments over the same passage. Instead preserve one bar of context and repaint
+        # a NEW, silent two-bar interval; send only that new interval to the browser.
+        task_type = "text2music" if needs_restart else "repaint"
+        context_samples = 0
+        source_path = None
+        target_samples = round(duration * TARGET_SR)
+        if not needs_restart:
+            context = self.prev_audio[-round(240.0 / bpm * TARGET_SR):]
+            context_samples = len(context)
+            source_path = _write_temp_wav(np.concatenate([
+                context, np.zeros((target_samples, 2), dtype=np.float32),
+            ]))
+        context_duration = context_samples / TARGET_SR
         prompt = build_prompt(
             genre,
             instruments,
@@ -422,19 +438,33 @@ class Session:
             prompt=prompt,
             bpm=bpm,
             key_scale=key,
-            audio_duration=duration,
+            audio_duration=context_duration + duration,
             inference_steps=INFERENCE_STEPS,
             guidance=density_to_guidance(creativity, density),
             seed=creativity_to_seed(creativity, seq),
-            src_audio_path=None if task_type == "text2music" else self.prev_audio_path,
-            track_classes=None
-            if task_type == "text2music"
-            else track_classes_for(instruments, player_instrument, space, fill),
+            src_audio_path=source_path,
+            repainting_start=context_duration if source_path else None,
+            repainting_end=context_duration + duration if source_path else None,
         )
 
         loop = asyncio.get_running_loop()
         t0 = time.monotonic()
-        audio = await loop.run_in_executor(None, self.model.generate, params)
+        # Keep the source file alive until the worker is finished, including when this
+        # coroutine is cancelled by a disconnected client.
+        def generate():
+            try:
+                return self.model.generate(params)
+            finally:
+                if source_path:
+                    try:
+                        os.unlink(source_path)
+                    except FileNotFoundError:
+                        pass
+
+        audio = await loop.run_in_executor(None, generate)
+        audio = audio[context_samples:context_samples + target_samples]
+        if len(audio) != target_samples:
+            raise RuntimeError("ACE returned a shorter block than the requested continuation window")
         elapsed_ms = (time.monotonic() - t0) * 1000.0
 
         if seq != self._latest_seq:
@@ -442,7 +472,7 @@ class Session:
 
         self.last_bpm = bpm
         self.last_key = key
-        self.prev_audio_path = _write_temp_wav(audio)
+        self.prev_audio = audio.copy()
 
         pcm = float_to_pcm16(audio)
         header = struct.pack("<I", seq)

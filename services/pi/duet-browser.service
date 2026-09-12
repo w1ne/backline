@@ -1,0 +1,15 @@
+[Unit]
+Description=duet.ai local audio engine
+After=duet-web.service lightdm.service user@1000.service
+Requires=duet-web.service
+
+[Service]
+User=test
+WorkingDirectory=/home/test/duet-ai
+ExecStart=/bin/bash /home/test/duet-ai/services/pi/launch-browser.sh
+Restart=always
+RestartSec=3
+TimeoutStopSec=10
+
+[Install]
+WantedBy=graphical.target

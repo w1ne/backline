@@ -1,0 +1,283 @@
+{
+  "frames": [
+    {
+      "t": 1789226534421,
+      "kind": "string",
+      "bytes": 336,
+      "head": "{\"type\":\"plan\",\"fromBeat\":44.0,\"toBeat\":48.0,\"notes\":[{\"beat\":44.06666666666667,\"pitch\":55,\"dur\":0.5,\"vel\":0.5,\"voice\":\"keys\"},{\"beat\":46.016666666666666,\"pitch\":60,\"dur\":0.5,\"vel\":0.5,\"voice\":\"keys\"},{\"beat\":47.01666666666667,\"pitch\":64,\"dur\":0.5,\"vel\":0.5,\"voice\":\"keys\"},{\"beat\":44.0,\"pitch\":36,\"d",
+      "keys": [
+        "type",
+        "fromBeat",
+        "toBeat",
+        "notes"
+      ]
+    },
+    {
+      "t": 1789226534422,
+      "kind": "string",
+      "bytes": 80,
+      "head": "{\"type\":\"status\",\"latencyMs\":2320.862025000224,\"tokensPerSec\":5.170492631934396}",
+      "keys": [
+        "type",
+        "latencyMs",
+        "tokensPerSec"
+      ]
+    },
+    {
+      "t": 1789226536815,
+      "kind": "string",
+      "bytes": 283,
+      "head": "{\"type\":\"plan\",\"fromBeat\":48.0,\"toBeat\":52.0,\"notes\":[{\"beat\":48.016666666666666,\"pitch\":67,\"dur\":0.5,\"vel\":0.65,\"voice\":\"keys\"},{\"beat\":49.983333333333334,\"pitch\":72,\"dur\":0.016666666666663353,\"vel\":0.65,\"voice\":\"keys\"},{\"beat\":48.0,\"pitch\":38,\"dur\":4.0,\"vel\":0.55,\"voice\":\"bass\"}]}",
+      "keys": [
+        "type",
+        "fromBeat",
+        "toBeat",
+        "notes"
+      ]
+    },
+    {
+      "t": 1789226536816,
+      "kind": "string",
+      "bytes": 80,
+      "head": "{\"type\":\"status\",\"latencyMs\":2348.819218999779,\"tokensPerSec\":5.108950021751814}",
+      "keys": [
+        "type",
+        "latencyMs",
+        "tokensPerSec"
+      ]
+    },
+    {
+      "t": 1789226538456,
+      "kind": "string",
+      "bytes": 56,
+      "head": "{\"type\":\"plan\",\"fromBeat\":52.0,\"toBeat\":56.0,\"notes\":[]}",
+      "keys": [
+        "type",
+        "fromBeat",
+        "toBeat",
+        "notes"
+      ]
+    },
+    {
+      "t": 1789226538456,
+      "kind": "string",
+      "bytes": 79,
+      "head": "{\"type\":\"status\",\"latencyMs\":1561.6878349997023,\"tokensPerSec\":4.4823298505116}",
+      "keys": [
+        "type",
+        "latencyMs",
+        "tokensPerSec"
+      ]
+    },
+    {
+      "t": 1789226541257,
+      "kind": "string",
+      "bytes": 56,
+      "head": "{\"type\":\"plan\",\"fromBeat\":56.0,\"toBeat\":60.0,\"notes\":[]}",
+      "keys": [
+        "type",
+        "fromBeat",
+        "toBeat",
+        "notes"
+      ]
+    },
+    {
+      "t": 1789226541257,
+      "kind": "string",
+      "bytes": 81,
+      "head": "{\"type\":\"status\",\"latencyMs\":1949.6882070002357,\"tokensPerSec\":5.129025227775197}",
+      "keys": [
+        "type",
+        "latencyMs",
+        "tokensPerSec"
+      ]
+    }
+  ],
+  "rejections": [],
+  "scheduled": [
+    {
+      "t": 1789226524824,
+      "inst": "keys",
+      "bar": 6,
+      "notes": [
+        65,
+        62
+      ]
+    },
+    {
+      "t": 1789226524824,
+      "inst": "bass",
+      "bar": 6,
+      "notes": [
+        36
+      ]
+    },
+    {
+      "t": 1789226527148,
+      "inst": "keys",
+      "bar": 7,
+      "notes": [
+        67,
+        64,
+        65
+      ]
+    },
+    {
+      "t": 1789226527148,
+      "inst": "bass",
+      "bar": 7,
+      "notes": [
+        36
+      ]
+    },
+    {
+      "t": 1789226529682,
+      "inst": "keys",
+      "bar": 9,
+      "notes": [
+        72,
+        67
+      ]
+    },
+    {
+      "t": 1789226529682,
+      "inst": "bass",
+      "bar": 9,
+      "notes": [
+        36
+      ]
+    },
+    {
+      "t": 1789226532022,
+      "inst": "keys",
+      "bar": 9,
+      "notes": [
+        64,
+        62,
+        59
+      ]
+    },
+    {
+      "t": 1789226532022,
+      "inst": "bass",
+      "bar": 9,
+      "notes": [
+        36
+      ]
+    },
+    {
+      "t": 1789226534421,
+      "inst": "keys",
+      "bar": 10,
+      "notes": [
+        55,
+        60,
+        64
+      ]
+    },
+    {
+      "t": 1789226534421,
+      "inst": "bass",
+      "bar": 10,
+      "notes": [
+        36
+      ]
+    },
+    {
+      "t": 1789226536816,
+      "inst": "keys",
+      "bar": 11,
+      "notes": [
+        67,
+        72
+      ]
+    },
+    {
+      "t": 1789226536816,
+      "inst": "bass",
+      "bar": 11,
+      "notes": [
+        38
+      ]
+    }
+  ],
+  "tooLate": 0,
+  "state": {
+    "power": "on",
+    "sources": {
+      "mic": "on",
+      "midi": "on"
+    },
+    "genre": "lofi",
+    "engine": "amt",
+    "sound": "synth",
+    "creativity": 0.3,
+    "intensity": 0.5,
+    "effectiveIntensity": 0.005816131174758311,
+    "enabled": {
+      "drums": true,
+      "bass": true,
+      "keys": true,
+      "lead": false
+    },
+    "input": {
+      "bpm": 100,
+      "key": {
+        "root": 0,
+        "mode": "major"
+      },
+      "chord": {
+        "root": 2,
+        "quality": "min"
+      },
+      "notesNow": [
+        65
+      ],
+      "pitch": null,
+      "inputLevel": 0.0008340153163557223,
+      "onsets": 40,
+      "pendingBpm": 99.9,
+      "dynamics": {
+        "intensity": 0.005816131174758311,
+        "space": true,
+        "fillDue": false,
+        "silenceBeats": 26.159548516032434
+      }
+    },
+    "locked": true,
+    "tempoMode": "locked",
+    "audioSuspended": false,
+    "bar": 16,
+    "error": null,
+    "loops": 0,
+    "offlineEngines": [
+      "acestep",
+      "lyria"
+    ],
+    "engineConnecting": false,
+    "routing": {
+      "drums": "main",
+      "bass": "main",
+      "keys": "main",
+      "lead": "main",
+      "band": "main"
+    },
+    "morphOut": null,
+    "morphSupported": true,
+    "audioOutputs": [],
+    "micIn": null,
+    "micMuted": false,
+    "audioInputs": [],
+    "midiIn": null,
+    "midiInputs": [
+      {
+        "id": "1A0CE1F47C19C43DAEB93B9595F6E4BA822ED318FE8D8BF2750B66286B5BEC38",
+        "label": "Midi Through Port-0"
+      },
+      {
+        "id": "A9B097ACA13992ABECBA65B71E35470601C3F113BE2252DEC91E8B62E555421A",
+        "label": "MIDI out"
+      }
+    ]
+  }
+}

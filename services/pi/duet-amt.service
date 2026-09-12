@@ -1,0 +1,25 @@
+[Unit]
+Description=duet.ai local Anticipatory Music Transformer
+After=network.target
+
+[Service]
+Type=simple
+User=test
+WorkingDirectory=/home/test/duet-ai-model/repo
+Environment=AMT_MODEL=/home/test/duet-ai-model/model
+Environment=AMT_HOST=127.0.0.1
+Environment=AMT_PORT=18081
+Environment=AMT_THREADS=4
+Environment=AMT_SAMPLER=cached
+Environment=AMT_QUANTIZE=0
+Environment=AMT_BUDGET_FRACTION=0.8
+Environment=HF_HUB_OFFLINE=1
+Environment=SDL_AUDIODRIVER=dummy
+ExecStart=/home/test/duet-ai-model/venv/bin/python /home/test/duet-ai-model/repo/services/pi/amt_backend.py
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

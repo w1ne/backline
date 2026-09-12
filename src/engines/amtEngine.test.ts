@@ -95,7 +95,7 @@ describe('AmtEngine', () => {
     const players = new FakePlayers();
     const notes = new FakeNoteSource();
     const clock = new FakeClock();
-    const engine = new AmtEngine(players, notes, clock, nowFn);
+    const engine = new AmtEngine(players, notes, clock, nowFn, nowFn);
     return { players, notes, clock, engine };
   }
 
@@ -135,6 +135,46 @@ describe('AmtEngine', () => {
       { beat: 2, pitch: 60, dur: 0.5, vel: 0.8 },
       { beat: 3, pitch: 64, dur: 0.5, vel: 0.6 },
     ]);
+  });
+
+  it('aligns performance-clock input with the audio-clock bar origin', async () => {
+    const notes = new FakeNoteSource();
+    const engine = new AmtEngine(new FakePlayers(), notes, new FakeClock(), () => 10, () => 1000);
+    await engine.start(120, 11);
+    const ws = startedSocket();
+    ws.open();
+    notes.fire({ midi: 60, velocity: 0.8, timeSec: 1001.5 });
+    engine.flushNotesForTest();
+    expect(ws.sent.find((m: any) => m.type === 'notes')).toMatchObject({
+      notes: [{ beat: 1, pitch: 60 }],
+    });
+    engine.stop();
+  });
+
+  it('sends the last input batch before asking the model for a bar', async () => {
+    const { engine, notes, clock } = mk();
+    await engine.start(120, 0);
+    const ws = startedSocket();
+    ws.open();
+    notes.fire({ midi: 60, velocity: 0.8, timeSec: 1.9 });
+    clock.tick(1, 2);
+    expect(ws.sent.slice(-2).map((m: any) => m.type)).toEqual(['notes', 'bar']);
+    engine.stop();
+  });
+
+  it('does not carry unflushed or stopped-session input into a restart', async () => {
+    const { engine, notes } = mk();
+    await engine.start(120, 0);
+    startedSocket().open();
+    notes.fire({ midi: 60, velocity: 0.8, timeSec: 1 });
+    engine.stop();
+    notes.fire({ midi: 62, velocity: 0.8, timeSec: 2 });
+    await engine.start(120, 3);
+    const ws = startedSocket();
+    ws.open();
+    engine.flushNotesForTest();
+    expect(ws.sent.some((m: any) => m.type === 'notes')).toBe(false);
+    engine.stop();
   });
 
   it('schedules plan notes bar-relative, on the right voice', async () => {

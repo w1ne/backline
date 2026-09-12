@@ -6,6 +6,7 @@ vi.mock('tone', () => ({
   getContext: () => ({ rawContext: mockRawContext }),
 }));
 
+import { OnsetDetector } from './onset';
 import { MicSource } from './micSource';
 
 /** Analyser stub whose time-domain buffer changes on every call so the poll
@@ -84,6 +85,19 @@ describe('MicSource.setMuted', () => {
     expect(onLevel).toHaveBeenCalled();
     expect(onPitch).toHaveBeenCalled();
 
+    src.stop();
+  });
+
+  it('converts audio timestamps into the performance clock used by the listener', async () => {
+    vi.spyOn(performance, 'now').mockReturnValue(20000);
+    vi.spyOn(OnsetDetector.prototype, 'pushFlux').mockReturnValue(4.9);
+    (mockRawContext as { currentTime: number }).currentTime = 5;
+    const src = new MicSource();
+    const onNote = vi.fn();
+    await src.start(onNote, vi.fn());
+    vi.advanceTimersByTime(100);
+    expect(onNote).toHaveBeenCalled();
+    expect(onNote.mock.calls[0][2]).toBeCloseTo(19.9);
     src.stop();
   });
 

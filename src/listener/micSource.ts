@@ -107,7 +107,7 @@ export class MicSource implements Source {
     // onsets now only drive tempo; note pitch comes from the continuous tracker below
     const fire = (t: number) => {
       if (this.muted) return;
-      onNote(-1, Math.min(1, this.lastRms * 8), t);
+      onNote(-1, Math.min(1, this.lastRms * 8), t + performance.now() / 1000 - ctx.currentTime);
     };
 
     this.pitchTimer = window.setInterval(() => {
