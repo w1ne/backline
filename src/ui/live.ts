@@ -168,7 +168,7 @@ function skeleton(): string {
           </div>
           <div class="field tap-field">
             <button type="button" class="chip" id="tap-tempo" aria-label="Tap tempo">TAP</button>
-            <button type="button" class="morph-key" id="count-in-toggle" aria-label="Toggle the count-in click">IN<span class="morph-led"></span></button>
+            <button type="button" class="chip count-in-chip" id="count-in-toggle" aria-label="Toggle the count-in click">IN</button>
           </div>
           <div class="field">
             <label for="key">Key</label>
