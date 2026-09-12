@@ -22,7 +22,8 @@ describe('MiniLab control mapping', () => {
   });
   it('maps control values and program changes without transport actions', () => {
     expect(arturiaCommand('Minilab3 MIDI',[0xb0,74,127])).toEqual({field:'noiseVolume',value:1});
-    expect(arturiaCommand('Minilab3 MIDI',[0xb0,71,0])).toEqual({field:'creativity',value:0});
+    expect(arturiaCommand('Minilab3 MIDI',[0xb0,71,0])).toEqual({field:'droneVolume',value:0});
+    expect(arturiaCommand('Minilab3 MIDI',[0xb0,87,127])).toEqual({field:'droneVolume',value:1});
     expect(arturiaCommand('Minilab3 MIDI',[0xc0,2])).toEqual({field:'sound',value:LOCAL_SOUNDS[2]});
     expect(arturiaCommand('Minilab3 MIDI',[0xc0,127])).toBeNull();
   });

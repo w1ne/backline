@@ -7,6 +7,7 @@ import { startArturiaControls } from './device/arturia';
 import { startDeviceRuntime } from './device/runtime';
 import { Listener } from './listener/listener';
 import { MidiSource } from './listener/midiSource';
+import { Drone } from './players/drone';
 import { WhiteNoise } from './players/whiteNoise';
 import { LOCAL_SOUNDS } from './device/arturia';
 import { MidiMonitor } from './players/monitor';
@@ -56,6 +57,7 @@ let band: BandEngine | undefined;
 let monitor: MidiMonitor | undefined;
 const players = new Players();
 const whiteNoise = new WhiteNoise();
+const drone = new Drone();
 let morph: MorphBus | undefined;
 let mic: MicSource | undefined;
 let midi: MidiSource | undefined;
@@ -240,6 +242,7 @@ async function power() {
   await players.init();
   audioReady = true;
   whiteNoise.setEnabled(true);
+  drone.setEnabled(true);
   const ctx = players.rawContext();
   store.update({ audioSuspended: ctx.state !== 'running' });
   ctx.addEventListener('statechange', () => store.update({ audioSuspended: ctx.state !== 'running' }));
@@ -273,6 +276,7 @@ async function power() {
 
   listener.onChange(input => {
     store.update({ input });
+    if (input.key) drone.setRoot(input.key.root);
     if (input.key) band!.set({ key: input.key });
     if (input.bpm && !store.state.locked) {
       const db = listener!.downbeat! + perfOffset();
@@ -308,6 +312,7 @@ async function power() {
 
 function powerOff() {
   whiteNoise.setEnabled(false);
+  drone.setEnabled(false);
   disarmFallback?.();
   disarmFallback = undefined;
   if (halfBarTimer !== undefined) clearTimeout(halfBarTimer);
@@ -419,6 +424,12 @@ store.subscribe(s => {
       saveBool(MIC_MUTE_KEY, muted);
       store.update({ micMuted: muted });
       listener?.setMicMuted(muted);
+    },
+    setDroneVolume: value => {
+      const droneVolume = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
+      drone.setEnabled(store.state.power === 'on');
+      drone.setLevel(droneVolume);
+      store.update({ droneVolume });
     },
     setNoiseVolume: value => {
       const noiseVolume = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;

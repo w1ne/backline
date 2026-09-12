@@ -28,6 +28,7 @@ export interface LiveActions {
   /** which sound your MIDI keyboard plays through */
   setSound?(s: MonitorSound): void;
   setNoiseVolume?(volume: number): void;
+  setDroneVolume?(volume: number): void;
   /** gate the mic out of the listener (onsets/pitch/level); MIDI keeps working */
   setMicMuted?(muted: boolean): void;
   /** ms a toggled instrument spends showing "joining…"/"leaving…" before it settles */

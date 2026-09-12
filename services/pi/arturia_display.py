@@ -24,7 +24,9 @@ def display_lines(status):
     noise = float(status.get('noiseVolume', 0))
     noise = min(1, max(0, noise)) if math.isfinite(noise) else 0
     sound = str(status.get('soundLabel', 'Keyboard')).replace(' (built-in)', '')
-    return f'duet.ai N{noise:.2f}', sound
+    drone = float(status.get('droneVolume', 0))
+    drone = min(1, max(0, drone)) if math.isfinite(drone) else 0
+    return f'N{noise:.2f} D{drone:.2f}', sound
 
 
 def main():

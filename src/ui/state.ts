@@ -15,6 +15,7 @@ export interface AppState {
   /** sound used to play the player's own MIDI keyboard */
   sound: MonitorSound;
   noiseVolume: number;
+  droneVolume: number;
   creativity: number;
   /** manual INTENSITY knob, 0..1: how much the band adds, folded into the auto activity intensity */
   intensity: number;
@@ -58,6 +59,7 @@ const defaults: AppState = {
   engine: 'acestep',
   sound: 'grand',
   noiseVolume: 0,
+  droneVolume: 0,
   creativity: 0.3,
   intensity: 0.5,
   effectiveIntensity: 0,

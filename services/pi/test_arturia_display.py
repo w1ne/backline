@@ -3,7 +3,8 @@ from arturia_display import display_payload, display_lines
 
 class ArturiaDisplayTests(unittest.TestCase):
     def test_selected_sound_and_noise_are_shown(self):
-        self.assertEqual(display_lines({'online': True, 'soundLabel':'Bell keys', 'noiseVolume': .25}), ('duet.ai N0.25', 'Bell keys'))
+        self.assertEqual(display_lines({'online': True, 'soundLabel':'Bell keys', 'noiseVolume': .25}), ('N0.25 D0.00', 'Bell keys'))
+        self.assertEqual(display_lines({'online': True, 'soundLabel':'Grand piano', 'droneVolume': .5}), ('N0.00 D0.50', 'Grand piano'))
         self.assertEqual(display_lines({'online': False}), ('duet.ai', 'Disconnected'))
     def test_payload_is_bounded_ascii_and_cannot_inject_sysex_commands(self):
         data = display_payload('a'*100, 'x\x00\xf7\n')

@@ -101,7 +101,7 @@ the MiniLab MIDI output and reconnects after hotplug.
 Protocol reference: https://gist.github.com/Janiczek/04a87c2534b9d1435a1d8159c742d260
 
 Controller 0 is the large black instrument-selection knob.
-Encoder 1 (CC74) sets independent white-noise volume 0–1 (silent at 0). Audio gain is 0.1 × volume², so full scale equals the old 10% gain, encoder 2 (CC71) creativity, and encoder 3
+Encoder 1 (CC74) sets independent white-noise volume 0–1 (silent at 0). Audio gain is 0.1 × volume², so full scale equals the old 10% gain, encoder 2 (CC71/DAW CC87) drone volume, and encoder 3
 (CC76) manual tempo 60–160 BPM. The first fader does not select instruments.
 Program changes 0–5 also select the six sounds. Ordinary notes and sustain do
 not trigger control commands; the Arturia controls never pause the app or
@@ -115,3 +115,7 @@ At tempos above 110 BPM the Pi AMT plans two bars with two bars of lead,
 every other bar. This trades a longer response delay for time to finish CPU
 inference. Padding is relative to retained history so inference does not grow
 slower merely because a session has run longer. Web AMT retains one-bar planning.
+
+Rotary 2 controls a continuous low triangle drone, following the detected tonic
+with a short pitch glide. It starts silent; volume uses a gentle squared curve
+and mutes when transport pauses. The Arturia display shows N (noise) and D (drone).
