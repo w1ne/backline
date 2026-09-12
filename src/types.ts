@@ -12,7 +12,9 @@ export const ACCOMP_ROW: AccompPreset[] = ['sax', 'strings', 'orchestral', 'ambi
 
 export interface Key { root: number; mode: 'major' | 'minor' } // root 0=C … 11=B
 
-export type ChordQuality = 'maj' | 'min' | 'dom7' | 'min7' | 'maj7' | 'sus4' | 'dim';
+export type ChordQuality =
+  | 'maj' | 'min' | 'dom7' | 'min7' | 'maj7' | 'sus4' | 'dim'
+  | 'maj6' | 'min6' | 'dom9' | 'maj9' | 'min9' | 'add9' | 'dim7' | 'aug';
 export interface Chord { root: number; quality: ChordQuality } // root 0=C … 11=B
 
 /** How the player is playing right now, measured per beat by the ActivityTracker. */

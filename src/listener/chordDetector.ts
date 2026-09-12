@@ -10,6 +10,14 @@ export const QUALITY_TONES: Record<ChordQuality, number[]> = {
   maj7: [0, 4, 7, 11],
   sus4: [0, 5, 7],
   dim: [0, 3, 6],
+  maj6: [0, 4, 7, 9],
+  min6: [0, 3, 7, 9],
+  dom9: [0, 2, 4, 7, 10],
+  maj9: [0, 2, 4, 7, 11],
+  min9: [0, 2, 3, 7, 10],
+  add9: [0, 2, 4, 7],
+  dim7: [0, 3, 6, 9],
+  aug: [0, 4, 8],
 };
 
 const QUALITIES = Object.keys(QUALITY_TONES) as ChordQuality[];
@@ -23,6 +31,14 @@ const SUFFIX: Record<ChordQuality, string> = {
   maj7: 'maj7',
   sus4: 'sus4',
   dim: 'dim',
+  maj6: '6',
+  min6: 'm6',
+  dom9: '9',
+  maj9: 'maj9',
+  min9: 'm9',
+  add9: 'add9',
+  dim7: 'dim7',
+  aug: 'aug',
 };
 
 /** Notes at or below this MIDI number count 1.5x — the bass note names the chord. */
@@ -112,7 +128,7 @@ export function scoreChord(weights: number[], chord: Chord): number {
   return Math.max(0, cos - OFF_CHORD_PENALTY * (off / total));
 }
 
-/** Best-scoring of the 84 templates (7 qualities x 12 roots). */
+/** Best-scoring of the templates (one per quality x 12 roots). */
 export function bestChord(weights: number[]): ChordReading {
   let best: ChordReading = { root: 0, quality: 'maj', confidence: 0 };
   for (let root = 0; root < 12; root++) {

@@ -85,7 +85,7 @@ const defaults: AppState = {
   sound: 'grand',
   noiseVolume: 0,
   droneVolume: 0,
-  creativity: 0.3,
+  creativity: 0.6,
   intensity: 0.5,
   effectiveIntensity: 0,
   enabled: { drums: true, bass: true, keys: true, lead: false },
