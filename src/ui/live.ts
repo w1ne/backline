@@ -320,7 +320,10 @@ const ENGINE_NAMES: Record<AppState['engine'], string> = {
 function lcdText(s: AppState): string {
   if (s.power === 'off') return 'OFF · PRESS POWER';
   if (s.locked) return `LIVE · BAR ${s.bar}`;
-  return `LISTENING · MIC ${mark(s.sources.mic)} MIDI ${mark(s.sources.midi)} · ${s.input.onsets}/12`;
+  // once there is enough to guess with, show the running estimate — it is the
+  // only feedback that the mic is hearing a tempo and not just noise
+  const guess = s.input.pendingBpm ? ` · ~${Math.round(s.input.pendingBpm)} BPM` : '';
+  return `LISTENING · MIC ${mark(s.sources.mic)} MIDI ${mark(s.sources.midi)} · ${s.input.onsets}/12${guess}`;
 }
 
 function updatePower(screen: HTMLElement, s: AppState): void {
