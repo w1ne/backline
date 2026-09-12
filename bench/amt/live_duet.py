@@ -42,8 +42,40 @@ from anticipation.config import TIME_RESOLUTION
 from anticipation.convert import events_to_midi
 from anticipation.vocab import DUR_OFFSET
 
-from amt import MELODY_INSTR, ACCOMP_INSTR, ACCOMP_BIAS, make_event, parse_events, generate_duet
+from amt import (
+    MELODY_INSTR, SOLO_ACCOMP_INSTRS, ENSEMBLE_ACCOMP_INSTRS, ACCOMP_BIAS,
+    make_event, parse_events, generate_duet,
+)
 from melody import make_synthetic_melody
+
+# Names for the log, covering just the instruments amt.py actually offers.
+INSTR_NAMES = {40: "violin", 25: "guitar"}
+
+# Writing zero accompaniment notes in a window is a legitimate sample (the
+# model is free to spend the whole window "predicting" more piano), but a
+# run of them in a row leaves the companion audibly silent. Pushing the
+# instrument bias ever higher to make that statistically rarer turns out to
+# be unreliable -- it's noisy and non-monotonic across runs (verified by
+# sweeping bias 2-10 across several melodies: higher bias raised average
+# density but individual runs still landed double-digit-second silent
+# stretches, and 8.0 was sometimes worse than 6.0). Simply re-rolling a
+# window that came back empty is more direct and bounded; 2 attempts was the
+# best tradeoff found -- 4 attempts multiplies worst-case generation time
+# enough to blow the scheduling buffer (near-100% underrun on one melody).
+MAX_GENERATION_ATTEMPTS = 2
+
+
+def _generate_nonsilent(model, gen_start, gen_end, commit_end, inputs, accomp_instrs, top_p, accomp_bias):
+    """generate_duet, retried up to MAX_GENERATION_ATTEMPTS times if the
+    commit window comes back with no accompaniment notes at all."""
+    for attempt in range(1, MAX_GENERATION_ATTEMPTS + 1):
+        result = generate_duet(model, gen_start, gen_end, inputs, accomp_instrs, top_p, accomp_bias)
+        has_note = any(
+            instr in accomp_instrs and gen_start < t <= commit_end
+            for t, _, instr, _ in parse_events(result)
+        )
+        if has_note or attempt == MAX_GENERATION_ATTEMPTS:
+            return result, attempt
 
 
 class LiveDuet:
@@ -55,8 +87,8 @@ class LiveDuet:
     """
 
     def __init__(self, model, melody, melody_len_s, bpm, lookahead_beats,
-                 commit_beats, listen_first_beats, top_p, accomp_bias=ACCOMP_BIAS,
-                 poll_interval=0.05):
+                 commit_beats, listen_first_beats, top_p, accomp_instrs=SOLO_ACCOMP_INSTRS,
+                 accomp_bias=ACCOMP_BIAS, poll_interval=0.05):
         self.model = model
         self.melody = melody
         self.melody_len_s = melody_len_s
@@ -65,6 +97,7 @@ class LiveDuet:
         self.commit_s = commit_beats * self.beat_s
         self.listen_first_s = listen_first_beats * self.beat_s
         self.top_p = top_p
+        self.accomp_instrs = accomp_instrs
         self.accomp_bias = accomp_bias
         self.poll_interval = poll_interval
 
@@ -82,12 +115,14 @@ class LiveDuet:
         self.t0 = None
 
         # One violin can't double-stop across notes: the model has no such
-        # constraint and will happily commit overlapping accompaniment
-        # notes. Track the tail of the most recently committed note so
-        # _commit_accompaniment can trim it if the next one starts early.
-        self._accomp_last_end = None
-        self._accomp_prev_onset = None
-        self._accomp_dur_idx = None
+        # constraint and will happily commit overlapping notes on the same
+        # instrument. Track, per accompaniment instrument, the tail of its
+        # most recently committed note so _commit_accompaniment can trim it
+        # if that same voice's next note starts early. Different instruments
+        # in an ensemble are independent voices and may overlap each other.
+        self._voice_last_end = {}    # instr -> end time (s) of its last committed note
+        self._voice_prev_onset = {}  # instr -> onset time (s) of its last committed note
+        self._voice_dur_idx = {}     # instr -> history index of that note's duration token
 
     def log(self, msg):
         t = time.monotonic() - self.t0
@@ -132,12 +167,13 @@ class LiveDuet:
         # still more accompaniment to plan.
         gen_start = self.committed_horizon
         gen_end = gen_start + self.lookahead_s
+        commit_end = gen_start + self.commit_s
         hist_snapshot = list(self.history)
 
         wall_start = time.monotonic()
         future = self.pool.submit(
-            generate_duet, self.model, gen_start, gen_end, hist_snapshot,
-            self.top_p, self.accomp_bias,
+            _generate_nonsilent, self.model, gen_start, gen_end, commit_end, hist_snapshot,
+            self.accomp_instrs, self.top_p, self.accomp_bias,
         )
         self.pending = (future, gen_start, gen_end, wall_start)
 
@@ -147,14 +183,14 @@ class LiveDuet:
 
         future, gen_start, gen_end, wall_start = self.pending
         self.pending = None
-        result = future.result()
+        result, attempts = future.result()
         wall_dt = time.monotonic() - wall_start
         self.gen_stats.append((gen_end - gen_start, wall_dt))
 
         commit_end = gen_start + self.commit_s
         committed = [
-            (t, d, p) for (t, d, instr, p) in parse_events(result)
-            if instr == ACCOMP_INSTR and gen_start < t <= commit_end
+            (t, d, instr, p) for (t, d, instr, p) in parse_events(result)
+            if instr in self.accomp_instrs and gen_start < t <= commit_end
         ]
 
         # A note is "late" if its cue has already passed by the time the
@@ -164,50 +200,59 @@ class LiveDuet:
         # MIDI reflects what the model actually wrote, and count it below so
         # the underrun rate stays an honest measure of real-time viability.
         collect_time = time.monotonic() - self.t0
-        late = sum(1 for (t, _, _) in committed if t < collect_time)
+        late = sum(1 for (t, _, _, _) in committed if t < collect_time)
 
         self._commit_accompaniment(committed)
         self.committed_horizon = commit_end
 
         tag = "ok" if not late else f"UNDERRUN ({late} note(s) arrived after their cue)"
         self.underruns += 1 if late else 0
+        retry_note = f", {attempts} attempt(s)" if attempts > 1 else ""
         self.log(
-            f"model wrote [{gen_start:5.2f}s..{gen_end:5.2f}s) in {wall_dt:4.2f}s wall time, "
+            f"model wrote [{gen_start:5.2f}s..{gen_end:5.2f}s) in {wall_dt:4.2f}s wall time{retry_note}, "
             f"committed {len(committed)} note(s) up to {commit_end:5.2f}s -- {tag}"
         )
 
     def _commit_accompaniment(self, notes):
-        """Append accompaniment notes to history/played, one voice at a time.
+        """Append accompaniment notes to history/played, one note at a time
+        per instrument -- an ensemble's voices are independent and may
+        overlap each other, but no single instrument may overlap itself.
 
-        If a note starts before the previous one has finished ringing, trim
-        the previous note's duration down to meet it -- same as note-stealing
-        on a monophonic synth. This only ever shortens a note that's already
-        committed; it never moves an onset or changes a pitch, so it doesn't
-        revisit the musical decisions the scheduler already froze. Two notes
-        landing on the exact same 10ms tick (the model's finest time
-        resolution) can't be told apart at all -- keep the earlier, drop
-        the rest, rather than emit a technically-nonzero but inaudible sliver.
+        If a note starts before that same instrument's previous note has
+        finished ringing, trim the previous note's duration down to meet it
+        -- same as note-stealing on a monophonic synth. This only ever
+        shortens a note that's already committed; it never moves an onset or
+        changes a pitch, so it doesn't revisit the musical decisions the
+        scheduler already froze. Two notes on the same instrument landing on
+        the exact same 10ms tick (the model's finest time resolution) can't
+        be told apart at all -- keep the earlier, drop the rest, rather than
+        emit a technically-nonzero but inaudible sliver.
         """
-        for onset_s, dur_s, pitch in sorted(notes):
+        for onset_s, dur_s, instr, pitch in sorted(notes):
             onset_s = round(onset_s * TIME_RESOLUTION) / TIME_RESOLUTION  # same tick grid as make_event
 
-            if self._accomp_last_end is not None:
-                if onset_s <= self._accomp_prev_onset:
+            prev_onset = self._voice_prev_onset.get(instr)
+            if prev_onset is not None:
+                if onset_s <= prev_onset:
                     continue
-                if onset_s < self._accomp_last_end:
-                    trimmed_s = onset_s - self._accomp_prev_onset
-                    self.history[self._accomp_dur_idx] = DUR_OFFSET + round(trimmed_s * TIME_RESOLUTION)
+                if onset_s < self._voice_last_end[instr]:
+                    trimmed_s = onset_s - prev_onset
+                    self.history[self._voice_dur_idx[instr]] = DUR_OFFSET + round(trimmed_s * TIME_RESOLUTION)
 
-            self.history.extend(make_event(onset_s, dur_s, ACCOMP_INSTR, pitch))
-            self._accomp_dur_idx = len(self.history) - 2  # the triple's middle (duration) slot
-            self._accomp_prev_onset = onset_s
-            self._accomp_last_end = onset_s + dur_s
-            self.played.append((onset_s, dur_s, "accompaniment", pitch))
+            self.history.extend(make_event(onset_s, dur_s, instr, pitch))
+            self._voice_dur_idx[instr] = len(self.history) - 2  # the triple's middle (duration) slot
+            self._voice_prev_onset[instr] = onset_s
+            self._voice_last_end[instr] = onset_s + dur_s
+            self.played.append((onset_s, dur_s, f"accomp:{instr}", pitch))
 
     def _announce_due(self, playhead):
         while self.announced < len(self.played) and self.played[self.announced][0] <= playhead:
             onset_s, dur_s, role, pitch = self.played[self.announced]
-            marker = "YOU " if role == "melody" else "AI  "
+            if role == "melody":
+                marker = "YOU        "
+            else:
+                instr = int(role.split(":")[1])
+                marker = f"AI({INSTR_NAMES.get(instr, instr)})".ljust(11)
             self.log(f"{marker} pitch={pitch:3d} dur={dur_s:4.2f}s")
             self.announced += 1
 
@@ -224,11 +269,17 @@ def main():
     ap.add_argument("--listen-first-beats", type=float, default=8.0)
     ap.add_argument("--top-p", type=float, default=0.95)
     ap.add_argument("--accomp-bias", type=float, default=ACCOMP_BIAS,
-                     help="logit bias favoring the accompaniment instrument over the "
+                     help="logit bias favoring the accompaniment instrument(s) over the "
                           "hallucinated-melody instrument (no coherence cost since the "
                           "latter is always discarded)")
+    ap.add_argument("--ensemble", action="store_true",
+                     help="use both empirically-verified companion voices (violin + steel "
+                          "guitar) instead of one violin; each stays independently "
+                          "monophonic, but the two voices may sound together")
     ap.add_argument("--outdir", default=str(Path(__file__).resolve().parent.parent / "output"))
     args = ap.parse_args()
+
+    accomp_instrs = ENSEMBLE_ACCOMP_INSTRS if args.ensemble else SOLO_ACCOMP_INSTRS
 
     outdir = Path(args.outdir)
     outdir.mkdir(parents=True, exist_ok=True)
@@ -246,6 +297,8 @@ def main():
           f"({args.key} {args.mode}, seed={args.seed})")
     print(f"scheduler: lookahead={args.lookahead_beats} beats, commit={args.commit_beats} beats, "
           f"listen_first={args.listen_first_beats} beats")
+    voices = ", ".join(INSTR_NAMES.get(i, str(i)) for i in accomp_instrs)
+    print(f"companion voice(s): {voices}")
 
     # A real product warms up its model before the audience arrives, not
     # during the performance -- the first MPS/CUDA call always eats a large,
@@ -255,7 +308,7 @@ def main():
     warm_start = time.monotonic()
     dummy = [t for onset, dur, pitch in melody[:6] for t in make_event(onset, dur, MELODY_INSTR, pitch)]
     generate_duet(model, melody[5][0] + melody[5][1], melody[5][0] + melody[5][1] + beat_s,
-                  dummy, args.top_p, args.accomp_bias)
+                  dummy, accomp_instrs, args.top_p, args.accomp_bias)
     print(f"soundcheck done in {time.monotonic() - warm_start:.2f}s")
 
     print("--- live performance starts now (real wall-clock time) ---")
@@ -269,6 +322,7 @@ def main():
         commit_beats=args.commit_beats,
         listen_first_beats=args.listen_first_beats,
         top_p=args.top_p,
+        accomp_instrs=accomp_instrs,
         accomp_bias=args.accomp_bias,
     )
     duet.run()

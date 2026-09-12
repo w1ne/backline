@@ -18,11 +18,13 @@ package. Not on PyPI — install from GitHub (see below).
 - `melody.py` — a synthetic scale-constrained melody (built with `musicpy`),
   standing in for a live player.
 - `amt.py` — the model interface: event↔token encoding, and a logit mask
-  that restricts generation to two GM instruments (piano = melody, violin =
-  accompaniment) instead of letting a Lakh-trained checkpoint free-associate
-  across all 128. Violin was chosen empirically — it's the instrument this
-  checkpoint pairs most readily with a solo piano prompt; see "Findings"
-  below for the actual selection sweep.
+  that restricts generation to melody (piano) plus a configurable set of
+  companion instruments, instead of letting a Lakh-trained checkpoint
+  free-associate across all 128. Solo mode is one violin; `--ensemble` adds
+  a steel guitar as a second, independent voice. Both were chosen
+  empirically — they're the instruments this checkpoint actually writes
+  substantial output for against a solo piano prompt; see "Findings" below
+  for the selection sweep.
 - `live_duet.py` — the scheduler. Runs a real wall-clock transport; the
   melody is only ever revealed up to the current playhead (no peeking at its
   own future), and a background thread continuously asks the model to write
@@ -30,11 +32,14 @@ package. Not on PyPI — install from GitHub (see below).
   which only `--commit-beats` is frozen. The rest is discarded and
   regenerated once more real melody has arrived. If the model doesn't
   finish before its own deadline, that's logged as a genuine underrun, not
-  hidden. Committed accompaniment notes are also kept monophonic (one
-  violin, one note at a time) by trimming a note's tail if the next one
-  starts before it ends -- the model has no such constraint on its own and
-  will happily commit overlapping notes. Output is a MIDI file of exactly
-  what was decided live.
+  hidden. If a window comes back with zero companion notes at all (a
+  legitimate sample, just an unwanted one), it's retried up to
+  `MAX_GENERATION_ATTEMPTS` times before being accepted as silence. Each
+  companion instrument is kept independently monophonic (no self-overlap)
+  by trimming a note's tail if that same instrument's next note starts
+  before it ends — the model has no such constraint on its own — but
+  different instruments in an ensemble may sound together. Output is a
+  MIDI file of exactly what was decided live.
 
 ## Run
 
@@ -42,13 +47,15 @@ package. Not on PyPI — install from GitHub (see below).
 pip install torch transformers musicpy
 pip install git+https://github.com/jthickstun/anticipation.git
 python live_duet.py --notes 32 --bpm 80 --lookahead-beats 2.5 --commit-beats 1.75
+python live_duet.py --notes 32 --bpm 80 --lookahead-beats 2.5 --commit-beats 1.75 --ensemble
 # writes ../../output/live_duet.mid relative to this dir by default; override with --outdir
 ```
 
 Flags: `--bpm`, `--key`/`--mode`, `--notes` (melody length), `--seed`,
 `--lookahead-beats`, `--commit-beats`, `--listen-first-beats`, `--top-p`,
-`--accomp-bias` (logit bias toward the kept instrument — free, since its
-alternative is always discarded anyway).
+`--accomp-bias` (logit bias toward the kept instrument(s) — free, since the
+alternative is always discarded anyway), `--ensemble` (violin + steel guitar
+instead of solo violin; each independently monophonic, may sound together).
 
 ## Findings
 
@@ -62,19 +69,36 @@ alternative is always discarded anyway).
   the first two hours of work — worth re-measuring on real target hardware
   before committing to this model for a live demo.
 - **The base checkpoint needs help to act like a duet, not a Lakh song.**
-  Given only a sparse two-instrument prompt, unmasked generation sprayed
-  notes across a dozen-plus unrelated GM instruments — Lakh MIDI is full of
-  multi-track songs, so that's an in-distribution sample, just not a useful
-  one here. Masking down to two instruments fixes the spraying, but the
-  model still sometimes chooses to write *zero* accompaniment notes in a
-  window (a legitimate sample, just not a wanted one) — a small logit bias
-  toward the kept instrument fixes that too, at no coherence cost, since we
-  discard every melody-instrument note it writes past the live playhead
-  anyway.
+  Given only a sparse prompt, unmasked generation sprayed notes across a
+  dozen-plus unrelated GM instruments — Lakh MIDI is full of multi-track
+  songs, so that's an in-distribution sample, just not a useful one here.
+  Masking down to a small instrument set fixes the spraying, but the model
+  still sometimes chooses to write *zero* companion notes in a window (also
+  a legitimate sample) — several in a row leaves the companion audibly
+  silent (one run had a 9.6s gap out of a 24.7s piece).
+- **A logit bias toward the kept instrument(s) helps but isn't reliable
+  enough on its own.** Sweeping `--accomp-bias` from 2 to 10 across several
+  melodies raised *average* note density, but individual runs still landed
+  double-digit-second silent stretches regardless, and the relationship
+  wasn't even monotonic (bias 8 was sometimes worse than bias 6). What
+  actually closes the gap: when a window comes back with literally nothing,
+  just ask again. Retrying up to `MAX_GENERATION_ATTEMPTS` (2, tuned
+  empirically) cut the longest observed silent gap from 9.6s to ~6-7s across
+  test seeds, at essentially no quality cost since resampling doesn't touch
+  the musical decision, only whether an empty answer gets accepted. The
+  tradeoff is real, though: each retry multiplies that window's generation
+  time, and pushing the retry count to 4 was enough to wreck the realtime
+  factor on one melody (16 of 17 windows underran, factor 1.37x vs. 2-3x
+  typical at 2 attempts) — silence-avoidance and real-time viability trade
+  directly against each other on this hardware, they don't come for free
+  together.
 - **Instrument pairing is not arbitrary.** A sweep over candidate GM
   accompaniment instruments against the same piano prompt found wildly
   different note yields (e.g. violin ≈40+ notes per window vs. bass ≈0) —
   worth re-sweeping per melody instrument if this becomes a real engine.
+  `--ensemble` (violin + steel guitar) uses the two instruments actually
+  confirmed by that sweep; an idiomatically nicer string-section pairing
+  (e.g. viola/cello) was not swept and may turn out silent.
 - **It doesn't just double the melody.** Checked one run's committed notes:
   41 accompaniment vs. 32 melody notes, only 1/41 at the exact same pitch,
   4/41 sharing a pitch class (unison/octave), and a pitch range (48-90)
