@@ -32,6 +32,24 @@ default string ensemble; empty/absent falls back to strings only.
 `accompBias` (default 2.0) is `generate_duet`'s own sampling knob -- see `bench/amt/amt.py`.
 Temperature is derived server-side from `creativity`.
 
+## Chord prediction
+
+`brain.py` decides a chord every half bar (`predict.py`). The default predictor (`PREDICTOR = 'hmm'`)
+steps through degree transitions learned from the Chordonomicon corpus
+(`data/transitions.json`, 5 KB, committed) after a Viterbi decode of the last two bars; the
+hand-written table is still there as `'table'`. `HARMONY_BENCH.md` has the numbers
+(`python3 bench_harmony.py --md HARMONY_BENCH.md`).
+
+To refit the matrices (not needed to run the service):
+
+```bash
+python3 fit_transitions.py                       # streams the 264 MB CSV from Hugging Face
+python3 fit_transitions.py --csv chordonomicon_v2.csv --out data/transitions.json
+```
+
+Chordonomicon (ailsntua/Chordonomicon, Kantarelis et al. 2024) is CC BY-NC 4.0; the corpus
+itself is never committed, only the fitted counts.
+
 ## Run
 
 ```bash
