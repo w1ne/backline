@@ -27,7 +27,7 @@ health, and roll back failed or interrupted installations. See
 
 Validation performed during integration:
 
-- Production web and Pi builds; 680 frontend tests; 161 backend tests (plus two
+- Production web and Pi builds; 681 frontend tests; 161 backend tests (plus two
   subtests); 40 Pi tests (one optional dependency skip); all 44 benchmark gates,
   including the MIR-1K real-voice subset.
 - Browser fake microphone: quiet 220/440 Hz tones, +20-cent bend, and silence release;
@@ -59,3 +59,8 @@ monitor teardown. The monitor is now disposed before the shared source disconnec
 with idempotent disposal. GM scheduler handles are cancelled on stop. Pi command
 failures are acknowledged once and cannot prevent status publication; regression
 tests cover subsequent commands and heartbeat after failure.
+
+Concurrent main changes to the singer-aware keys range and its benchmark thresholds
+were integrated without overwriting that work. The gate result uses the current
+repository thresholds; it is not a claim of improved harmony against the previous
+stricter dissonance thresholds.
