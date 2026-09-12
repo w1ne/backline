@@ -19,7 +19,7 @@ HALF_BAR = 2.0
 # Viterbi, predict.predict_next_hmm) or 'table' (the hand-written first-order table). The
 # default is hmm because HARMONY_BENCH.md scores it above the table on every scenario
 # (62% vs 50% bar-start accuracy averaged at lookahead 0).
-PREDICTOR = 'hmm'
+PREDICTOR = 'table'  # hmm: +12 pts on the bench mean, but -1 bar on the live replay and -12 on the minor loop; table stays the default for the demo
 # Below this many heard notes an old client's `set.chord` still names the chord; from here on
 # the service's own decision wins.
 CLIENT_CHORD_MAX_NOTES = 4
