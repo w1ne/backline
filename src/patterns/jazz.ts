@@ -1,5 +1,5 @@
 import { drumPattern, bassPattern, chordPattern, leadPattern } from './toolkit';
-import { chooseTemplate, withDrumPhrasing, withBassApproach, withSpaceAnswer } from './variation';
+import { chooseTemplate, withDrumPhrasing, withBassApproach, withSpaceAnswer, withArrangement } from './variation';
 import type { Instrument, Pattern } from '../types';
 
 const drums0 = drumPattern({
@@ -30,11 +30,11 @@ const bass1 = bassPattern([{ t: 0, degree: 0, p: 1, dur: 1 }, { t: 1, degree: 2,
 const bass2 = bassPattern([{ t: 0, degree: 7, p: 1, dur: 1 }, { t: 1, degree: 5, p: 1, dur: 1 }, { t: 2, degree: 4, p: 1, dur: 1 }, { t: 3, degree: 2, p: 0.7, dur: 1 }], 2);
 
 export const jazz: Record<Instrument, Pattern> = {
-  drums: withDrumPhrasing(chooseTemplate([drums0, drums1, drums2])),
-  bass: withBassApproach(chooseTemplate([bass0, bass1, bass2]), 2),
-  keys: withSpaceAnswer(chordPattern([[0, 2, 4, 6], [1, 3, 5, 7], [4, 6, 8, 10], [0, 2, 4, 6]], [{ t: 0.67, p: 1, dur: 1, vel: 0.6 }, { t: 2.67, p: 0.6, dur: 1, vel: 0.5 }], 4), 4),
-  lead: leadPattern([
+  drums: withArrangement('drums', withDrumPhrasing(chooseTemplate([drums0, drums1, drums2]))),
+  bass: withArrangement('bass', withBassApproach(chooseTemplate([bass0, bass1, bass2]), 2)),
+  keys: withArrangement('keys', withSpaceAnswer(chordPattern([[0, 2, 4, 6], [1, 3, 5, 7], [4, 6, 8, 10], [0, 2, 4, 6]], [{ t: 0.67, p: 1, dur: 1, vel: 0.6 }, { t: 2.67, p: 0.6, dur: 1, vel: 0.5 }], 4), 4)),
+  lead: withArrangement('lead', leadPattern([
     [{ t: 0.67, idx: 4, p: 1, dur: 0.33 }, { t: 1, idx: 5, p: 1, dur: 0.67 }, { t: 2, idx: 3, p: 1, dur: 0.67 }, { t: 2.67, idx: 2, p: 0.7, dur: 1 }],
     [{ t: 0, idx: 7, p: 1, dur: 0.67 }, { t: 1.67, idx: 6, p: 1, dur: 0.33 }, { t: 2, idx: 5, p: 1, dur: 1 }],
-  ], 5),
+  ], 5)),
 };

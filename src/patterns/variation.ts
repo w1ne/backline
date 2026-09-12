@@ -1,5 +1,5 @@
 import { mulberry32 } from '../rng';
-import type { BarContext, NoteEvent, Pattern } from '../types';
+import type { Arrangement, BarContext, Instrument, NoteEvent, Pattern } from '../types';
 import { DRUM } from '../types';
 import { chordDegreeToMidi, chordScale } from '../listener/chordDetector';
 import { chordAt } from './toolkit';
@@ -154,4 +154,77 @@ export function withBassApproach(pattern: Pattern, octave: number): Pattern {
  *  of a base keys/lead Pattern. */
 export function withSpaceAnswer(pattern: Pattern, octave: number): Pattern {
   return { nextBar(ctx) { return pattern.nextBar(ctx).concat(spaceAnswerPhrase(ctx, octave)); } };
+}
+
+/** Collapses a bar's events into a single held note (or chord, for drums) starting at beat 0
+ *  and lasting the whole bar — a pad/sustain, used for intro keys and breakdown keys. Picks
+ *  from whatever already fired on the downbeat (in key/chord already, since it came out of
+ *  the pattern), falling back to the bar's first event so a bar with nothing on beat 0 still
+ *  sustains something. */
+function sustainWholeBar(events: NoteEvent[]): NoteEvent[] {
+  if (!events.length) return events;
+  const onDownbeat = events.filter(e => e.time === 0);
+  const base = onDownbeat.length ? onDownbeat : [events[0]];
+  return base.map(e => ({ ...e, time: 0, duration: 4 }));
+}
+
+/** Intro: drums drop to hats only, bass to its root hit, keys become a pad, lead sits out. */
+function introArrangement(inst: Instrument, events: NoteEvent[]): NoteEvent[] {
+  if (inst === 'drums') return events.filter(e => e.note === DRUM.hat || e.note === DRUM.openHat);
+  if (inst === 'bass') return events.filter(e => e.time === 0);
+  if (inst === 'keys') return sustainWholeBar(events);
+  if (inst === 'lead') return [];
+  return events;
+}
+
+/** Breakdown: drums drop to kick + hat, keys sustain; bass and lead are left to the genre's
+ *  own low-intensity behavior (toolkit.ts already thins them). */
+function breakdownArrangement(inst: Instrument, events: NoteEvent[]): NoteEvent[] {
+  if (inst === 'drums') return events.filter(e => e.note === DRUM.kick || e.note === DRUM.hat);
+  if (inst === 'keys') return sustainWholeBar(events);
+  return events;
+}
+
+/** Lift: drums get a crash on the downbeat (if the bar didn't already earn one). Lead being
+ *  "allowed" during a lift is otherwise the genre's own dynamics.space gate — see
+ *  genreContract's "lead sits out while playing" rule, which a lift doesn't override, since
+ *  this helper has no chord/key to write new lead notes with. */
+function liftArrangement(inst: Instrument, events: NoteEvent[]): NoteEvent[] {
+  if (inst !== 'drums' || events.some(e => e.note === DRUM.crash)) return events;
+  return events.concat([{ time: 0, note: DRUM.crash, duration: 0.5, velocity: 0.85 }]);
+}
+
+/** Ending: every enabled instrument plays one long note (or chord, for drums) starting on
+ *  beat 1, then the band stops itself (see SongForm.shouldStop). Built from whatever the
+ *  underlying pattern already produced for the downbeat so it stays in key/chord, stretched
+ *  to fill the bar. */
+function endingArrangement(inst: Instrument, events: NoteEvent[]): NoteEvent[] {
+  if (inst === 'drums') {
+    const onDownbeat = events.filter(e => e.time === 0);
+    const notes = [...new Set((onDownbeat.length ? onDownbeat : events.slice(0, 1)).map(e => e.note))];
+    if (!notes.length) notes.push(DRUM.kick);
+    return notes.map(note => ({ time: 0, note, duration: 4, velocity: 0.95 }));
+  }
+  const source = events.find(e => e.time === 0) ?? events[0];
+  if (!source) return [];
+  return [{ ...source, time: 0, duration: 4, velocity: Math.min(1, source.velocity + 0.2) }];
+}
+
+/** Applies the song's current arrangement (see SongForm / BarContext.arrangement) to one
+ *  instrument's already-generated bar. No arrangement (or an ordinary groove bar) passes
+ *  the events through unchanged, so genre patterns without a listener/form are unaffected. */
+export function applyArrangement(inst: Instrument, events: NoteEvent[], arrangement?: Arrangement): NoteEvent[] {
+  if (!arrangement) return events;
+  if (arrangement.ending) return endingArrangement(inst, events);
+  if (arrangement.intro) return introArrangement(inst, events);
+  if (arrangement.breakdown) return breakdownArrangement(inst, events);
+  if (arrangement.lift) return liftArrangement(inst, events);
+  return events;
+}
+
+/** Wraps a Pattern so every bar it produces is passed through {@link applyArrangement} for
+ *  `inst`, reading the arrangement off the BarContext the caller already builds. The one-line
+ *  change each genre file needs to pick up song form. */
+export function withArrangement(inst: Instrument, pattern: Pattern): Pattern {
+  return { nextBar(ctx) { return applyArrangement(inst, pattern.nextBar(ctx), ctx.arrangement); } };
 }
