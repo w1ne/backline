@@ -406,11 +406,13 @@ async def websocket_endpoint(websocket: WebSocket):
         async with send_lock:
             await websocket.send_text(json.dumps(msg))
 
-    async def emit(out):
-        if "error" in out:
-            await send({"type": "error", "message": out["error"]})
-        else:
-            async with send_lock:
+    async def emit(out, commit_if_current):
+        async with send_lock:
+            if not commit_if_current():
+                return
+            if "error" in out:
+                await websocket.send_text(json.dumps({"type": "error", "message": out["error"]}))
+            else:
                 await websocket.send_text(json.dumps(out["plan"]))
                 await websocket.send_text(json.dumps(out["status"]))
 

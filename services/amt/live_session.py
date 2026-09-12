@@ -63,6 +63,7 @@ class LatestPlanner:
             if self.closed:
                 break
             result = None
+            revision, epoch = self.revision, self.epoch
             try:
                 async with self.lock:
                     if self.closed:
@@ -70,8 +71,10 @@ class LatestPlanner:
                     # Drain after acquiring the model, so time spent waiting never freezes
                     # obsolete notes/controls/cues ahead of newer client input.
                     while self.commands:
-                        self.apply(self.session, self.commands.popleft())
-                    self.event_count = 0
+                        command = self.commands.popleft()
+                        # Account for removal even when validation/application raises.
+                        self.event_count -= max(1, len(command.get('notes', [])))
+                        self.apply(self.session, command)
                     cue = self.pending_cue
                     self.pending_cue = None
                     if cue is None:
@@ -87,22 +90,34 @@ class LatestPlanner:
                         await inference
                         raise
                     if not self.closed and revision == self.revision and epoch == self.epoch:
-                        self.session = candidate
                         out['plan'].update({k:msg[k] for k in ('cueId','latestCaptureTimeSec') if k in msg})
                         out['status'].update({'queueLatencyMs':queue_ms, 'requestAgeMs':(time.monotonic()-received)*1000})
                         result = out
                 if result is not None:
-                    await self.emit(result)
+                    def commit_if_current():
+                        # The emitter invokes this after acquiring its send lock, without
+                        # another await before handing the plan to the socket. A candidate
+                        # blocked on output must never enter the live model history early.
+                        if self.closed or revision != self.revision or epoch != self.epoch:
+                            return False
+                        self.session = candidate
+                        result['status']['requestAgeMs'] = (time.monotonic()-received)*1000
+                        return True
+                    await self.emit(result, commit_if_current)
             except asyncio.CancelledError:
                 raise
             except Exception as error:
+                if self.commands or self.pending_cue is not None:
+                    self.changed.set()
                 if not self.closed:
-                    await self.emit({'error':str(error)})
+                    await self.emit({'error':str(error)}, lambda: not self.closed and
+                                    revision == self.revision and epoch == self.epoch)
 
     async def close(self):
         self.closed = True
         self.pending_cue = None
         self.commands.clear()
+        self.event_count = 0
         self.changed.set()
         # Do not cancel live inference and accidentally release the global GPU lock early.
         await self.task
