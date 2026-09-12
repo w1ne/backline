@@ -7,4 +7,4 @@ Wants=network-online.target
 Type=oneshot
 User=root
 WorkingDirectory=/home/test/duet-ai
-ExecStart=/bin/bash /home/test/duet-ai/services/pi/update.sh
+ExecStart=/usr/bin/python3 /home/test/duet-ai/.updates/update-runner.py
