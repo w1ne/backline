@@ -11,6 +11,7 @@ import { MidiSource } from './listener/midiSource';
 import { TapTempo } from './listener/tapTempo';
 import { countInClicks } from './band/countIn';
 import { SongForm, type Section } from './band/form';
+import { PlanFreshness, chooseChord, chooseSection } from './band/planOverride';
 import { outputLatencyMs } from './audio/outputLatency';
 import { Drone } from './players/drone';
 import { WhiteNoise } from './players/whiteNoise';
@@ -20,6 +21,7 @@ import { MicSource } from './listener/micSource';
 import { Players } from './players/players';
 import { PATTERNS } from './patterns';
 import { INSTRUMENTS, IDLE_DYNAMICS } from './types';
+import type { Chord } from './types';
 import { effectiveDynamics } from './listener/activity';
 import type { BandEngine } from './engines/engine';
 import { PatternEngine } from './engines/patternEngine';
@@ -95,6 +97,12 @@ let countInTimers: ReturnType<typeof setTimeout>[] = [];
  *  purely so the app can show the section name and know when to stop and re-arm the band —
  *  see src/band/form.ts for why running a second instance in lockstep is safe. */
 const songForm = new SongForm();
+/** How recently the AMT service's own plan supplied a chord/section — see
+ *  src/band/planOverride.ts. While it's fresh, the local songForm/chord tick above still run
+ *  (so the fallback path stays warm) but their results are not applied. */
+const planFreshness = new PlanFreshness();
+let planChord: Chord | null = null;
+let planSection: Section | null = null;
 
 const SECTION_LABEL: Record<Section, string> = {
   intro: 'Intro',
@@ -118,8 +126,12 @@ function tickBeat(beat: number): void {
   store.update({ effectiveIntensity: eff.intensity });
   // The form only moves on bar boundaries; tickBeat also runs on beats 1-3 off timers.
   if (beat % BEATS_PER_BAR !== 0) return;
-  const result = songForm.tick({ bar: beat / BEATS_PER_BAR, dynamics: eff, silenceBeats: eff.silenceBeats, playerStopped: false });
-  if (result.shouldStop) {
+  const bar = beat / BEATS_PER_BAR;
+  const result = songForm.tick({ bar, dynamics: eff, silenceBeats: eff.silenceBeats, playerStopped: false });
+  // Kept running even under AMT (see planFreshness), purely so the fallback stays warm; its
+  // result is only applied when the service hasn't sent a fresher section itself.
+  const section = chooseSection(store.state.engine, planFreshness.sectionFresh(bar), planSection, result.section);
+  if (!planFreshness.sectionFresh(bar) && result.shouldStop) {
     // The Bandleader has already scheduled and will stop itself after the ending bar; every
     // engine (including the ones with no form of their own) stops here regardless, and the
     // app goes quiet until the singer's next onset re-arms it through the existing
@@ -127,7 +139,7 @@ function tickBeat(beat: number): void {
     band?.stop();
     store.update({ locked: false, accompanimentStatus: SECTION_LABEL.ended });
   } else {
-    store.update({ accompanimentStatus: SECTION_LABEL[result.section] });
+    store.update({ accompanimentStatus: SECTION_LABEL[section] });
   }
 }
 
@@ -177,8 +189,11 @@ function scheduleCountIn(bpm: number, bandStartAt: number): number {
  *  fresh chord twice a bar — often enough to follow a change, rarely enough to stay stable. */
 function tickChord(beat: number): void {
   if (!listener) return;
-  const chord = listener.tickChord(beat);
-  band?.set({ chord, chordBeat: beat });
+  // Kept running even under AMT (see planFreshness), purely so the fallback stays warm — its
+  // result reaches the band (and, via listener.onChange below, the display) only when the
+  // service hasn't sent a fresher chord itself.
+  const localChord = listener.tickChord(beat);
+  if (!planFreshness.chordFresh(store.state.bar)) band?.set({ chord: localChord, chordBeat: beat });
 }
 
 
@@ -296,6 +311,27 @@ function wireBand(b: BandEngine): void {
     const increased = s.loops > store.state.loops;
     store.update({ loops: s.loops, loopsUpdatedAt: increased ? Date.now() : store.state.loopsUpdatedAt });
   };
+  if (b instanceof AmtEngine) {
+    b.onChord = (chord, fromBeat) => {
+      planChord = chord;
+      planFreshness.noteChord(store.state.bar);
+      // AmtEngine doesn't place notes on the beat grid, so it (like the interface note on
+      // BandEngine.set says) has no use for chordBeat; only Bandleader-backed engines do.
+      b.set({ chord });
+      store.update({ input: { ...store.state.input, chord } });
+    };
+    b.onSection = section => {
+      planSection = section;
+      planFreshness.noteSection(store.state.bar);
+      if (section === 'ending') {
+        // Same stop the local SongForm drives on its own 'ending' tick (see tickBeat).
+        band?.stop();
+        store.update({ locked: false, accompanimentStatus: SECTION_LABEL.ending });
+        return;
+      }
+      store.update({ accompanimentStatus: SECTION_LABEL[section] });
+    };
+  }
 }
 
 /** Arms the 8s connect/first-block watchdog for `engine`'s band `b`. If it fails to connect or
@@ -334,6 +370,9 @@ function armFallback(engine: EngineChoice, b: BandEngine): () => void {
     const result = chooseFallback(engine, reason);
     if (!result || band !== b) return;
     b.stop();
+    planFreshness.reset();
+    planChord = null;
+    planSection = null;
     band = makeBand(result.engine);
     wireBand(band);
     band.set({ genre: store.state.genre, creativity: store.state.creativity });
@@ -364,6 +403,9 @@ fetch(RELAY_URL + '/health')
 async function power() {
   store.update({ error: null });
   songForm.reset();
+  planFreshness.reset();
+  planChord = null;
+  planSection = null;
   await players.init();
   audioReady = true;
   whiteNoise.setEnabled(true);
@@ -420,7 +462,9 @@ async function power() {
   });
 
   listener.onChange(input => {
-    store.update({ input });
+    // The service's chord wins the display too while its plan is fresh — see planOverride.ts.
+    const fresh = planFreshness.chordFresh(store.state.bar);
+    store.update({ input: fresh ? { ...input, chord: chooseChord(store.state.engine, fresh, planChord, input.chord) } : input });
     if (input.key) drone.setRoot(input.key.root);
     if (input.key) band!.set({ key: input.key });
     if (input.bpm && !store.state.locked && store.state.paused) {
@@ -597,6 +641,9 @@ store.subscribe(s => {
       disarmFallback?.();
       disarmFallback = undefined;
       band.stop();
+      planFreshness.reset();
+      planChord = null;
+      planSection = null;
       band = makeBand(e);
       band.set({ genre: store.state.genre, creativity: store.state.creativity, key: key ?? undefined });
       wireBand(band);
