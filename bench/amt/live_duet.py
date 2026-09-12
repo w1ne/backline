@@ -24,6 +24,10 @@ job:
     stable under the player's fingers instead of twitching.
   * If the model doesn't finish before the buffer drains, that's a real
     scheduling underrun, and it is logged as one instead of being hidden.
+  * By default each companion instrument is kept monophonic ("one violin"),
+    trimming a note's tail if that same instrument's next note starts early
+    -- the model has no such constraint on its own. --multi-voice disables
+    this ("multiple violins": a section, not a soloist).
 
 At the end, the exact sequence of decisions made live (no post-hoc cleanup)
 is written out as a MIDI file.
@@ -88,7 +92,7 @@ class LiveDuet:
 
     def __init__(self, model, melody, melody_len_s, bpm, lookahead_beats,
                  commit_beats, listen_first_beats, top_p, accomp_instrs=SOLO_ACCOMP_INSTRS,
-                 accomp_bias=ACCOMP_BIAS, poll_interval=0.05):
+                 accomp_bias=ACCOMP_BIAS, polyphonic=False, poll_interval=0.05):
         self.model = model
         self.melody = melody
         self.melody_len_s = melody_len_s
@@ -99,6 +103,7 @@ class LiveDuet:
         self.top_p = top_p
         self.accomp_instrs = accomp_instrs
         self.accomp_bias = accomp_bias
+        self.polyphonic = polyphonic
         self.poll_interval = poll_interval
 
         self.history = []            # revealed melody + committed accompaniment (raw tokens)
@@ -114,12 +119,13 @@ class LiveDuet:
         self.underruns = 0
         self.t0 = None
 
-        # One violin can't double-stop across notes: the model has no such
-        # constraint and will happily commit overlapping notes on the same
-        # instrument. Track, per accompaniment instrument, the tail of its
-        # most recently committed note so _commit_accompaniment can trim it
-        # if that same voice's next note starts early. Different instruments
-        # in an ensemble are independent voices and may overlap each other.
+        # Bookkeeping for monophony (self.polyphonic=False, the "one violin"
+        # mode): one violin can't double-stop across notes, but the model has
+        # no such constraint and will happily commit overlapping notes on the
+        # same instrument. Track, per accompaniment instrument, the tail of
+        # its most recently committed note so _commit_accompaniment can trim
+        # it if that same voice's next note starts early. Unused entirely
+        # when self.polyphonic=True ("multiple violins" -- see that method).
         self._voice_last_end = {}    # instr -> end time (s) of its last committed note
         self._voice_prev_onset = {}  # instr -> onset time (s) of its last committed note
         self._voice_dur_idx = {}     # instr -> history index of that note's duration token
@@ -214,35 +220,44 @@ class LiveDuet:
         )
 
     def _commit_accompaniment(self, notes):
-        """Append accompaniment notes to history/played, one note at a time
-        per instrument -- an ensemble's voices are independent and may
-        overlap each other, but no single instrument may overlap itself.
+        """Append accompaniment notes to history/played.
 
-        If a note starts before that same instrument's previous note has
-        finished ringing, trim the previous note's duration down to meet it
-        -- same as note-stealing on a monophonic synth. This only ever
-        shortens a note that's already committed; it never moves an onset or
-        changes a pitch, so it doesn't revisit the musical decisions the
-        scheduler already froze. Two notes on the same instrument landing on
-        the exact same 10ms tick (the model's finest time resolution) can't
-        be told apart at all -- keep the earlier, drop the rest, rather than
-        emit a technically-nonzero but inaudible sliver.
+        In "one violin" mode (self.polyphonic=False, the default): one note
+        at a time per instrument. An ensemble's different instruments are
+        independent voices and may overlap each other, but no single
+        instrument may overlap itself -- if a note starts before that same
+        instrument's previous note has finished ringing, the previous note's
+        duration is trimmed to meet it, same as note-stealing on a
+        monophonic synth. This only ever shortens a note that's already
+        committed; it never moves an onset or changes a pitch, so it doesn't
+        revisit the musical decisions the scheduler already froze. Two notes
+        on the same instrument landing on the exact same 10ms tick (the
+        model's finest time resolution) can't be told apart at all -- keep
+        the earlier, drop the rest, rather than emit a technically-nonzero
+        but inaudible sliver.
+
+        In "multiple violins" mode (self.polyphonic=True): committed exactly
+        as generated, self-overlaps included -- a section, not a soloist.
         """
         for onset_s, dur_s, instr, pitch in sorted(notes):
             onset_s = round(onset_s * TIME_RESOLUTION) / TIME_RESOLUTION  # same tick grid as make_event
 
-            prev_onset = self._voice_prev_onset.get(instr)
-            if prev_onset is not None:
-                if onset_s <= prev_onset:
-                    continue
-                if onset_s < self._voice_last_end[instr]:
-                    trimmed_s = onset_s - prev_onset
-                    self.history[self._voice_dur_idx[instr]] = DUR_OFFSET + round(trimmed_s * TIME_RESOLUTION)
+            if not self.polyphonic:
+                prev_onset = self._voice_prev_onset.get(instr)
+                if prev_onset is not None:
+                    if onset_s <= prev_onset:
+                        continue
+                    if onset_s < self._voice_last_end[instr]:
+                        trimmed_s = onset_s - prev_onset
+                        self.history[self._voice_dur_idx[instr]] = DUR_OFFSET + round(trimmed_s * TIME_RESOLUTION)
 
             self.history.extend(make_event(onset_s, dur_s, instr, pitch))
-            self._voice_dur_idx[instr] = len(self.history) - 2  # the triple's middle (duration) slot
-            self._voice_prev_onset[instr] = onset_s
-            self._voice_last_end[instr] = onset_s + dur_s
+
+            if not self.polyphonic:
+                self._voice_dur_idx[instr] = len(self.history) - 2  # the triple's middle (duration) slot
+                self._voice_prev_onset[instr] = onset_s
+                self._voice_last_end[instr] = onset_s + dur_s
+
             self.played.append((onset_s, dur_s, f"accomp:{instr}", pitch))
 
     def _announce_due(self, playhead):
@@ -274,8 +289,13 @@ def main():
                           "latter is always discarded)")
     ap.add_argument("--ensemble", action="store_true",
                      help="use both empirically-verified companion voices (violin + steel "
-                          "guitar) instead of one violin; each stays independently "
-                          "monophonic, but the two voices may sound together")
+                          "guitar) instead of one violin -- which instrument(s) play, "
+                          "orthogonal to --multi-voice below")
+    ap.add_argument("--multi-voice", action="store_true",
+                     help="\"multiple violins\": let each companion instrument overlap "
+                          "itself (a section, not a soloist) instead of enforcing one note "
+                          "at a time per instrument -- how many notes a given instrument "
+                          "can play at once, orthogonal to --ensemble above")
     ap.add_argument("--outdir", default=str(Path(__file__).resolve().parent.parent.parent / "output"))
     args = ap.parse_args()
 
@@ -298,7 +318,8 @@ def main():
     print(f"scheduler: lookahead={args.lookahead_beats} beats, commit={args.commit_beats} beats, "
           f"listen_first={args.listen_first_beats} beats")
     voices = ", ".join(INSTR_NAMES.get(i, str(i)) for i in accomp_instrs)
-    print(f"companion voice(s): {voices}")
+    voicing = "polyphonic (multiple violins)" if args.multi_voice else "monophonic (one violin)"
+    print(f"companion voice(s): {voices} -- {voicing}")
 
     # A real product warms up its model before the audience arrives, not
     # during the performance -- the first MPS/CUDA call always eats a large,
@@ -324,6 +345,7 @@ def main():
         top_p=args.top_p,
         accomp_instrs=accomp_instrs,
         accomp_bias=args.accomp_bias,
+        polyphonic=args.multi_voice,
     )
     duet.run()
 

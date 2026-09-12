@@ -34,12 +34,14 @@ package. Not on PyPI — install from GitHub (see below).
   finish before its own deadline, that's logged as a genuine underrun, not
   hidden. If a window comes back with zero companion notes at all (a
   legitimate sample, just an unwanted one), it's retried up to
-  `MAX_GENERATION_ATTEMPTS` times before being accepted as silence. Each
-  companion instrument is kept independently monophonic (no self-overlap)
-  by trimming a note's tail if that same instrument's next note starts
-  before it ends — the model has no such constraint on its own — but
-  different instruments in an ensemble may sound together. Output is a
-  MIDI file of exactly what was decided live.
+  `MAX_GENERATION_ATTEMPTS` times before being accepted as silence. By
+  default each companion instrument is kept independently monophonic (no
+  self-overlap, "one violin") by trimming a note's tail if that same
+  instrument's next note starts before it ends — the model has no such
+  constraint on its own; `--multi-voice` disables this per instrument
+  ("multiple violins", a section instead of a soloist). Different
+  instruments in an ensemble may always sound together regardless. Output
+  is a MIDI file of exactly what was decided live.
 
 ## Run
 
@@ -47,15 +49,18 @@ package. Not on PyPI — install from GitHub (see below).
 pip install torch transformers musicpy
 pip install git+https://github.com/jthickstun/anticipation.git
 python live_duet.py --notes 32 --bpm 80 --lookahead-beats 2.5 --commit-beats 1.75
-python live_duet.py --notes 32 --bpm 80 --lookahead-beats 2.5 --commit-beats 1.75 --ensemble
+python live_duet.py --notes 32 --bpm 80 --lookahead-beats 2.5 --commit-beats 1.75 --ensemble --multi-voice
 # writes ../../output/live_duet.mid relative to this dir by default; override with --outdir
 ```
 
 Flags: `--bpm`, `--key`/`--mode`, `--notes` (melody length), `--seed`,
 `--lookahead-beats`, `--commit-beats`, `--listen-first-beats`, `--top-p`,
 `--accomp-bias` (logit bias toward the kept instrument(s) — free, since the
-alternative is always discarded anyway), `--ensemble` (violin + steel guitar
-instead of solo violin; each independently monophonic, may sound together).
+alternative is always discarded anyway). Two independent, composable
+toggles: `--ensemble` picks *which* instrument(s) play (violin alone, or
+violin + steel guitar) and `--multi-voice` picks *how many notes at once* a
+given instrument may play (one at a time, "one violin", the default; or
+overlapping, "multiple violins", a section). All four combinations work.
 
 ## Findings
 
@@ -99,6 +104,12 @@ instead of solo violin; each independently monophonic, may sound together).
   `--ensemble` (violin + steel guitar) uses the two instruments actually
   confirmed by that sweep; an idiomatically nicer string-section pairing
   (e.g. viola/cello) was not swept and may turn out silent.
+- **Monophony is a choice, not a constraint of the model.** `--multi-voice`
+  simply skips the trim/dedup step at commit time — same generated notes,
+  just not forced into a single line. Verified on one run: 34 violin notes
+  / 0 self-overlaps with the default, vs. 43 violin notes / 32 self-overlaps
+  with `--multi-voice` on the same melody/seed. Composes cleanly with
+  `--ensemble` too (each instrument's polyphony is independent).
 - **It doesn't just double the melody.** Checked one run's committed notes:
   41 accompaniment vs. 32 melody notes, only 1/41 at the exact same pitch,
   4/41 sharing a pitch class (unison/octave), and a pitch range (48-90)
