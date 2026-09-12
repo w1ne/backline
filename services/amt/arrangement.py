@@ -12,7 +12,9 @@ def shape_notes(notes, start, end, beat_seconds, space, time_resolution=100, key
     start_tick, end_tick = round(start * time_resolution), round(end * time_resolution)
     allowed = harmony_classes(key, chord if not space else None)
     kept = []
-    for onset, duration, pitch in sorted(notes):
+    # Notes are (onset, duration, pitch) or (onset, duration, instrument, pitch); any
+    # fields between duration and pitch pass through untouched.
+    for onset, duration, *rest, pitch in sorted(notes):
         if not all(math.isfinite(v) for v in (onset, duration, pitch)):
             continue
         if not start_tick <= round(onset * time_resolution) < end_tick or duration <= 0 or not 0 <= pitch <= 127:
@@ -25,10 +27,10 @@ def shape_notes(notes, start, end, beat_seconds, space, time_resolution=100, key
                          if p % 12 in allowed), key=lambda p: (abs(p-pitch), p))
         if kept and onset - kept[-1][0] < gap - 1e-6:
             continue
-        kept.append((onset, min(duration, end - onset), pitch))
+        kept.append((onset, min(duration, end - onset), *rest, pitch))
     # The trimmed durations must go on the wire, not just into the model's history.
-    return [(t, min(d, kept[i + 1][0] - t) if i + 1 < len(kept) else d, p)
-            for i, (t, d, p) in enumerate(kept)]
+    return [(t, min(d, kept[i + 1][0] - t) if i + 1 < len(kept) else d, *rest)
+            for i, (t, d, *rest) in enumerate(kept)]
 
 
 def bass_pitch(chord, key):

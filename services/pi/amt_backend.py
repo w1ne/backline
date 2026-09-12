@@ -21,7 +21,7 @@ os.environ.setdefault('SDL_AUDIODRIVER', 'dummy')
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'services' / 'amt'))
 import server as shared
-from amt import _instr_mask_logits
+from amt import _instr_mask_logits, STRING_ENSEMBLE_ACCOMP_INSTRS
 from anticipation import ops
 from anticipation.config import TIME_RESOLUTION
 from anticipation.vocab import AUTOREGRESS, TIME_OFFSET, DUR_OFFSET, NOTE_OFFSET, REST

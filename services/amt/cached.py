@@ -1,7 +1,7 @@
 """Cached AMT event sampler shared by CUDA service and optional CPU runtime."""
 import time
 import torch
-from amt import _instr_mask_logits
+from amt import _instr_mask_logits, STRING_ENSEMBLE_ACCOMP_INSTRS
 from anticipation import ops
 from anticipation.config import TIME_RESOLUTION
 from anticipation.vocab import AUTOREGRESS, TIME_OFFSET, DUR_OFFSET, NOTE_OFFSET, REST
@@ -37,9 +37,9 @@ def prepare_context(inputs, start):
     return padded
 
 
-def cached_generate(model, start_time, end_time, inputs, top_p=1.0,
-                    accomp_bias=2.0, accomp_only=True, deadline_s=None,
-                    min_interval_ticks=1):
+def cached_generate(model, start_time, end_time, inputs, accomp_instrs=STRING_ENSEMBLE_ACCOMP_INSTRS,
+                    top_p=1.0, accomp_bias=2.0, temperature=1.0, deadline_s=None,
+                    min_interval_ticks=1, accomp_only=True):
     start = int(TIME_RESOLUTION * start_time)
     end = int(TIME_RESOLUTION * end_time)
     tokens = prepare_context(inputs, start)
@@ -64,11 +64,11 @@ def cached_generate(model, start_time, end_time, inputs, top_p=1.0,
             event = []
             for i in range(3):
                 logits, cache = forward_last(model, ids, cache, i)
-                logits = safe_logits(logits, position)
+                logits = safe_logits(logits / max(.01, temperature), position)
                 if i == 0:
                     logits = future_logits(logits, max(start, current) - offset)
                 elif i == 2:
-                    logits = _instr_mask_logits(logits, accomp_bias, accomp_only)
+                    logits = _instr_mask_logits(logits, accomp_instrs, accomp_bias, accomp_only)
                 logits = nucleus(logits, top_p)
                 token = int(torch.multinomial(torch.softmax(logits, -1), 1))
                 event.append(token)
