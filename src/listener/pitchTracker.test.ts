@@ -25,9 +25,10 @@ describe('PitchTracker', () => {
     expect(halved!.midi).toBe(57);
   });
 
-  it('returns null on silence', () => {
+  it('returns null on silence, after the short dropout hold', () => {
     const tr = new PitchTracker();
     for (let i = 0; i < 6; i++) tr.push(hz(A3));
+    tr.push(null); tr.push(null);
     expect(tr.push(null)).toBeNull();
     expect(tr.push(null)).toBeNull();
   });
@@ -65,5 +66,20 @@ describe('PitchTracker voice profile', () => {
     const tr = new PitchTracker();
     for (let i = 0; i < 6; i++) tr.push(breathy(A3));
     expect(tr.push(breathy(A3))).toBeNull();
+  });
+});
+
+describe('PitchTracker dropouts', () => {
+  it('rides over a single missing frame without re-triggering the same note', () => {
+    const tr = new PitchTracker();
+    for (let i = 0; i < 6; i++) tr.push(hz(A3));
+    expect(tr.push(null)?.midi).toBe(57);       // one dropped frame: still A3
+    expect(tr.push(hz(A3))?.stable).toBe(true); // and stable again at once
+  });
+  it('lets go after three missing frames', () => {
+    const tr = new PitchTracker();
+    for (let i = 0; i < 6; i++) tr.push(hz(A3));
+    tr.push(null); tr.push(null);
+    expect(tr.push(null)).toBeNull();
   });
 });

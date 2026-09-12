@@ -1,3 +1,6 @@
+/** Below this NSDF peak the frame is noise, whatever the source. */
+export const MIN_CLARITY = 0.6;
+
 export interface PitchEstimate {
   hz: number;
   /** McLeod NSDF peak value chosen (0..1-ish), how clean the periodicity is. */
@@ -47,7 +50,9 @@ export function detectPitch(x: Float32Array, sr: number): PitchEstimate | null {
   }
   if (peaks.length === 0) return null;
   const max = Math.max(...peaks.map(p => p.value));
-  if (max < 0.9) return null;
+  // Only reject what is plainly unpitched; the PitchTracker applies the per-source
+  // clarity gate (0.85 for instruments, 0.7 for a breathy voice) on top of this.
+  if (max < MIN_CLARITY) return null;
   const chosen = peaks.find(p => p.value >= 0.8 * max)!;
   return { hz: sr / chosen.lag, clarity: chosen.value };
 }

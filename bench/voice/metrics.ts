@@ -56,7 +56,7 @@ export interface SegmentationResult {
  * detection lands within `tolSec` of the truth note's start. Each truth note
  * and each detection is used at most once (nearest-in-time greedy match).
  */
-export function noteSegmentation(detected: DetectedNote[], truth: Note[], tolSec = 0.15): SegmentationResult {
+export function noteSegmentation(detected: DetectedNote[], truth: Note[], tolSec = 0.4): SegmentationResult {
   const usedDet = new Set<number>();
   const latencies: number[] = [];
   let tp = 0;

@@ -10,6 +10,9 @@ export interface StablePitch {
   stable: boolean;
 }
 
+/** consecutive silent/unclear frames (50 ms each) a held note survives */
+const MAX_DROPOUT = 2;
+
 const centsBetween = (a: number, b: number) => 1200 * Math.log2(a / b);
 
 /**
@@ -44,6 +47,7 @@ export const VOICE_PROFILE: PitchTrackerOptions = { holdFrames: 3, minClarity: 0
 export class PitchTracker {
   private window: PitchFrame[] = [];
   private stableHz: number | null = null;
+  private dropouts = 0;
   private opts: PitchTrackerOptions;
 
   constructor(opts: PitchTrackerOptions = INSTRUMENT_PROFILE) {
@@ -53,10 +57,15 @@ export class PitchTracker {
   /** Feed one frame (or null for silence/below-floor). Returns the current reading. */
   push(frame: PitchFrame | null): StablePitch | null {
     if (!frame) {
+      // A breath, a consonant or one unclear frame must not end the note: hold the
+      // reading through short dropouts, let go only after MAX_DROPOUT frames in a row.
+      if (this.stableHz !== null && ++this.dropouts <= MAX_DROPOUT) return this.reading(false);
       this.window = [];
       this.stableHz = null;
+      this.dropouts = 0;
       return null;
     }
+    this.dropouts = 0;
 
     this.window.push(frame);
     if (this.window.length > this.opts.holdFrames) this.window.shift();
@@ -79,6 +88,10 @@ export class PitchTracker {
       this.stableHz = median;
     }
 
+    return this.reading(stable);
+  }
+
+  private reading(stable: boolean): StablePitch | null {
     if (this.stableHz === null) return null;
     const midiFloat = 69 + 12 * Math.log2(this.stableHz / 440);
     const midi = Math.round(midiFloat);

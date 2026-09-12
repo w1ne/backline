@@ -6,32 +6,32 @@ Generated 2026-09-12 by bench/voice/run.ts.
 
 | clip | profile | pitch acc % | octave err % | note P | note R | note F1 | latency ms | key lock s | key ok | tempo lock s | bpm err |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| sustained-C3 | VOICE | 97.5 | 0.0 | 0.00 | 0.00 | — | — | — | — | — | — |
-| sustained-C3 | INSTRUMENT | 97.5 | 0.0 | 0.00 | 0.00 | — | — | — | — | — | — |
-| sustained-A3 | VOICE | 97.5 | 0.0 | 0.00 | 0.00 | — | — | — | — | — | — |
-| sustained-A3 | INSTRUMENT | 97.5 | 0.0 | 0.00 | 0.00 | — | — | — | — | — | — |
+| sustained-C3 | VOICE | 97.5 | 0.0 | 1.00 | 1.00 | 1.00 | 152 | — | — | — | — |
+| sustained-C3 | INSTRUMENT | 97.5 | 0.0 | 1.00 | 1.00 | 1.00 | 259 | — | — | — | — |
+| sustained-A3 | VOICE | 100.0 | 0.0 | 1.00 | 1.00 | 1.00 | 109 | — | — | — | — |
+| sustained-A3 | INSTRUMENT | 100.0 | 0.0 | 1.00 | 1.00 | 1.00 | 205 | — | — | — | — |
 | sustained-E4 | VOICE | 100.0 | 0.0 | 1.00 | 1.00 | 1.00 | 109 | — | — | — | — |
-| sustained-E4 | INSTRUMENT | 100.0 | 0.0 | 0.00 | 0.00 | — | — | — | — | — | — |
+| sustained-E4 | INSTRUMENT | 100.0 | 0.0 | 1.00 | 1.00 | 1.00 | 205 | — | — | — | — |
 | sustained-A4 | VOICE | 100.0 | 0.0 | 1.00 | 1.00 | 1.00 | 109 | — | — | — | — |
-| sustained-A4 | INSTRUMENT | 100.0 | 0.0 | 0.00 | 0.00 | — | — | — | — | — | — |
-| scale-vib0-port0 | VOICE | 91.7 | 0.0 | 0.75 | 0.75 | 0.75 | 104 | 4.50 | — | — | — |
-| scale-vib0-port0 | INSTRUMENT | 91.7 | 0.0 | 0.00 | 0.00 | — | — | 4.55 | — | — | — |
-| scale-vib0-port60 | VOICE | 87.5 | 0.0 | 0.38 | 0.38 | 0.38 | 101 | 4.50 | — | — | — |
-| scale-vib0-port60 | INSTRUMENT | 87.5 | 0.0 | 0.00 | 0.00 | — | — | 4.55 | — | — | — |
-| scale-vib40-port0 | VOICE | 91.7 | 0.0 | 0.63 | 0.63 | 0.63 | 104 | 4.50 | — | — | — |
-| scale-vib40-port0 | INSTRUMENT | 91.7 | 0.0 | 0.00 | 0.00 | — | — | 4.55 | — | — | — |
-| scale-vib40-port60 | VOICE | 86.5 | 0.0 | 0.22 | 0.25 | 0.24 | 101 | 4.00 | — | — | — |
-| scale-vib40-port60 | INSTRUMENT | 86.5 | 0.0 | 0.00 | 0.00 | — | — | 4.55 | — | — | — |
-| scale-vib100-port0 | VOICE | 7.3 | 0.0 | 0.00 | 0.00 | — | — | — | — | — | — |
-| scale-vib100-port0 | INSTRUMENT | 7.3 | 0.0 | — | 0.00 | — | — | — | — | — | — |
-| scale-vib100-port60 | VOICE | 6.3 | 0.0 | 0.00 | 0.00 | — | — | — | — | — | — |
-| scale-vib100-port60 | INSTRUMENT | 6.3 | 0.0 | 0.00 | 0.00 | — | — | — | — | — | — |
-| melody-A3-root | VOICE | 71.4 | 0.0 | 0.16 | 0.16 | 0.16 | 93 | 5.76 | yes | 7.61 | -0.2 |
-| melody-A3-root | INSTRUMENT | 71.4 | 0.0 | 0.17 | 0.13 | 0.14 | 136 | 5.86 | yes | 7.61 | -0.2 |
-| melody-A2-root-low | VOICE | 46.1 | 0.0 | 0.13 | 0.09 | 0.11 | 93 | 4.91 | yes | 6.95 | -0.1 |
-| melody-A2-root-low | INSTRUMENT | 46.1 | 0.0 | 0.17 | 0.06 | 0.09 | 136 | 6.10 | no | 6.95 | -0.1 |
-| melody-A4-root-high | VOICE | 80.8 | 0.0 | 0.26 | 0.25 | 0.25 | 93 | 5.71 | yes | 10.15 | -0.2 |
-| melody-A4-root-high | INSTRUMENT | 80.8 | 0.0 | 0.19 | 0.16 | 0.17 | 136 | 5.80 | yes | 10.15 | -0.2 |
+| sustained-A4 | INSTRUMENT | 100.0 | 0.0 | 1.00 | 1.00 | 1.00 | 205 | — | — | — | — |
+| scale-vib0-port0 | VOICE | 92.7 | 0.0 | 1.00 | 1.00 | 1.00 | 105 | 4.50 | — | — | — |
+| scale-vib0-port0 | INSTRUMENT | 92.7 | 0.0 | 0.89 | 1.00 | 0.94 | 157 | 3.96 | — | — | — |
+| scale-vib0-port60 | VOICE | 88.5 | 0.0 | 1.00 | 1.00 | 1.00 | 133 | 4.50 | — | — | — |
+| scale-vib0-port60 | INSTRUMENT | 88.5 | 0.0 | 1.00 | 1.00 | 1.00 | 201 | 4.55 | — | — | — |
+| scale-vib40-port0 | VOICE | 92.7 | 0.0 | 1.00 | 1.00 | 1.00 | 105 | 4.50 | — | — | — |
+| scale-vib40-port0 | INSTRUMENT | 92.7 | 0.0 | 0.89 | 1.00 | 0.94 | 159 | 3.96 | — | — | — |
+| scale-vib40-port60 | VOICE | 88.5 | 0.0 | 0.89 | 1.00 | 0.94 | 157 | 3.96 | — | — | — |
+| scale-vib40-port60 | INSTRUMENT | 88.5 | 0.0 | 0.80 | 1.00 | 0.89 | 204 | 4.00 | — | — | — |
+| scale-vib100-port0 | VOICE | 40.6 | 0.0 | 0.29 | 0.75 | 0.41 | 204 | 3.40 | — | — | — |
+| scale-vib100-port0 | INSTRUMENT | 40.6 | 0.0 | 0.31 | 1.00 | 0.47 | 256 | 4.26 | — | — | — |
+| scale-vib100-port60 | VOICE | 38.5 | 0.0 | 0.33 | 0.88 | 0.48 | 203 | 3.90 | — | — | — |
+| scale-vib100-port60 | INSTRUMENT | 38.5 | 0.0 | 0.27 | 0.88 | 0.41 | 301 | 4.11 | — | — | — |
+| melody-A3-root | VOICE | 87.4 | 0.0 | 0.85 | 0.91 | 0.88 | 125 | 5.65 | yes | 7.61 | -0.2 |
+| melody-A3-root | INSTRUMENT | 87.4 | 0.0 | 0.38 | 0.63 | 0.47 | 197 | 3.61 | no | 7.61 | -0.2 |
+| melody-A2-root-low | VOICE | 86.9 | 0.0 | 0.70 | 0.88 | 0.78 | 125 | 4.35 | yes | 6.95 | -0.1 |
+| melody-A2-root-low | INSTRUMENT | 86.9 | 0.0 | 0.44 | 0.94 | 0.60 | 211 | 3.75 | yes | 6.95 | -0.1 |
+| melody-A4-root-high | VOICE | 87.8 | 0.0 | 0.97 | 0.91 | 0.94 | 125 | 5.65 | yes | 10.15 | -0.2 |
+| melody-A4-root-high | INSTRUMENT | 87.8 | 0.0 | 0.40 | 0.53 | 0.46 | 205 | 3.75 | no | 10.15 | -0.2 |
 
 ## False notes on the spoken (no stable pitch) clip
 
@@ -46,8 +46,8 @@ Generated 2026-09-12 by bench/voice/run.ts.
 
 | profile | mean note F1 on the three melody clips | false notes on spoken clip |
 |---|---|---|
-| current VOICE_PROFILE | 0.17 | 28 |
-| candidate (holdFrames 2) | 0.23 | 22 |
+| current VOICE_PROFILE | 0.86 | 28 |
+| candidate (holdFrames 2) | 0.39 | 22 |
 
 Dropping holdFrames from 3 to 2 (100ms of agreement instead of 150ms) raises mean note F1 on the melody clips and does not add false notes on the spoken clip in this bench, reporting fewer instead. This is reported as a finding only, not applied to src/, and should be checked against real recordings before changing the shipped profile, since this bench uses a synthetic noise model.
 
