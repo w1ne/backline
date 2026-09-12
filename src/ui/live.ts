@@ -99,7 +99,7 @@ function skeleton(): string {
           <div><small>Key</small><strong id="ro-key">&mdash;</strong></div>
           <div><small>Chord</small><strong id="chord">&mdash;</strong></div>
           <div><small>Bar</small><strong id="ro-bar">0</strong></div>
-          <div class="ro-rec"><small>Rec</small>
+          <div class="ro-rec"><small id="record-label">Rec</small>
             <button type="button" class="rec-btn" id="record-midi" aria-pressed="false"
                     title="Tap to record you + the band, tap again to save the MIDI">
               <span class="rec-dot"></span>
@@ -370,6 +370,7 @@ function update(screen: HTMLElement, s: AppState, changeLatencyMs: number): void
   const rec = screen.querySelector<HTMLButtonElement>('#record-midi')!;
   rec.classList.toggle('recording', s.recording);
   rec.setAttribute('aria-pressed', String(s.recording));
+  screen.querySelector<HTMLElement>('#record-label')!.textContent = s.recording ? 'Save' : 'Rec';
   rec.title = s.recording ? 'Recording… tap to save the MIDI' : 'Tap to record you + the band, tap again to save the MIDI';
   screen.querySelector<HTMLElement>('#model-latency')!.textContent = s.modelLatencyMs == null ? '' : `${Math.round(s.modelLatencyMs)} ms`;
   screen.querySelector<HTMLElement>('#engine-status')!.textContent = s.engineConnecting ? `${ENGINE_NAMES[s.engine]} · connecting…` : s.offlineEngines.includes(s.engine) ? `${ENGINE_NAMES[s.engine]} · offline` : '';
