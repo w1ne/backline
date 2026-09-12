@@ -75,7 +75,7 @@ body {
 @media (min-width: 901px) {
   .screen {
     display: grid;
-    grid-template-rows: auto auto auto minmax(max-content, 1fr) auto;
+    grid-template-rows: auto minmax(max-content, 1fr) auto auto auto;
     min-height: calc(100vh - 32px);
     height: auto;
   }
@@ -1616,8 +1616,8 @@ body {
     height: 14px;
   }
 
-  .inst button {
-    min-height: 96px;
+  .inst .pad-btn {
+    min-height: 120px;
   }
 
   .row2 .zone {
