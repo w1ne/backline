@@ -399,7 +399,12 @@ async def websocket_endpoint(websocket: WebSocket):
 
     await websocket.accept()
     async with inference_lock:
-        model = await asyncio.to_thread(load_model)
+        loading = asyncio.create_task(asyncio.to_thread(load_model))
+        try:
+            model = await asyncio.shield(loading)
+        except asyncio.CancelledError:
+            await loading
+            raise
     send_lock = asyncio.Lock()
 
     async def send(msg):
