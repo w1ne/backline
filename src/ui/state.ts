@@ -1,7 +1,7 @@
 import type { BandInput, Genre, Instrument } from '../types';
 import type { SourceStatus } from '../listener/listener';
 
-export type EngineChoice = 'lyria' | 'patterns' | 'acestep';
+export type EngineChoice = 'lyria' | 'patterns' | 'acestep' | 'amt';
 
 export interface AppState {
   power: 'off' | 'on';
@@ -30,7 +30,7 @@ const defaults: AppState = {
   engine: 'acestep',
   creativity: 0.3,
   enabled: { drums: true, bass: false, keys: false, lead: false },
-  input: { bpm: null, key: null, notesNow: [], inputLevel: 0, onsets: 0 },
+  input: { bpm: null, key: null, notesNow: [], inputLevel: 0, onsets: 0, pendingBpm: null },
   locked: false,
   tempoMode: 'locked',
   bar: 0,

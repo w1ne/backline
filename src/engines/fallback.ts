@@ -11,5 +11,6 @@ export interface FallbackResult {
 export function chooseFallback(current: EngineChoice, _reason: string): FallbackResult | null {
   if (current === 'acestep') return { engine: 'patterns', note: 'ACE OFFLINE · PATTERNS' };
   if (current === 'lyria') return { engine: 'patterns', note: 'LYRIA OFFLINE · PATTERNS' };
+  if (current === 'amt') return { engine: 'patterns', note: 'AMT OFFLINE · PATTERNS' };
   return null;
 }

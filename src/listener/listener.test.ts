@@ -15,6 +15,21 @@ class FailingFake implements Source {
   stop() {}
 }
 
+describe('Listener live tempo estimate', () => {
+  it('offers a running bpm from six onsets, before the lock at twelve', async () => {
+    const a = new Fake();
+    const l = new Listener([a]);
+    await l.start();
+    let t = 1;
+    for (let i = 0; i < 5; i++) { a.note(-1, 0.8, t); t += 0.6; }
+    expect(l.input.pendingBpm).toBeNull();
+    expect(l.input.bpm).toBeNull();
+    for (let i = 0; i < 3; i++) { a.note(-1, 0.8, t); t += 0.6; }
+    expect(l.input.bpm).toBeNull();
+    expect(l.input.pendingBpm).toBeCloseTo(100, 0);
+  });
+});
+
 describe('Listener multi-source', () => {
   it('starts all sources and both feed the same lock', async () => {
     const a = new Fake();
@@ -122,5 +137,18 @@ describe('Listener', () => {
     l.setTempoMode('locked');
     l.setTempoMode('follow');
     expect(l.input.bpm!).toBeCloseTo(followedBpm, 5); // no snap back to the 100bpm lock
+  });
+
+  it('onNote fires for pitched notes only, with midi/velocity/timeSec', async () => {
+    const f = new Fake(); const l = new Listener([f]); await l.start();
+    const seen: { midi: number; velocity: number; timeSec: number }[] = [];
+    l.onNote(n => seen.push(n));
+    f.note(-1, 0.8, 1); // rest: not a pitched note
+    f.note(60, 0.6, 2);
+    f.note(64, 0.9, 2.5);
+    expect(seen).toEqual([
+      { midi: 60, velocity: 0.6, timeSec: 2 },
+      { midi: 64, velocity: 0.9, timeSec: 2.5 },
+    ]);
   });
 });
