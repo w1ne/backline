@@ -130,7 +130,7 @@ function main() {
   lines.push(`| candidate (holdFrames 2) | ${fmt(meanOf(candidateF1s), 2)} | ${candidateFalseNotes} |`);
   lines.push('');
   lines.push(
-    'Dropping holdFrames from 3 to 2 (100ms of agreement instead of 150ms) raises mean note F1 on the melody clips and does not add false notes on the spoken clip in this bench, reporting fewer instead. This is reported as a finding only, not applied to src/, and should be checked against real recordings before changing the shipped profile, since this bench uses a synthetic noise model.',
+    'Two frames of agreement (100 ms) instead of three: fewer false notes on the spoken clip, but a much lower note F1 on the melodies now that the tracker holds a note through short dropouts. Not applied. Checked against synthetic voices only; real recordings may move both numbers.',
   );
   lines.push('');
   lines.push('## What this means');
@@ -144,7 +144,7 @@ function main() {
   );
   lines.push('');
   lines.push(
-    '**Note P/R/F1** treat a detected note as correct only if it has the true note\'s midi number and lands within 150ms of when that note actually started. Precision drops when the tracker emits notes that are not there (chatter); recall drops when it misses real notes (too slow to lock in, or locks on the wrong pitch).',
+    '**Note P/R/F1** treat a detected note as correct only if it has the true note\'s midi number and lands within 400 ms of when that note actually started, which covers the pipeline\'s own latency (85 ms window, 50 ms poll, three frames of agreement) so that latency is measured rather than scored as a miss. Precision drops when the tracker emits notes that are not there (chatter); recall drops when it misses real notes (too slow to lock in, or locks on the wrong pitch).',
   );
   lines.push('');
   lines.push(
