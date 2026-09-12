@@ -68,7 +68,10 @@ export function renderLive(root: HTMLElement, store: Store, actions: LiveActions
     actionsRef.set(screen, actions);
   }
   update(screen, store.state, actions.changeLatencyMs ?? 0);
-  screen.querySelector<HTMLElement>('#playback-target')!.textContent = `Playback: ${actions.playbackTarget ?? 'This browser'}`;
+  // Only the Pi remote has somewhere else to play; in the browser the pill says nothing useful.
+  const target = screen.querySelector<HTMLElement>('#playback-target')!;
+  target.hidden = actions.playbackTarget !== 'Pi';
+  target.textContent = `Playback: ${actions.playbackTarget ?? 'This browser'}`;
   if (actions.setPlaying) {
     const audio = screen.querySelector<HTMLButtonElement>('#enable-audio')!;
     audio.hidden = false;
