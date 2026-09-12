@@ -76,7 +76,7 @@ body {
     display: grid;
     grid-template-rows: auto auto auto minmax(0, 1fr) auto;
     height: calc(100vh - 32px);
-    max-height: 820px;
+    max-height: 860px;
     overflow: hidden;
   }
 }
@@ -990,6 +990,23 @@ body {
   grid-template-columns: 1fr 1fr;
   align-content: start;
   gap: 6px 9px;
+}
+
+/* the MANUAL zone holds eight controls: give it a wider track on desktop */
+@media (min-width: 901px) {
+  .row2 .manual {
+    min-width: 0;
+  }
+  .row2 > .manual {
+    grid-auto-columns: auto;
+  }
+  .row2 {
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 0.8fr) minmax(0, 1.05fr) minmax(0, 1.05fr) minmax(0, 1.3fr);
+  }
+  .manual .field label,
+  .manual .field .fl {
+    white-space: nowrap;
+  }
 }
 
 /* the zone title, the hints and the band route key span both columns */
