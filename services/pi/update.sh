@@ -2,7 +2,7 @@
 # Runs on the pedal from duet-update.timer: install the newest main build when it differs
 # from the installed one. No Node, no git and no token needed; the release is public.
 set -euo pipefail
-base=https://github.com/w1ne/backline/releases/download/pi-latest
+base=https://github.com/w1ne/duet.ai/releases/download/pi-latest
 home=/home/test/duet-ai
 cd "$home"
 latest=$(curl -fsSL --max-time 20 "$base/COMMIT" | tr -d '[:space:]') || { echo "update: release unreachable"; exit 0; }

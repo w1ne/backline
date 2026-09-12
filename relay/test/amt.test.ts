@@ -12,7 +12,7 @@ function baseEnv(overrides: Partial<Env> = {}): Env {
     SESSION_SECRET: "test-secret-value",
     GITHUB_TOKEN: "unused",
     ALLOWED_ORIGINS: "https://soundofthe.world,https://shylenko.com",
-    REPO: "w1ne/backline",
+    REPO: "w1ne/duet.ai",
     ...overrides,
   } as Env;
 }
