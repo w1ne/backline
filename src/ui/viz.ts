@@ -33,8 +33,10 @@ const SOURCE_COLOR: Record<VizSource, string> = {
 };
 const YOU_OUTLINE = '#8cffc4';
 /** the sung/played pitch trace: a thin line in the player's green, brighter when the tracker is sure */
-const PITCH_LINE = '#e4fff0';
+const PITCH_LINE = '#fff3b0';
 const PITCH_LINE_WIDTH = 2;
+/** per-sample low-pass on the trace, 0..1; higher follows the raw reading more closely */
+const PITCH_SMOOTH = 0.45;
 /** samples of the continuous pitch trace kept; the mic polls at 20 Hz, so this covers ~25 s */
 export const PITCH_RING_CAPACITY = 512;
 
@@ -237,6 +239,10 @@ export class Viz {
   private ctx: CanvasRenderingContext2D | null;
   private notes = new NoteRing();
   private pitches = new PitchRing();
+  /** scratch buffers for one phrase of the trace, so drawing allocates nothing */
+  private traceX = new Float32Array(PITCH_RING_CAPACITY);
+  private traceY = new Float32Array(PITCH_RING_CAPACITY);
+  private traceStable = new Uint8Array(PITCH_RING_CAPACITY);
   private analyser?: AnalyserNode;
   private freqData?: Uint8Array;
   private binEdges?: Int32Array;
@@ -537,57 +543,89 @@ export class Viz {
     }
   }
 
-  /** The voice line: a polyline through the pitch readings, broken at gaps. Stable stretches
-   *  are drawn solid, unstable ones (a slide, a breathy attack) at half alpha. */
+  /** The voice line: one flowing curve through the pitch readings, broken only at gaps.
+   *  Readings are smoothed a little on the way in, then drawn as quadratic segments through
+   *  the midpoints so sample-to-sample jitter disappears and a scoop or vibrato reads as a
+   *  gesture, not a staircase. Stable stretches are drawn full strength with a soft glow;
+   *  unstable ones (a breathy attack, a slide) fade back. */
   private drawPitchTrace(ctx: CanvasRenderingContext2D, now: number, pps: number, plotW: number, top: number, bottom: number): void {
     const n = this.pitches.length;
     if (n < 2) return;
     const right = GUTTER + plotW;
+
+    // gather the on-screen phrases as smoothed point runs
+    const xs = this.traceX;
+    const ys = this.traceY;
+    const st = this.traceStable;
     ctx.save();
     ctx.beginPath();
     ctx.rect(GUTTER, 0, plotW, bottom + 2);
     ctx.clip();
-    ctx.lineWidth = PITCH_LINE_WIDTH;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.strokeStyle = PITCH_LINE;
 
-    let prevX = NaN;
-    let prevY = NaN;
-    let open = false;
-    let openStable = false;
+    let len = 0;
+    const flush = (): void => {
+      if (len >= 2) this.strokeSmooth(ctx, xs, ys, st, len);
+      len = 0;
+    };
+    let ema = NaN;
     for (let i = 0; i < n; i++) {
       const p = this.pitches.at(i);
       if (p.midi === null) {
-        if (open) ctx.stroke();
-        open = false;
-        prevX = NaN;
+        flush();
+        ema = NaN;
         continue;
       }
       const x = timeToX(p.t, now, pps, GUTTER, plotW);
-      const y = pitchToY(p.midi, top, bottom);
       if (x > right) break;
-      if (Number.isNaN(prevX)) {
-        prevX = x;
-        prevY = y;
-        continue;
-      }
-      // segments are grouped by the stability of their end point; a change restarts the path
-      if (!open || p.stable !== openStable) {
-        if (open) ctx.stroke();
-        ctx.beginPath();
-        ctx.globalAlpha = p.stable ? 0.95 : 0.45;
-        ctx.moveTo(prevX, prevY);
-        open = true;
-        openStable = p.stable;
-      }
-      ctx.lineTo(x, y);
-      prevX = x;
-      prevY = y;
+      ema = Number.isNaN(ema) ? p.midi : ema + (p.midi - ema) * PITCH_SMOOTH;
+      if (len === xs.length) flush();
+      xs[len] = x;
+      ys[len] = pitchToY(ema, top, bottom);
+      st[len] = p.stable ? 1 : 0;
+      len++;
     }
-    if (open) ctx.stroke();
+    flush();
     ctx.restore();
     ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+  }
+
+  /** Strokes one phrase as a quadratic spline through segment midpoints, restarting the path
+   *  where stability changes so each stretch gets its own alpha. */
+  private strokeSmooth(ctx: CanvasRenderingContext2D, xs: Float32Array, ys: Float32Array, st: Uint8Array, len: number): void {
+    const begin = (i: number, stable: boolean): void => {
+      ctx.beginPath();
+      ctx.globalAlpha = stable ? 1 : 0.4;
+      ctx.lineWidth = stable ? PITCH_LINE_WIDTH : PITCH_LINE_WIDTH * 0.75;
+      ctx.shadowColor = PITCH_LINE;
+      ctx.shadowBlur = stable && !this.reduced ? 3 : 0;
+      ctx.moveTo(xs[i], ys[i]);
+    };
+    let stable = st[0] === 1;
+    begin(0, stable);
+    for (let i = 1; i < len; i++) {
+      const s = st[i] === 1;
+      const mx = (xs[i - 1] + xs[i]) / 2;
+      const my = (ys[i - 1] + ys[i]) / 2;
+      if (s !== stable) {
+        // finish this stretch at the midpoint and start the next one from there
+        ctx.quadraticCurveTo(xs[i - 1], ys[i - 1], mx, my);
+        ctx.stroke();
+        stable = s;
+        ctx.beginPath();
+        ctx.globalAlpha = stable ? 1 : 0.4;
+        ctx.lineWidth = stable ? PITCH_LINE_WIDTH : PITCH_LINE_WIDTH * 0.75;
+        ctx.shadowBlur = stable && !this.reduced ? 3 : 0;
+        ctx.moveTo(mx, my);
+        continue;
+      }
+      if (i === len - 1) ctx.quadraticCurveTo(xs[i - 1], ys[i - 1], xs[i], ys[i]);
+      else ctx.quadraticCurveTo(xs[i - 1], ys[i - 1], mx, my);
+    }
+    ctx.stroke();
   }
 
   private drawNotes(
