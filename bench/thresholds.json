@@ -16,5 +16,32 @@
       "0.5": 3,
       "1": 3
     }
+  },
+  "realvoice": {
+    "subsetClips": [
+      "amy_4_01",
+      "Ani_1_01",
+      "ariel_1_01",
+      "heycat_2_01",
+      "titon_1_01",
+      "yifen_1_01",
+      "abjones_1_01",
+      "leon_1_01"
+    ],
+    "songs": [
+      "amy_15",
+      "yifen_1",
+      "abjones_2",
+      "leon_8"
+    ],
+    "meanPitchAccFloor": 90.2,
+    "noteF1Floor": 0.53,
+    "keyLockedMinCount": 2,
+    "keysDissonantCeiling": {
+      "amy_15": 20,
+      "yifen_1": 24,
+      "abjones_2": 11,
+      "leon_8": 33
+    }
   }
 }

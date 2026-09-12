@@ -23,6 +23,7 @@ import { CLIPS, SONGS, datasetPresent, labelAt, labelNotes, labelPitchClassWeigh
 import { KEY_PLAUSIBLE_COVERAGE, accompanimentTempo, bestCoveringKey, intonation, labelPitchAccuracy, scaleCoverage } from './metrics';
 import { chordTimeline, driveBand, scoreFit, type BandPlan } from './fit';
 import { renderMix, toolsAvailable } from './render';
+import THRESHOLDS from '../thresholds.json';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = join(__dirname, 'out');
@@ -32,7 +33,7 @@ const CREATIVITY = 0.5;
 const fmt = (n: number | null | undefined, d = 1) => (n === null || n === undefined || Number.isNaN(n)) ? '—' : n.toFixed(d);
 const pct = (n: number | null | undefined) => (n === null || n === undefined || Number.isNaN(n)) ? '—' : (100 * n).toFixed(0) + '%';
 
-interface InputRow {
+export interface InputRow {
   clip: string; sex: string; dur: number; pitchAcc: number; octave: number; silent: number; other: number;
   f1: number; p: number; r: number; truthNotes: number; detNotes: number; latencyMs: number | null;
   keyLockS: number | null; keyName: string; keyCov: number; keyPlausible: string; labelKey: string; labelKeyCov: number;
@@ -63,7 +64,7 @@ function inputRow(clip: RealClip): InputRow {
 
 function mean(xs: number[]): number { const v = xs.filter(x => !Number.isNaN(x)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : NaN; }
 
-interface FitRow {
+export interface FitRow {
   song: string; dur: number; bpm: number | null; usedBpm: number; accompBpm: number | null; offCents: number; keyUsed: string; labelKey: string; labelKeyCov: number;
   follow: ReturnType<typeof scoreFit>; static: ReturnType<typeof scoreFit>; mp3: string | null; mp3Static: string | null;
 }
@@ -104,16 +105,40 @@ function fitRow(song: RealClip, render: boolean): FitRow {
   };
 }
 
+export interface RealvoiceGateResult {
+  rows: InputRow[];
+  fits: FitRow[];
+}
+
+/**
+ * Runs the input + fit analysis (no mixes) over a given clip/song subset, for bench/gate.ts.
+ * Returns null when the MIR-1K dataset is not present under bench/realvoice/data/MIR-1K/, so
+ * the caller can skip the gate with a warning instead of failing.
+ */
+export function runGate(clips: string[], songNames: string[]): RealvoiceGateResult | null {
+  if (!datasetPresent()) return null;
+  const rows = clips.map(name => inputRow(loadClip(name)));
+  const fits = songNames.map(name => {
+    const song = SONGS.find(s => s.name === name);
+    if (!song) throw new Error(`unknown realvoice song "${name}"`);
+    return fitRow(loadSong(song), false);
+  });
+  return { rows, fits };
+}
+
 function main() {
   if (!datasetPresent()) {
     console.error('MIR-1K not found under bench/realvoice/data/MIR-1K/ — see bench/realvoice/dataset.ts');
     process.exit(1);
   }
-  const render = toolsAvailable();
-  if (!render) console.error('fluidsynth/ffmpeg/soundfont missing: mixes will be skipped');
+  const subset = process.argv.includes('--subset');
+  const render = !subset && toolsAvailable();
+  if (!subset && !render) console.error('fluidsynth/ffmpeg/soundfont missing: mixes will be skipped');
 
-  const rows = CLIPS.map(name => inputRow(loadClip(name)));
-  const fits = SONGS.map(s => fitRow(loadSong(s), render));
+  const clipNames = subset ? THRESHOLDS.realvoice.subsetClips : CLIPS;
+  const songNames = subset ? THRESHOLDS.realvoice.songs : SONGS.map(s => s.name);
+  const rows = clipNames.map((name: string) => inputRow(loadClip(name)));
+  const fits = songNames.map((name: string) => fitRow(loadSong(SONGS.find(s => s.name === name)!), render));
 
   const L: string[] = [];
   L.push('# Real-voice bench results (MIR-1K amateur singers)');
@@ -196,4 +221,4 @@ const NOTES: string[] = [
   '**Fit table**: each song runs through the listener twice, once to find a tempo and key, once with chord ticks every half bar at that tempo; the lofi pattern bank is then driven bar by bar over the resulting chord timeline (coloured to maj7/min7 the way the bandleader does), with the listener\'s own dynamics. "Sung pitch in band chord" is the share of voiced label frames whose pitch class is a tone of the chord the band held in that half bar. "Band notes in label key" is the share of bass/keys/lead notes in the scale that best covers the labels. "Dissonant half bars" is the share of half bars (with both a sustained sung note and a bass or keys note) where some bass/keys note is a minor second or tritone against a sung note sounding at the same time. "Static tonic" is the same band told to hold the tonic chord of the same key for the whole song.',
 ];
 
-main();
+if (!process.env.BENCH_GATE) main();
