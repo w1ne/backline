@@ -4,6 +4,17 @@ A band in the browser that plays along with you. Play into the mic or a MIDI key
 
 Live: https://shylenko.com/backline/ (soon https://soundofthe.world). Spec with mockups: https://shylenko.com/backline/spec/
 
+## Run locally
+
+macOS or Linux, Node 18+:
+
+```sh
+scripts/run-local.sh            # app at http://localhost:8088/backline/, hosted relay
+scripts/run-local.sh --relay    # also runs the relay on :8787 (needs GEMINI_API_KEY)
+```
+
+The Patterns engine needs nothing else. `--relay` reads `GEMINI_API_KEY` from the environment or `~/.local/secrets/gemini.env`, and picks up `ACESTEP_UPSTREAM` / `AMT_UPSTREAM` if set, so the Lyria, ACE and AMT engines work against your own keys and pods.
+
 ## How it works
 
 ```
