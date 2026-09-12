@@ -64,6 +64,19 @@ overlapping, "multiple violins", a section). All four combinations work.
 
 ## Findings
 
+- **The output used to run much longer than the input melody -- fixed.**
+  `_maybe_kick_generation` had no upper bound on `committed_horizon`, so once
+  the melody ended it kept pipelining new lookahead windows every cycle
+  regardless -- there was no more melody to inform them, but nothing said
+  "stop". Since the outer loop's only exit condition was wall-clock time
+  reaching `melody_len_s + tail_s`, and the model usually runs faster than
+  real time, `committed_horizon` (music time already planned) could race far
+  ahead of the wall clock before the loop noticed it should stop: one 19.1s
+  melody produced a 33.5s MIDI file. Capping `_maybe_kick_generation` at
+  `committed_horizon >= melody_len_s + tail_s` fixed it (same melody now
+  produces 21.85s) and also finishes faster (9.4s wall time vs. 17.4s,
+  fewer wasted inference calls: 13 vs. 21) since it stops working the moment
+  there's nothing left to usefully generate for.
 - **Realtime factor 1.3x-3.6x** across runs on an M-series Mac/MPS, for
   ~1.5-2.5 beat commit windows at 80 BPM — net faster than real time on
   average, but with **high per-call variance** (0.1 s-9 s for similarly

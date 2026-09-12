@@ -136,11 +136,18 @@ class LiveDuet:
 
     def run(self):
         self.t0 = time.monotonic()
-        tail_s = self.lookahead_s + 2.0
+        # How far past the end of the melody the companion is allowed to run:
+        # just enough to flush whatever was already in flight when the
+        # melody ended, not indefinitely. Without a cap on committed_horizon
+        # (see _maybe_kick_generation), a model running faster than real
+        # time keeps pipelining new windows every cycle even after there's
+        # no more melody to inform them, and the piece balloons well past
+        # the melody's own length purely because generation was fast.
+        self.tail_s = self.lookahead_s + 2.0
         while True:
             playhead = time.monotonic() - self.t0
             done_with_melody = self.melody_idx >= len(self.melody)
-            if done_with_melody and playhead > self.melody_len_s + tail_s:
+            if done_with_melody and playhead > self.melody_len_s + self.tail_s:
                 break
 
             self._reveal_melody(playhead)
@@ -166,6 +173,13 @@ class LiveDuet:
         # a wall-clock cushion in hand before its notes are actually due
         # rather than racing the playhead from a standing start.
         if playhead < self.listen_first_s - self.lookahead_s:
+            return
+
+        # Stop asking for more once we've already planned past the end of the
+        # melody's tail: there's no more melody to inform further windows
+        # anyway, and without this a model running faster than real time
+        # would otherwise keep pipelining new windows indefinitely.
+        if self.committed_horizon >= self.melody_len_s + self.tail_s:
             return
 
         # Pipeline continuously from then on: start the next chunk the moment
