@@ -1,3 +1,4 @@
+import { audioRecorder } from '../export/audioRecorder';
 import { routeTargets, type MorphRoute } from '../audio/routing';
 
 /** Convert little-endian PCM16 bytes to Float32 samples in [-1, 1]. */
@@ -61,6 +62,7 @@ export class PcmPlayer {
     if (typeof ctx.createGain === 'function') {
       this.out = ctx.createGain();
       this.out.connect(ctx.destination);
+      audioRecorder.addSource(this.out);
     }
     this.watchdog = setInterval(() => this.checkUnderrun(), 50);
   }

@@ -480,6 +480,71 @@ body {
   animation: engine-led-blink 0.9s steps(2, start) infinite;
 }
 
+/* Record: a small round key in the readout; a slow red breath while armed. */
+.ro-rec {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.rec-btn {
+  width: clamp(26px, 5vw, 40px);
+  height: clamp(26px, 5vw, 40px);
+  border-radius: 50%;
+  border: 2px solid var(--led);
+  background: #0f2418;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.rec-dot {
+  width: 40%;
+  height: 40%;
+  border-radius: 50%;
+  background: #ff3b30;
+  opacity: 0.55;
+}
+.rec-btn.recording {
+  border-color: #ff3b30;
+  box-shadow: 0 0 12px rgba(255, 59, 48, 0.7);
+  animation: rec-fade 2.4s ease-in-out infinite;
+}
+.rec-btn.recording .rec-dot {
+  width: 60%;
+  height: 60%;
+  opacity: 1;
+}
+.pause-bars {
+  display: flex;
+  gap: 3px;
+}
+.pause-bars i {
+  display: block;
+  width: 3px;
+  height: 40%;
+  min-height: 10px;
+  background: var(--led);
+}
+.play-tri {
+  display: none;
+  width: 0;
+  height: 0;
+  border-left: 11px solid var(--led);
+  border-top: 7px solid transparent;
+  border-bottom: 7px solid transparent;
+  margin-left: 3px;
+}
+.pause-btn.paused .pause-bars { display: none; }
+.pause-btn.paused .play-tri { display: block; }
+.pause-btn.paused {
+  box-shadow: 0 0 10px rgba(42, 255, 149, 0.6);
+}
+@keyframes rec-fade {
+  50% {
+    box-shadow: 0 0 2px rgba(255, 59, 48, 0.15);
+    border-color: #6b1a14;
+  }
+}
 
 @keyframes engine-led-blink {
   50% {
@@ -627,6 +692,23 @@ body {
   border-radius: 50%;
   background: #10241a;
   border: 2px solid #1d3d2b;
+  transition: background 0.08s ease, border-color 0.08s ease;
+}
+
+/* one-shot flash on every TAP (button or space bar), independent of the running beat LEDs */
+.beats.tap-flash i {
+  background: var(--yellow);
+  border-color: var(--yellow);
+}
+
+.tap-field {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 6px;
+}
+
+.tap-field .chip {
+  flex: 1;
 }
 
 /* ---------- live: note timeline ---------- */
@@ -734,18 +816,6 @@ body {
 }
 .inst .pad-btn.lead {
   --c: var(--lead);
-}
-.inst .pad-btn.sax {
-  --c: var(--orange);
-}
-.inst .pad-btn.strings {
-  --c: var(--yellow);
-}
-.inst .pad-btn.orchestral {
-  --c: var(--blue);
-}
-.inst .pad-btn.ambient {
-  --c: var(--pink);
 }
 
 .inst .pad-btn.on {
@@ -1575,8 +1645,14 @@ body {
 }
 
 /* mic mute lives inline in the YOU strip, not pinned to a pad corner like other morph keys */
-#mic-mute {
+#mic-mute,
+#voice-monitor {
   position: static;
+}
+
+.morph-key:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 /* mic mute: red, not pink — muted is a warning, not a routing choice */
@@ -1713,4 +1789,24 @@ button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-v
     border-width: 2px;
     box-shadow: 3px 3px 0 var(--ink);
   }
+}
+
+.instrument-zone { margin-top: 12px; padding: 16px; text-align: left; }
+.instrument-zone .instrument-controls { margin-top: 10px; }
+.bar-input { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.bar-input .connection-line { margin: 0; color: var(--led); }
+.instrument-zone .connection-line { margin: 8px 0 0; }
+
+
+.inst .pad-btn.sax {
+  --c: var(--orange);
+}
+.inst .pad-btn.strings {
+  --c: var(--yellow);
+}
+.inst .pad-btn.orchestral {
+  --c: var(--blue);
+}
+.inst .pad-btn.ambient {
+  --c: var(--pink);
 }

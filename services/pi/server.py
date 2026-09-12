@@ -40,6 +40,12 @@ def validate_command(command):
         return dict(type=kind, playing=command['playing'])
     if kind == 'mic' and type(command.get('muted')) is bool:
         return dict(type=kind, muted=command['muted'])
+    if kind == 'key':
+        key = command.get('key')
+        if key is None:
+            return dict(type=kind, key=None)
+        if isinstance(key, dict) and type(key.get('root')) is int and 0 <= key['root'] <= 11 and key.get('mode') in ('major', 'minor'):
+            return dict(type=kind, key=dict(root=key['root'], mode=key['mode']))
     if kind == 'bpm':
         bpm = command.get('bpm')
         if bpm is None or (type(bpm) in (float, int) and math.isfinite(bpm) and 40 <= bpm <= 240):
@@ -117,13 +123,12 @@ def handler_for(root, state):
                 return self.json(200, {'epoch': state.epoch, 'commands': state.commands(ack)})
             if path.path == '/health':
                 return self.json(200, {'status': 'ok', 'edition': 'lydia', 'renderer': state.snapshot()['online']})
-            if path.path == '/':
-                body = Path(__file__).with_name('control.html').read_bytes()
-                self.send_response(200)
-                self.send_header('Content-Type', 'text/html; charset=utf-8')
-                self.send_header('Content-Length', str(len(body)))
+            if path.path in ('/', '/control.html'):
+                self.send_response(302)
+                self.send_header('Location', '/backline/?control=pi')
+                self.send_header('Cache-Control', 'no-store')
+                self.send_header('Content-Length', '0')
                 self.end_headers()
-                self.wfile.write(body)
                 return
             return super().do_GET()
 

@@ -13,7 +13,10 @@ export function midiInputOptions(inputs: Iterable<MIDIInput>): DeviceOption[] {
   const out: DeviceOption[] = [];
   for (const i of inputs) {
     if (i.state === 'disconnected') continue;
-    out.push({ id: i.id, label: (i.name ?? '').trim() || i.id });
+    const label = (i.name ?? '').trim() || i.id;
+    // ALSA's virtual loopback port is not a keyboard; hide it from pickers and status lines.
+    if (/^midi through/i.test(label)) continue;
+    out.push({ id: i.id, label });
   }
   return out;
 }

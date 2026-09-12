@@ -39,6 +39,31 @@ describe('Listener live tempo estimate', () => {
   });
 });
 
+describe('Listener provisional tempo lock', () => {
+  it('adopts pendingBpm after 8s of onsets when the real 12-onset lock is still pending', async () => {
+    const a = new Fake();
+    const l = new Listener([a]);
+    await l.start();
+    // 6 onsets at 100 bpm (0.6s apart) spanning 3s: enough for pendingBpm, not enough for the
+    // real lock (needs 12), and well under the 8s provisional wait.
+    let t = 1;
+    for (let i = 0; i < 6; i++) { a.note(-1, 0.8, t); t += 0.6; }
+    expect(l.input.bpm).toBeNull();
+    // Keep onsets coming at the same tempo until 8s have passed since the first one.
+    while (t - 1 < 8) { a.note(-1, 0.8, t); t += 0.6; }
+    expect(l.input.bpm).toBeCloseTo(100, 0);
+  });
+
+  it('a real lock (12 onsets) still wins once it lands', async () => {
+    const a = new Fake();
+    const l = new Listener([a]);
+    await l.start();
+    let t = 1;
+    for (let i = 0; i < 12; i++) { a.note(-1, 0.8, t); t += 0.5; } // 120 bpm, locks for real at 12
+    expect(l.input.bpm).toBeCloseTo(120, 0);
+  });
+});
+
 describe('Listener.setMicMuted', () => {
   it('gates only the mic source, leaving midi sources untouched', async () => {
     const midi = new MutableFake();
@@ -294,5 +319,31 @@ describe('independent source readiness', () => {
     expect(seen).toContain('on');
     ready();
     await started;
+  });
+});
+
+describe('Listener key snap for voice', () => {
+  it('moves an out-of-key sung pitch to the nearest scale tone once a key is known', async () => {
+    const a = new Fake();
+    const l = new Listener([a]);
+    await l.start();
+    const heard: number[] = [];
+    l.onNote(n => heard.push(n.midi));
+    // establish C major from MIDI-style notes
+    for (const n of [60, 62, 64, 65, 67, 69, 71, 72, 64, 67, 60]) a.note(n, 0.8, 1);
+    expect(l.input.key).toEqual({ root: 0, mode: 'major' });
+    heard.length = 0;
+    a.pitch!({ midi: 61, cents: 0, stable: true }); // C#4 glide → C4 or D4, never C#
+    expect(heard).toHaveLength(1);
+    expect([60, 62]).toContain(heard[0]);
+  });
+  it('passes sung pitches through untouched while no key is known', async () => {
+    const a = new Fake();
+    const l = new Listener([a]);
+    await l.start();
+    const heard: number[] = [];
+    l.onNote(n => heard.push(n.midi));
+    a.pitch!({ midi: 61, cents: 0, stable: true });
+    expect(heard).toEqual([61]);
   });
 });

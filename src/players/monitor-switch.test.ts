@@ -33,3 +33,25 @@ it('retains the current voice on a failed load and does not activate after stop'
   const stops = m.instruments[2].stop.mock.calls.length;
   monitor.stop(); expect(m.instruments[2].stop).toHaveBeenCalledTimes(stops);
 });
+it('starts without Web MIDI (iOS Safari): the voice loads and no error is thrown', async () => {
+  vi.stubGlobal('navigator', {});
+  try {
+    const monitor = new MidiMonitor({destination:{}} as AudioContext, 'grand');
+    const started = monitor.start(); m.instruments[0].resolve();
+    await expect(started).resolves.toBeUndefined();
+    monitor.stop();
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+it('treats a denied Web MIDI permission as no controller, not an error', async () => {
+  vi.stubGlobal('navigator', { requestMIDIAccess: () => Promise.reject(new DOMException('nope', 'NotAllowedError')) });
+  try {
+    const monitor = new MidiMonitor({destination:{}} as AudioContext, 'grand');
+    const started = monitor.start(); m.instruments[0].resolve();
+    await expect(started).resolves.toBeUndefined();
+    monitor.stop();
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});

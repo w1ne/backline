@@ -1,5 +1,5 @@
 import unittest
-from arrangement import shape_notes, bass_pitch
+from arrangement import fill_silent_window, shape_notes, bass_pitch, voice_chord, harmony_classes, early_entry_plan, plan_window
 
 
 class ArrangementTest(unittest.TestCase):
@@ -41,6 +41,61 @@ class ArrangementTest(unittest.TestCase):
         notes = shape_notes([(2, 5, 40, 60), (2.5, 5, 41, 64), (3, 5, 42, 67)], 2, 4, 0.5, False)
         self.assertEqual(notes, [(2, 0.5, 40, 60), (2.5, 0.5, 41, 64), (3, 1, 42, 67)])
 
+    def test_amount_controls_density_and_zero_is_silent(self):
+        raw = [(i * .125, .4, 60 + i % 8) for i in range(32)]
+        quiet = shape_notes(raw, 0, 4, .5, False, amount=.1)
+        full = shape_notes(raw, 0, 4, .5, False, amount=1)
+        self.assertGreater(len(full), len(quiet))
+        self.assertEqual(shape_notes(raw, 0, 4, .5, False, amount=0), [])
+
+    def test_creativity_keeps_scale_passing_notes_instead_of_flattening_to_chord(self):
+        raw = [(0, .2, 60), (.25, .2, 62), (.5, .2, 64), (.75, .2, 65)]
+        simple = shape_notes(raw, 0, 2, .5, False, key='C major', chord='C', creativity=0, amount=1)
+        varied = shape_notes(raw, 0, 2, .5, False, key='C major', chord='C', creativity=1, amount=1)
+        self.assertTrue(all(n[-1] % 12 in {0,4,7} for n in simple))
+        self.assertTrue(any(n[-1] % 12 in {2,5} for n in varied))
+
+    def test_output_lands_on_tempo_grid_at_multiple_tempos(self):
+        for bpm in (80, 133, 180):
+            beat = 60 / bpm
+            start = 12 * beat
+            raw = [(start + x * beat, .07, 60) for x in (.03, .57, 1.13, 2.79, 3.97)]
+            notes = shape_notes(raw, start, start + 4 * beat, beat, False, creativity=1, amount=1)
+            self.assertTrue(notes)
+            for t, d, _ in notes:
+                self.assertAlmostEqual((t - start) / beat * 4, round((t-start) / beat * 4))
+                self.assertGreaterEqual(d / beat, .25 - 1e-8)
+                self.assertLessEqual(t+d, start + 4 * beat + 1e-8)
+
+    def test_voice_chord_yields_two_to_three_chord_tone_notes(self):
+        chord_tones = harmony_classes('C major', 'Dm')
+        notes = voice_chord(66, chord_tones, want=3)
+        self.assertGreaterEqual(len(notes), 2)
+        self.assertLessEqual(len(notes), 3)
+        self.assertTrue(all(p % 12 in chord_tones for p in notes))
+        self.assertEqual(len(set(notes)), len(notes))
+
+    def test_voice_chord_falls_back_to_monophonic_without_a_chord(self):
+        self.assertEqual(voice_chord(66, set()), [66])
+
+    def test_early_entry_plan_covers_bar_1_with_key_and_chord_but_no_melody(self):
+        # bar 1 spans beats 4..8, matching plan_window(0) in server.py.
+        notes = early_entry_plan('A minor', 'Am', 4.0, 8.0)
+        self.assertTrue(notes)
+        self.assertTrue(all(n['beat'] < 8.0 for n in notes))
+        bass = [n for n in notes if n['voice'] == 'bass']
+        keys = [n for n in notes if n['voice'] == 'keys']
+        self.assertEqual(sorted(n['beat'] for n in bass), [4.0, 6.0])
+        self.assertTrue(all(n['pitch'] % 12 == 9 for n in bass))  # A
+        self.assertGreaterEqual(len(keys), 2)
+        self.assertLessEqual(len(keys), 3)
+        self.assertTrue(all(n['beat'] == 4.0 for n in keys))
+        chord_tones = harmony_classes('A minor', 'Am')
+        self.assertTrue(all(n['pitch'] % 12 in chord_tones for n in keys))
+
+    def test_early_entry_plan_is_empty_without_key_or_chord(self):
+        self.assertEqual(early_entry_plan(None, None, 4.0, 8.0), [])
+
     def test_bass_uses_the_players_harmony_in_a_fixed_bass_register(self):
         self.assertEqual(bass_pitch('Dm', 'C major'), 38)
         self.assertEqual(bass_pitch('F#min7', 'C major'), 42)
@@ -50,3 +105,57 @@ class ArrangementTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class FillSilentWindowTests(unittest.TestCase):
+    def test_empty_window_gets_the_key_only_plan(self):
+        out = fill_silent_window([], 'A minor', 'Am', 8.0, 12.0)
+        self.assertTrue(out)
+        self.assertEqual(sorted(n['beat'] for n in out if n['voice'] == 'bass'), [8.0, 10.0])
+        self.assertTrue(any(n['voice'] == 'keys' for n in out))
+
+    def test_window_with_keys_is_left_alone(self):
+        notes = [{'beat': 8.0, 'pitch': 64, 'dur': 1.0, 'vel': 0.5, 'voice': 'keys'}]
+        self.assertIs(fill_silent_window(notes, 'A minor', 'Am', 8.0, 12.0), notes)
+
+    def test_no_key_no_chord_stays_empty(self):
+        self.assertEqual(fill_silent_window([], None, None, 8.0, 12.0), [])
+
+
+
+class PlanWindowTests(unittest.TestCase):
+    """The window a cue asks for: `lookahead` beats past the cue, `span` beats long."""
+
+    def test_bar_cue_keeps_the_full_bar_window(self):
+        # An old client's `bar` message: the plan for bar+1 is the four beats one bar ahead.
+        self.assertEqual(plan_window(0.0, 4.0), (4.0, 8.0))
+        self.assertEqual(plan_window(12.0, 4.0), (16.0, 20.0))
+
+    def test_tick_cue_plans_one_half_bar_a_bar_ahead(self):
+        self.assertEqual(plan_window(0.0, 2.0), (4.0, 6.0))
+        self.assertEqual(plan_window(2.0, 2.0), (6.0, 8.0))
+        self.assertEqual(plan_window(10.0, 2.0), (14.0, 16.0))
+
+    def test_consecutive_ticks_tile_the_timeline_without_gaps(self):
+        windows = [plan_window(beat, 2.0) for beat in (0.0, 2.0, 4.0, 6.0)]
+        for (_, end), (start, _) in zip(windows, windows[1:]):
+            self.assertEqual(end, start)
+
+    def test_lookahead_is_configurable(self):
+        self.assertEqual(plan_window(0.0, 2.0, lookahead_beats=2.0), (2.0, 4.0))
+
+
+class HalfBarFallbackTests(unittest.TestCase):
+    def test_early_entry_plan_fits_a_half_bar(self):
+        notes = early_entry_plan('A minor', 'Am', 4.0, 6.0)
+        self.assertTrue(notes)
+        self.assertTrue(all(4.0 <= n['beat'] < 6.0 for n in notes))
+        self.assertTrue(all(n['beat'] + n['dur'] <= 6.0 + 1e-9 for n in notes))
+        bass = [n for n in notes if n['voice'] == 'bass']
+        self.assertEqual(sorted(n['beat'] for n in bass), [4.0, 5.0])
+
+    def test_silent_half_bar_is_filled_within_the_window(self):
+        out = fill_silent_window([], 'A minor', 'Am', 6.0, 8.0)
+        self.assertTrue(out)
+        self.assertTrue(all(6.0 <= n['beat'] < 8.0 for n in out))
+        self.assertTrue(all(n['beat'] + n['dur'] <= 8.0 + 1e-9 for n in out))

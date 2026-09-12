@@ -25,9 +25,10 @@ describe('PitchTracker', () => {
     expect(halved!.midi).toBe(57);
   });
 
-  it('returns null on silence', () => {
+  it('returns null on silence, after the short dropout hold', () => {
     const tr = new PitchTracker();
     for (let i = 0; i < 6; i++) tr.push(hz(A3));
+    tr.push(null); tr.push(null);
     expect(tr.push(null)).toBeNull();
     expect(tr.push(null)).toBeNull();
   });
@@ -48,5 +49,37 @@ describe('PitchTracker', () => {
     let r: ReturnType<PitchTracker['push']> = null;
     for (let i = 0; i < 6; i++) r = tr.push({ hz: A3, clarity: 0.5, t: i });
     expect(r).toBeNull();
+  });
+});
+
+describe('PitchTracker voice profile', () => {
+  const voice = { holdFrames: 3, minClarity: 0.7, minAgree: 2 };
+  const breathy = (v: number) => ({ hz: v, clarity: 0.75, t: 0 });
+  it('accepts a hummed note after three breathy frames', () => {
+    const tr = new PitchTracker(voice);
+    tr.push(breathy(A3)); tr.push(breathy(A3));
+    const r = tr.push(breathy(A3));
+    expect(r?.stable).toBe(true);
+    expect(r?.midi).toBe(57);
+  });
+  it('the default profile still rejects the same breathy frames', () => {
+    const tr = new PitchTracker();
+    for (let i = 0; i < 6; i++) tr.push(breathy(A3));
+    expect(tr.push(breathy(A3))).toBeNull();
+  });
+});
+
+describe('PitchTracker dropouts', () => {
+  it('rides over a single missing frame without re-triggering the same note', () => {
+    const tr = new PitchTracker();
+    for (let i = 0; i < 6; i++) tr.push(hz(A3));
+    expect(tr.push(null)?.midi).toBe(57);       // one dropped frame: still A3
+    expect(tr.push(hz(A3))?.stable).toBe(true); // and stable again at once
+  });
+  it('lets go after three missing frames', () => {
+    const tr = new PitchTracker();
+    for (let i = 0; i < 6; i++) tr.push(hz(A3));
+    tr.push(null); tr.push(null);
+    expect(tr.push(null)).toBeNull();
   });
 });

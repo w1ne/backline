@@ -20,6 +20,16 @@ The Pi desktop opens the local app automatically. The small LCD displays status
 and accepts the existing knobs and footswitches; see [LCD.md](LCD.md).
 Remote desktop remains available through the existing VNC server.
 
+## Automatic updates
+
+Every push to `main` builds the Pi edition in CI (`pi-release.yml`) and publishes it as the
+rolling `pi-latest` GitHub release. On the pedal, `duet-update.timer` runs `update.sh`
+every 2 minutes; when the release commit differs from `/home/test/duet-ai/COMMIT` it downloads
+the tarball, swaps `site/` and `services/pi/`, and reruns `install.sh` (services restart,
+about 10 s of silence). No Node, git or token on the Pi. Check with
+`systemctl list-timers duet-update.timer` and `journalctl -u duet-update -n 20`.
+The manual deploy below is only needed once, to install the timer on a fresh image.
+
 ## Deploy from the development computer
 
 ```bash

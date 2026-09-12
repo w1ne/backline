@@ -13,3 +13,8 @@ describe('KeyDetector', () => {
     expect(play([55, 59, 62, 55, 66, 67, 62, 59, 55, 57, 59, 55]).key).toEqual({ root: 7, mode: 'major' });
   });
 });
+
+describe('KeyDetector early lock for a singer', () => {
+  it('locks A minor from five clearly minor notes', () => { expect(play([57, 60, 64, 57, 62]).key).toEqual({ root: 9, mode: 'minor' }); });
+  it('stays undecided on five ambiguous notes', () => { expect(play([60, 62, 60, 62, 60]).key).toBeNull(); });
+});

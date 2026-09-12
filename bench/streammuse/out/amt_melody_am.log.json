@@ -1,0 +1,392 @@
+{
+ "plans": [
+  {
+   "type": "plan",
+   "fromBeat": 8.0,
+   "toBeat": 12.0,
+   "notes": [
+    {
+     "beat": 7.995,
+     "pitch": 86,
+     "dur": 1.0,
+     "vel": 0.5,
+     "voice": "keys"
+    },
+    {
+     "beat": 9.0,
+     "pitch": 84,
+     "dur": 0.9999999999999991,
+     "vel": 0.5,
+     "voice": "keys"
+    },
+    {
+     "beat": 10.005,
+     "pitch": 83,
+     "dur": 1.0,
+     "vel": 0.5,
+     "voice": "keys"
+    },
+    {
+     "beat": 10.995000000000001,
+     "pitch": 81,
+     "dur": 1.0000000000000004,
+     "vel": 0.5,
+     "voice": "keys"
+    },
+    {
+     "beat": 8.0,
+     "pitch": 45,
+     "dur": 4.0,
+     "vel": 0.55,
+     "voice": "bass"
+    }
+   ],
+   "_rtt_ms": 249.25813099980587,
+   "_bar": 1
+  },
+  {
+   "type": "plan",
+   "fromBeat": 12.0,
+   "toBeat": 16.0,
+   "notes": [
+    {
+     "beat": 12.0,
+     "pitch": 79,
+     "dur": 0.9999999999999991,
+     "vel": 0.5,
+     "voice": "keys"
+    },
+    {
+     "beat": 13.005,
+     "pitch": 77,
+     "dur": 1.0,
+     "vel": 0.5,
+     "voice": "keys"
+    },
+    {
+     "beat": 13.995000000000001,
+     "pitch": 76,
+     "dur": 0.9999999999999991,
+     "vel": 0.5,
+     "voice": "keys"
+    },
+    {
+     "beat": 15.0,
+     "pitch": 74,
+     "dur": 0.9999999999999991,
+     "vel": 0.5,
+     "voice": "keys"
+    },
+    {
+     "beat": 12.0,
+     "pitch": 45,
+     "dur": 4.0,
+     "vel": 0.55,
+     "voice": "bass"
+    }
+   ],
+   "_rtt_ms": 292.44672400000127,
+   "_bar": 2
+  },
+  {
+   "type": "plan",
+   "fromBeat": 16.0,
+   "toBeat": 20.0,
+   "notes": [
+    {
+     "beat": 16.005000000000003,
+     "pitch": 76,
+     "dur": 0.9999999999999991,
+     "vel": 0.5,
+     "voice": "keys"
+    },
+    {
+     "beat": 16.995,
+     "pitch": 74,
+     "dur": 1.0,
+     "vel": 0.5,
+     "voice": "keys"
+    },
+    {
+     "beat": 18.0,
+     "pitch": 72,
+     "dur": 0.9999999999999991,
+     "vel": 0.5,
+     "voice": "keys"
+    },
+    {
+     "beat": 19.005000000000003,
+     "pitch": 71,
+     "dur": 0.9999999999999991,
+     "vel": 0.5,
+     "voice": "keys"
+    },
+    {
+     "beat": 16.0,
+     "pitch": 45,
+     "dur": 4.0,
+     "vel": 0.55,
+     "voice": "bass"
+    }
+   ],
+   "_rtt_ms": 305.0364720002108,
+   "_bar": 3
+  },
+  {
+   "type": "plan",
+   "fromBeat": 20.0,
+   "toBeat": 24.0,
+   "notes": [
+    {
+     "beat": 19.995,
+     "pitch": 72,
+     "dur": 0.9999999999999991,
+     "vel": 0.5,
+     "voice": "keys"
+    },
+    {
+     "beat": 21.0,
+     "pitch": 74,
+     "dur": 1.0,
+     "vel": 0.5,
+     "voice": "keys"
+    },
+    {
+     "beat": 22.005000000000003,
+     "pitch": 76,
+     "dur": 2.0,
+     "vel": 0.5,
+     "voice": "keys"
+    },
+    {
+     "beat": 20.0,
+     "pitch": 45,
+     "dur": 4.0,
+     "vel": 0.55,
+     "voice": "bass"
+    }
+   ],
+   "_rtt_ms": 239.26351799946133,
+   "_bar": 4
+  },
+  {
+   "type": "plan",
+   "fromBeat": 24.0,
+   "toBeat": 28.0,
+   "notes": [
+    {
+     "beat": 25.994999999999997,
+     "pitch": 76,
+     "dur": 1.0,
+     "vel": 0.5,
+     "voice": "keys"
+    },
+    {
+     "beat": 24.0,
+     "pitch": 45,
+     "dur": 4.0,
+     "vel": 0.55,
+     "voice": "bass"
+    }
+   ],
+   "_rtt_ms": 270.73701199969946,
+   "_bar": 5
+  },
+  {
+   "type": "plan",
+   "fromBeat": 28.0,
+   "toBeat": 32.0,
+   "notes": [
+    {
+     "beat": 28.994999999999997,
+     "pitch": 74,
+     "dur": 0.9999999999999964,
+     "vel": 0.5,
+     "voice": "keys"
+    },
+    {
+     "beat": 30.0,
+     "pitch": 72,
+     "dur": 1.0,
+     "vel": 0.5,
+     "voice": "keys"
+    },
+    {
+     "beat": 31.005000000000003,
+     "pitch": 74,
+     "dur": 1.0,
+     "vel": 0.5,
+     "voice": "keys"
+    },
+    {
+     "beat": 28.0,
+     "pitch": 45,
+     "dur": 4.0,
+     "vel": 0.55,
+     "voice": "bass"
+    }
+   ],
+   "_rtt_ms": 220.94742999979644,
+   "_bar": 6
+  },
+  {
+   "type": "plan",
+   "fromBeat": 32.0,
+   "toBeat": 36.0,
+   "notes": [
+    {
+     "beat": 31.994999999999997,
+     "pitch": 71,
+     "dur": 0.5,
+     "vel": 0.5,
+     "voice": "keys"
+    },
+    {
+     "beat": 33.0,
+     "pitch": 67,
+     "dur": 0.9999999999999964,
+     "vel": 0.5,
+     "voice": "keys"
+    },
+    {
+     "beat": 34.005,
+     "pitch": 69,
+     "dur": 1.0000000000000018,
+     "vel": 0.5,
+     "voice": "keys"
+    },
+    {
+     "beat": 34.995,
+     "pitch": 77,
+     "dur": 1.0,
+     "vel": 0.5,
+     "voice": "keys"
+    },
+    {
+     "beat": 32.0,
+     "pitch": 45,
+     "dur": 4.0,
+     "vel": 0.55,
+     "voice": "bass"
+    }
+   ],
+   "_rtt_ms": 377.7252599993517,
+   "_bar": 7
+  },
+  {
+   "type": "plan",
+   "fromBeat": 36.0,
+   "toBeat": 40.0,
+   "notes": [
+    {
+     "beat": 36.0,
+     "pitch": 69,
+     "dur": 1.5,
+     "vel": 0.5,
+     "voice": "keys"
+    },
+    {
+     "beat": 38.505,
+     "pitch": 74,
+     "dur": 0.9999999999999964,
+     "vel": 0.5,
+     "voice": "keys"
+    },
+    {
+     "beat": 39.495,
+     "pitch": 76,
+     "dur": 0.4999999999999982,
+     "vel": 0.5,
+     "voice": "keys"
+    },
+    {
+     "beat": 36.0,
+     "pitch": 45,
+     "dur": 4.0,
+     "vel": 0.55,
+     "voice": "bass"
+    }
+   ],
+   "_rtt_ms": 226.31269999965298,
+   "_bar": 8
+  },
+  {
+   "type": "plan",
+   "fromBeat": 40.0,
+   "toBeat": 44.0,
+   "notes": [
+    {
+     "beat": 40.5,
+     "pitch": 77,
+     "dur": 1.0,
+     "vel": 0.5,
+     "voice": "keys"
+    },
+    {
+     "beat": 41.505,
+     "pitch": 74,
+     "dur": 0.5,
+     "vel": 0.5,
+     "voice": "keys"
+    },
+    {
+     "beat": 40.0,
+     "pitch": 45,
+     "dur": 4.0,
+     "vel": 0.55,
+     "voice": "bass"
+    }
+   ],
+   "_rtt_ms": 323.6856479998096,
+   "_bar": 9
+  }
+ ],
+ "status": [
+  {
+   "type": "status",
+   "latencyMs": 95.85950896143913,
+   "tokensPerSec": 135.61513240412526
+  },
+  {
+   "type": "status",
+   "latencyMs": 113.24038729071617,
+   "tokensPerSec": 114.80003125232851
+  },
+  {
+   "type": "status",
+   "latencyMs": 122.0669187605381,
+   "tokensPerSec": 106.49896083231562
+  },
+  {
+   "type": "status",
+   "latencyMs": 98.22357818484306,
+   "tokensPerSec": 132.3511140628151
+  },
+  {
+   "type": "status",
+   "latencyMs": 135.61751693487167,
+   "tokensPerSec": 95.85782348634991
+  },
+  {
+   "type": "status",
+   "latencyMs": 85.81507578492165,
+   "tokensPerSec": 116.52964130758333
+  },
+  {
+   "type": "status",
+   "latencyMs": 125.10386854410172,
+   "tokensPerSec": 127.89372691828204
+  },
+  {
+   "type": "status",
+   "latencyMs": 88.31791579723358,
+   "tokensPerSec": 147.1955025506524
+  },
+  {
+   "type": "status",
+   "latencyMs": 72.4882148206234,
+   "tokensPerSec": 137.9534593967533
+  }
+ ],
+ "other": []
+}

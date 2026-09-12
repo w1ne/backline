@@ -50,6 +50,36 @@ describe('leadPattern answers only in the gaps', () => {
   it('plays every bar when there is no listener at all', () => { expect(p.nextBar(ctx(0)).length).toBe(1); });
 });
 
+describe('chordPattern voices from voiceLead with explicit carried state', () => {
+  const key = { root: 0, mode: 'major' as const };
+  const hits = [{ t: 0, p: 1 as const }];
+  it('carries the previous voicing forward across bars via an explicit memo on the context, not a module global', () => {
+    const p = chordPattern([[0, 2, 4]], hits, 4);
+    const memo = {};
+    const bar1 = p.nextBar({ ...ctx(0), key, chord: { root: 0, quality: 'maj' }, voicingMemo: memo });
+    const bar2 = p.nextBar({ ...ctx(0), key, chord: { root: 5, quality: 'maj' }, voicingMemo: memo });
+    // moving from C to F is a small move (shared tones), not an octave jump for every voice
+    const notesA = bar1.map(e => e.note).sort((a, b) => a - b);
+    const notesB = bar2.map(e => e.note).sort((a, b) => a - b);
+    const totalMove = notesA.reduce((sum, n, i) => sum + Math.abs(n - notesB[i]), 0);
+    expect(totalMove).toBeLessThan(notesA.length * 5);
+  });
+  it('two separate memo objects (simulating concurrent pattern instances) do not leak state into each other', () => {
+    const p = chordPattern([[0, 2, 4]], hits, 4);
+    const memoA = {};
+    const memoB = {};
+    p.nextBar({ ...ctx(0), key, chord: { root: 0, quality: 'maj' }, voicingMemo: memoA });
+    // memoB starts fresh: its first voicing should not depend on what happened to memoA
+    const freshA = chordPattern([[0, 2, 4]], hits, 4).nextBar({ ...ctx(0), key, chord: { root: 0, quality: 'maj' }, voicingMemo: memoB });
+    const freshB = chordPattern([[0, 2, 4]], hits, 4).nextBar({ ...ctx(0), key, chord: { root: 0, quality: 'maj' }, voicingMemo: {} });
+    expect(freshA.map(e => e.note)).toEqual(freshB.map(e => e.note));
+  });
+  it('works with no voicingMemo supplied at all (backward compatible)', () => {
+    const p = chordPattern([[0, 2, 4]], hits, 4);
+    expect(() => p.nextBar({ ...ctx(0), key, chord: { root: 0, quality: 'maj' } })).not.toThrow();
+  });
+});
+
 describe('chordPattern thins out under a busy player', () => {
   const p = chordPattern([[0]], [{ t: 0, p: 1 }, { t: 2, p: 0.5 }, { t: 3, p: 1 }], 4);
   it('keeps every hit at moderate intensity', () => {

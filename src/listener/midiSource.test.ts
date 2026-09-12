@@ -14,14 +14,13 @@ describe('midiPortAllowed', () => {
 });
 
 describe('midiInputOptions', () => {
-  it('lists connected inputs by name', () => {
+  it('lists connected inputs by name and hides the ALSA loopback port', () => {
     const inputs = [
       { id: 'a', name: 'Minilab3 MIDI', state: 'connected' },
       { id: 'b', name: 'Midi Through Port-0', state: 'connected' },
     ] as MIDIInput[];
     expect(midiInputOptions(inputs)).toEqual([
       { id: 'a', label: 'Minilab3 MIDI' },
-      { id: 'b', label: 'Midi Through Port-0' },
     ]);
   });
 

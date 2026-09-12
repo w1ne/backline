@@ -45,6 +45,12 @@ export interface BandInput {
   dynamics: Dynamics;
 }
 
+/** Which song section is in force for a bar, so patterns can shape themselves around the
+ *  song's form instead of looping the same groove forever. All four are mutually exclusive;
+ *  none set means an ordinary groove bar. See src/band/form.ts for the state machine that
+ *  produces this. */
+export interface Arrangement { intro: boolean; lift: boolean; breakdown: boolean; ending: boolean }
+
 export interface NoteEvent { time: number; note: number; duration: number; velocity: number }
 export interface BarContext {
   bar: number;
@@ -57,6 +63,12 @@ export interface BarContext {
   rng: () => number;
   /** what the player is doing; absent means "no listener", and patterns play their static form */
   dynamics?: Dynamics;
+  /** the song's current section; absent means "no form", and patterns play their ordinary groove */
+  arrangement?: Arrangement;
+  /** Explicit, caller-owned scratch space for stateful voicing decisions (e.g. voice-led
+   *  chord pitches), keyed per track so it can be threaded across bars without a module-level
+   *  mutable global. Absent means "no memory" — a pattern falls back to a fresh voicing. */
+  voicingMemo?: Record<string, number[]>;
 }
 export interface Pattern { nextBar(ctx: BarContext): NoteEvent[] }
 

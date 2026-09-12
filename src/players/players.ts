@@ -3,6 +3,7 @@ import { Soundfont } from 'smplr';
 import type { Genre, Instrument, NoteEvent } from '../types';
 import { DRUM, INSTRUMENTS } from '../types';
 import { makeSoundSet, type SoundOuts, type SoundSet } from './soundsets';
+import { DEFAULT_DRUM_KIT, type DrumKit } from './sampledVoices';
 import type { PlayersLike } from '../band/bandleader';
 import { routeTargets, type MorphRoute } from '../audio/routing';
 import { GM_INSTRUMENTS } from './gmInstruments';
@@ -14,16 +15,42 @@ interface Routable {
   disconnect(): unknown;
 }
 
+/** Master bus: a shared reverb return (fed by a per-instrument send off each bus, more on
+ *  keys/lead, less on drums/bass), a gentle compressor to even out the band, and a limiter
+ *  so nothing clips. No lookahead effects — this must not add scheduling latency. */
+interface MixBus {
+  reverb: Tone.Reverb;
+  sends: Record<Instrument, Tone.Gain>;
+}
+
+/** Reverb send amount per instrument — a light room ambience overall, with keys and lead
+ *  sitting further back in it than the low, percussive drums/bass. Exported for a
+ *  construction-free unit test; real wiring happens in Players.init(). */
+export const REVERB_SEND: Record<Instrument, number> = { drums: 0.06, bass: 0.05, keys: 0.22, lead: 0.15 };
+
+/** Master chain settings, exported for the same reason — Players.init() needs a live
+ *  AudioContext to actually build these nodes, so this is what a unit test can check. */
+export const MASTER_CHAIN = {
+  reverbDecay: 1.4,
+  compressor: { threshold: -18, ratio: 3, attack: 0.01, release: 0.2 },
+  limiterCeilingDb: -1,
+} as const;
+
 export class Players implements PlayersLike {
   private set?: SoundSet;
   private out!: Tone.Volume;
   /** one gain per instrument, between its synths and the outputs — the re-routing point */
   private busses?: Record<Instrument, Tone.Gain>;
+  private mix?: MixBus;
+  /** master compressor, exposed so an outboard chain (e.g. the vocal chain) can join the
+   *  band ahead of the limiter instead of bypassing it. */
+  private compressorNode?: Tone.Compressor;
   /** the MORPH bus input, when an output device has been chosen */
   private morphNode?: AudioNode;
   private routes: Record<Instrument, MorphRoute> = { drums: 'main', bass: 'main', keys: 'main', lead: 'main' };
   private analyser?: AnalyserNode;
   private genre: Genre = 'lofi';
+  private drumKit: DrumKit = DEFAULT_DRUM_KIT;
   /**
    * Fires for every batch of notes that actually reaches a voice, with absolute times,
    * so the visualiser can draw what the band is about to play. Notes dropped as stale or
@@ -45,7 +72,21 @@ export class Players implements PlayersLike {
   async init() {
     if (!this.out) {
       Tone.setContext(new Tone.Context({ latencyHint: 'interactive' }));
-      this.out = new Tone.Volume(-6).toDestination();
+      this.out = new Tone.Volume(-6);
+      // Master chain: out -> compressor -> limiter -> speakers. Both are plain dynamics
+      // nodes (no lookahead delay beyond what DynamicsCompressorNode always has), so this
+      // adds no scheduling latency.
+      const compressor = new Tone.Compressor(MASTER_CHAIN.compressor);
+      const limiter = new Tone.Limiter(MASTER_CHAIN.limiterCeilingDb);
+      this.out.chain(compressor, limiter, Tone.getDestination());
+      this.compressorNode = compressor;
+      // Reverb is a send effect (100% wet): each instrument's bus feeds it at its own level
+      // via `sends`, and its output joins the same compressor/limiter chain as the dry signal.
+      const reverb = new Tone.Reverb({ decay: MASTER_CHAIN.reverbDecay, wet: 1 }).connect(compressor);
+      const sends = Object.fromEntries(
+        INSTRUMENTS.map(i => [i, new Tone.Gain(REVERB_SEND[i]).connect(reverb)]),
+      ) as Record<Instrument, Tone.Gain>;
+      this.mix = { reverb, sends };
       this.busses = {
         drums: new Tone.Gain(),
         bass: new Tone.Gain(),
@@ -67,6 +108,31 @@ export class Players implements PlayersLike {
     INSTRUMENTS.forEach(i => this.applyRoute(i));
   }
 
+  /** Remove old-tempo events and tails when an engine transport restarts. */
+  cancelScheduled(): void {
+    if (!this.set) return;
+    this.set.dispose();
+    this.set = makeSoundSet(this.genre, (this.busses ?? this.fallbackOuts()) as SoundOuts, this.drumKit);
+    this.lastVoiceTime.clear();
+  }
+
+  /** Switch drum kits (e.g. from the default acoustic kit to the electronic one). Rebuilds
+   *  the current SoundSet so the new kit takes effect immediately. */
+  setDrumKit(kit: DrumKit): void {
+    if (kit === this.drumKit) return;
+    this.drumKit = kit;
+    if (!this.set) return;
+    this.set.dispose();
+    this.set = makeSoundSet(this.genre, (this.busses ?? this.fallbackOuts()) as SoundOuts, this.drumKit);
+    this.lastVoiceTime.clear();
+  }
+
+  /** Apply after synthesis, including notes already scheduled, on every output route. */
+  setBandAmount(amount: number): void {
+    const gain = Number.isFinite(amount) ? Math.min(1, Math.max(0, amount)) : 0;
+    if (this.busses) Object.values(this.busses).forEach(bus => bus.gain.rampTo(gain, .03));
+  }
+
   /** Sends one instrument to the main output, the MORPH output, or both. */
   route(inst: Instrument, route: MorphRoute): void {
     this.routes[inst] = route;
@@ -83,6 +149,7 @@ export class Players implements PlayersLike {
     const to = routeTargets(this.routes[inst], !!this.morphNode);
     bus.disconnect();
     if (to.main) bus.connect(this.out as never);
+    if (to.main && this.mix) bus.connect(this.mix.sends[inst] as never);
     if (to.morph && this.morphNode) bus.connect(this.morphNode as never);
   }
 
@@ -94,6 +161,20 @@ export class Players implements PlayersLike {
     this.analyser = ctx.createAnalyser();
     this.out.connect(this.analyser);
     return this.analyser;
+  }
+
+  /** The band's shared reverb send bus (a plate-style return, 100% wet) — anything else
+   *  that wants a touch of the same room, such as the vocal chain, sends into this
+   *  instead of building a second reverb. Undefined until init() has run. */
+  reverbBus(): Tone.Reverb | undefined {
+    return this.mix?.reverb;
+  }
+
+  /** The master compressor's input, i.e. the point right before the limiter. An outboard
+   *  chain (the vocal chain) connects here so it rides through the same compressor/limiter
+   *  as the band, rather than hitting the limiter alone or bypassing it. */
+  preLimiterInput(): Tone.Compressor | undefined {
+    return this.compressorNode;
   }
 
   /** The AudioContext backing this Players' Tone context; shared with LyriaEngine's PcmPlayer. */
@@ -110,7 +191,7 @@ export class Players implements PlayersLike {
     if (this.set && g === this.genre) return;
     this.set?.dispose();
     this.genre = g;
-    this.set = makeSoundSet(g, (this.busses ?? this.fallbackOuts()) as SoundOuts);
+    this.set = makeSoundSet(g, (this.busses ?? this.fallbackOuts()) as SoundOuts, this.drumKit);
     this.lastVoiceTime.clear();
   }
 

@@ -1,12 +1,13 @@
 import { GENRES, INSTRUMENTS, ACCOMP_ROW } from '../types';
 import type { AccompPreset, Genre, Instrument } from '../types';
-import { SOUNDS, SOUND_GROUPS, type MonitorSound } from '../players/monitor';
+import { SOUNDS, SOUND_GROUPS, type MonitorSound } from '../players/soundCatalog';
 import { keyName } from '../music/scales';
 import { chordName } from '../listener/chordDetector';
 import { DEBUG } from '../debug';
 import type { AppState, Store } from './state';
 import type { SourceState } from '../listener/listener';
 import { shortDeviceName } from '../audio/devices';
+import { isPhoneUA } from '../listener/micConstraints';
 
 const KEY_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const ALL_KEYS: { root: number; mode: 'major' | 'minor' }[] = [
@@ -15,6 +16,9 @@ const ALL_KEYS: { root: number; mode: 'major' | 'minor' }[] = [
 ];
 
 export interface LiveActions {
+  playbackTarget?: 'Pi' | 'This browser';
+  soundIds?: readonly string[];
+  setPlaying?(playing: boolean): void;
   /** first user gesture: resume the AudioContext the page booted with */
   wake(): void;
   toggle(i: Instrument): void;
@@ -23,16 +27,28 @@ export interface LiveActions {
   setCreativity(c: number): void;
   /** AMT: toggle one extra GM instrument preset on/off */
   toggleAccompPreset?(preset: AccompPreset, on: boolean): void;
+  /** start recording you + the band; a second call stops and downloads the .mid */
+  toggleRecord?(): void;
+  /** hold the band in place; a second call lets it play again from the next bar */
+  togglePause?(): void;
   /** manual INTENSITY knob — how much the band adds */
   setIntensity?(i: number): void;
   setBpmOverride?(bpm: number | undefined): void;
   setKeyOverride?(key: { root: number; mode: 'major' | 'minor' } | undefined): void;
+  /** Registers one tap on the audio clock; once enough taps have landed to apply a tempo
+   * (the 4th and later), returns the tapped bpm/downbeat that was just adopted — null otherwise. */
+  tap?(): { bpm: number; downbeat: number } | null;
+  /** toggle the two-bar count-in click that plays before the band's first bar */
+  setCountIn?(on: boolean): void;
   /** which sound your MIDI keyboard plays through */
   setSound?(s: MonitorSound): void;
   setNoiseVolume?(volume: number): void;
   setDroneVolume?(volume: number): void;
   /** gate the mic out of the listener (onsets/pitch/level); MIDI keeps working */
   setMicMuted?(muted: boolean): void;
+  /** monitor the singer's own mic back through the vocal chain — only ever actually
+   *  audible where monitorAllowed() says it is safe */
+  setVoiceMonitor?(enabled: boolean): void;
   /** ms a toggled instrument spends showing "joining…"/"leaving…" before it settles */
   changeLatencyMs?: number;
 }
@@ -53,6 +69,10 @@ export function renderLive(root: HTMLElement, store: Store, actions: LiveActions
     screen = root.querySelector<HTMLElement>('.screen[data-live]')!;
     screen.classList.add('intro');
     actionsRef.set(screen, actions);
+    if (actions.soundIds) screen.querySelectorAll<HTMLOptionElement>('#sound option').forEach(option => {
+      if (!actions.soundIds!.includes(option.value)) option.remove();
+    });
+    screen.querySelectorAll('#sound optgroup').forEach(group => { if (!group.children.length) group.remove(); });
     wireControls(screen, store);
   } else {
     // Refresh the stored actions reference so listeners wired once below always
@@ -61,6 +81,15 @@ export function renderLive(root: HTMLElement, store: Store, actions: LiveActions
     actionsRef.set(screen, actions);
   }
   update(screen, store.state, actions.changeLatencyMs ?? 0);
+  // Only the Pi remote has somewhere else to play; in the browser the pill says nothing useful.
+  const target = screen.querySelector<HTMLElement>('#playback-target')!;
+  target.hidden = actions.playbackTarget !== 'Pi';
+  target.textContent = `Playback: ${actions.playbackTarget ?? 'This browser'}`;
+  if (actions.setPlaying) {
+    const audio = screen.querySelector<HTMLButtonElement>('#enable-audio')!;
+    audio.hidden = false;
+    audio.textContent = store.state.power === 'on' && !store.state.audioSuspended ? 'Pause sound' : 'Start sound';
+  }
 }
 
 function skeleton(): string {
@@ -70,28 +99,16 @@ function skeleton(): string {
         <div class="bar-top">
           <h1 class="logo">duet<i>.ai</i></h1>
           <span class="pill" id="live-pill"></span>
+          <span class="pill" id="playback-target"></span>
           <button type="button" class="morph-key" id="mic-mute" aria-label="Mute the mic from the listener">MIC<span class="morph-led"></span></button>
+          <button type="button" class="morph-key" id="voice-monitor" aria-label="Monitor your own mic through the mix" title="Headphones only">VOICE<span class="morph-led"></span></button>
         </div>
         <span class="lcd" id="lcd"></span>
-      </div>
-      <section class="instrument-section" aria-labelledby="instrument-heading">
-        <div class="section-heading"><div><h2 id="instrument-heading">Your instrument</h2><p>Play a melody. Make room for the band.</p></div><button type="button" id="enable-audio" class="audio-start">Enable sound</button></div>
-        <p class="connection-line" id="input-status"></p>
-        <div class="instrument-controls">          <div class="field">
-            <label for="sound">Keyboard sound</label>
-            <select id="sound">
-              ${SOUND_GROUPS.map(
-                g =>
-                  `<optgroup label="${g}">${SOUNDS.filter(s => s.group === g)
-                    .map(s => `<option value="${s.id}">${s.label}</option>`)
-                    .join('')}</optgroup>`,
-              ).join('')}
-            </select>
-          </div>
-          <div class="field"><label for="noise-volume">White noise <output id="noise-value"></output></label><input id="noise-volume" type="range" min="0" max="1" step="0.01" /></div>
-          <div class="field"><label for="drone-volume">Drone <output id="drone-value"></output></label><input id="drone-volume" type="range" min="0" max="1" step="0.01" /></div>
+        <div class="bar-input">
+          <p class="connection-line" id="input-status"></p>
+          <button type="button" id="enable-audio" class="audio-start">Enable sound</button>
         </div>
-      </section>
+      </div>
       <div class="section-heading band-heading"><div><h2>Your band</h2><p id="band-status" role="status"></p></div><span id="model-latency"></span></div>
       <div class="readout">
         <div class="ro-tempo"><small>Tempo</small><strong id="ro-tempo">&mdash;</strong></div>
@@ -99,6 +116,17 @@ function skeleton(): string {
           <div><small>Key</small><strong id="ro-key">&mdash;</strong></div>
           <div><small>Chord</small><strong id="chord">&mdash;</strong></div>
           <div><small>Bar</small><strong id="ro-bar">0</strong></div>
+          <div class="ro-rec"><small id="pause-label">Pause</small>
+            <button type="button" class="rec-btn pause-btn" id="pause-band" aria-pressed="false" title="Hold the band">
+              <span class="pause-bars"><i></i><i></i></span><span class="play-tri"></span>
+            </button>
+          </div>
+          <div class="ro-rec"><small id="record-label">Rec</small>
+            <button type="button" class="rec-btn" id="record-midi" aria-pressed="false"
+                    title="Tap to record you + the band, tap again to save the MIDI">
+              <span class="rec-dot"></span>
+            </button>
+          </div>
         </div>
         <div class="beats" id="beats">
           <b>Beat</b><i style="--n:0"></i><i style="--n:1"></i><i style="--n:2"></i><i style="--n:3"></i>
@@ -164,6 +192,10 @@ function skeleton(): string {
             <label for="bpm">Bpm</label>
             <input type="number" id="bpm" min="40" max="240" placeholder="auto" />
           </div>
+          <div class="field tap-field">
+            <button type="button" class="chip" id="tap-tempo" aria-label="Tap tempo">TAP</button>
+            <button type="button" class="chip count-in-chip" id="count-in-toggle" aria-label="Toggle the count-in click">COUNT</button>
+          </div>
           <div class="field">
             <label for="key">Key</label>
             <select id="key">
@@ -177,33 +209,62 @@ function skeleton(): string {
 
         </div>
       </div>
-      <details class="model-details"><summary>Models &amp; connection</summary><p>AMT turns your MIDI melody into a band phrase.</p>        <div class="zone zone--orange engine">
+      <details class="model-details instrument-details"><summary>Your instrument</summary>
+        <div class="zone zone--orange instrument-zone">
+          <span class="zone-label">Your instrument</span>
+        <p class="connection-line" id="midi-status"></p>
+        <div class="instrument-controls">          <div class="field">
+            <label for="sound">Keyboard sound</label>
+            <select id="sound">
+              ${SOUND_GROUPS.map(
+                g =>
+                  `<optgroup label="${g}">${SOUNDS.filter(s => s.group === g)
+                    .map(s => `<option value="${s.id}">${s.label}</option>`)
+                    .join('')}</optgroup>`,
+              ).join('')}
+            </select>
+          </div>
+          <div class="field"><label for="noise-volume">White noise <output id="noise-value"></output></label><input id="noise-volume" type="range" min="0" max="1" step="0.01" /></div>
+          <div class="field"><label for="drone-volume">Drone <output id="drone-value"></output></label><input id="drone-volume" type="range" min="0" max="1" step="0.01" /></div>
+        </div>
+        </div>
+      </details>
+      <details class="model-details"><summary>Models &amp; connection</summary>
+        <div class="zone zone--orange engine">
           <span class="zone-label">Accompaniment model</span>
           <div class="engine-keys" id="engine-choice">
             <button type="button" class="engine-key" id="engine-patterns" data-engine="patterns" hidden>
               <span class="engine-key-text">
-                <span class="engine-key-name">Patterns</span><small>Offline · instant band</small>
+                <span class="engine-key-name">Patterns</span>
               </span>
               <span class="engine-led" data-engine-led="patterns"></span>
             </button>
             <button type="button" class="engine-key" id="engine-acestep" data-engine="acestep" hidden>
               <span class="engine-key-text">
-                <span class="engine-key-name">ACE-Step</span><small>Cloud · backing texture</small>
+                <span class="engine-key-name">ACE-Step</span>
               </span>
               <span class="engine-led" data-engine-led="acestep"></span>
             </button>
             <button type="button" class="engine-key" id="engine-amt" data-engine="amt">
               <span class="engine-key-text">
-                <span class="engine-key-name">AMT</span><small>Cloud · follows your notes</small>
+                <span class="engine-key-name">AMT</span>
               </span>
               <span class="engine-led" data-engine-led="amt"></span>
             </button>
           </div>
         </div>
 <p id="engine-status" role="status"></p>
-</details>
+<p id="output-latency" role="status"></p>
+      </details>
     </div>
   `;
+}
+
+/** what the mic hears right now, so a singer sees the app react before the band does */
+function hearingLabel(s: AppState): string {
+  const p = s.input.pitch;
+  if (!p || s.micMuted) return '';
+  return ` · HEARING ${KEY_NAMES[((p.midi % 12) + 12) % 12]}${Math.floor(p.midi / 12) - 1}`;
 }
 
 function wireControls(screen: HTMLElement, store: Store): void {
@@ -211,7 +272,11 @@ function wireControls(screen: HTMLElement, store: Store): void {
   // "1" means a re-render re-wired it and every click fires N handlers.
   if (DEBUG) screen.dataset.wired = String(Number(screen.dataset.wired ?? 0) + 1);
   const actions = (): LiveActions => actionsRef.get(screen)!;
-  screen.querySelector<HTMLButtonElement>('#enable-audio')!.addEventListener('click', () => actions().wake());
+  screen.querySelector<HTMLButtonElement>('#enable-audio')!.addEventListener('click', () => {
+    const a = actions();
+    if (a.setPlaying) a.setPlaying(store.state.power !== 'on' || store.state.audioSuspended);
+    else a.wake();
+  });
   for (const [id, action] of [['noise-volume', 'setNoiseVolume'], ['drone-volume', 'setDroneVolume']] as const) {
     const input = screen.querySelector<HTMLInputElement>(`#${id}`)!;
     input.addEventListener('input', () => actions()[action]?.(Number(input.value)));
@@ -245,6 +310,11 @@ function wireControls(screen: HTMLElement, store: Store): void {
     if (micMute.disabled) return;
     actions().setMicMuted?.(!store.state.micMuted);
   });
+  const voiceMonitor = screen.querySelector<HTMLButtonElement>('#voice-monitor')!;
+  voiceMonitor.addEventListener('click', () => {
+    if (voiceMonitor.disabled) return;
+    actions().setVoiceMonitor?.(!store.state.voiceMonitor);
+  });
   // The band boots on page load; browsers keep the AudioContext suspended until
   // a gesture, so the first tap anywhere on the panel wakes it. Capture phase,
   // so a tap on any control counts.
@@ -260,6 +330,8 @@ function wireControls(screen: HTMLElement, store: Store): void {
       actions().toggleAccompPreset?.(preset, !btn.classList.contains('on'));
     });
   });
+  screen.querySelector<HTMLButtonElement>('#record-midi')!.addEventListener('click', () => actions().toggleRecord?.());
+  screen.querySelector<HTMLButtonElement>('#pause-band')!.addEventListener('click', () => actions().togglePause?.());
 
   const bpmInput = screen.querySelector<HTMLInputElement>('#bpm')!;
   bpmInput.addEventListener('change', () => {
@@ -272,6 +344,25 @@ function wireControls(screen: HTMLElement, store: Store): void {
     bpmInput.value = String(bpm);
     actions().setBpmOverride?.(bpm);
   });
+
+  const tapBtn = screen.querySelector<HTMLButtonElement>('#tap-tempo')!;
+  const beatsEl = screen.querySelector<HTMLElement>('#beats')!;
+  tapBtn.addEventListener('click', () => {
+    pulse(beatsEl, 'tap-flash', 150);
+    const r = actions().tap?.();
+    if (r) bpmInput.value = String(Math.round(r.bpm));
+  });
+  window.addEventListener('keydown', e => {
+    if (e.code !== 'Space') return;
+    const active = document.activeElement as HTMLElement | null;
+    const tag = active?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || active?.isContentEditable) return;
+    e.preventDefault();
+    tapBtn.click();
+  });
+
+  const countInBtn = screen.querySelector<HTMLButtonElement>('#count-in-toggle')!;
+  countInBtn.addEventListener('click', () => actions().setCountIn?.(!store.state.countIn));
 
   const soundSelect = screen.querySelector<HTMLSelectElement>('#sound')!;
   soundSelect.value = store.state.sound;
@@ -341,13 +432,26 @@ function update(screen: HTMLElement, s: AppState, changeLatencyMs: number): void
   updateAccompTiles(screen, s);
   updateReadouts(screen, s);
   updateMicMute(screen, s);
+  updateVoiceMonitor(screen, s);
   updateTiles(screen, s, changeLatencyMs);
   const audio = screen.querySelector<HTMLButtonElement>('#enable-audio')!;
   audio.hidden = !s.audioSuspended && s.power === 'on';
-  screen.querySelector<HTMLElement>('#input-status')!.textContent = `${midiLabel(s)} · ${s.audioSuspended ? 'Sound paused by browser' : s.power === 'on' ? 'Audio running' : 'Starting audio…'}`;
-  screen.querySelector<HTMLElement>('#band-status')!.textContent = s.accompanimentStatus || (s.locked ? 'Band ready' : 'Play a steady phrase to find the tempo');
-  screen.querySelector<HTMLElement>('#model-latency')!.textContent = s.modelLatencyMs == null ? '' : `Last model response ${(s.modelLatencyMs / 1000).toFixed(1)} s`;
-  screen.querySelector<HTMLElement>('#engine-status')!.textContent = s.engine === 'patterns' ? 'Patterns · runs on this device, no cloud needed' : s.engineConnecting ? `${ENGINE_NAMES[s.engine]} · connecting…` : s.offlineEngines.includes(s.engine) ? `${ENGINE_NAMES[s.engine]} · unavailable` : `${ENGINE_NAMES[s.engine]} · selected`;
+  screen.querySelector<HTMLElement>('#input-status')!.textContent = `${midiLabel(s)}${hearingLabel(s)}${s.audioSuspended ? ' · TAP TO ENABLE SOUND' : ''}`;
+  screen.querySelector<HTMLElement>('#midi-status')!.textContent = midiLabel(s);
+  screen.querySelector<HTMLElement>('#band-status')!.textContent = s.accompanimentStatus;
+  const pause = screen.querySelector<HTMLButtonElement>('#pause-band')!;
+  pause.classList.toggle('paused', s.paused);
+  pause.setAttribute('aria-pressed', String(s.paused));
+  pause.title = s.paused ? 'Let the band play' : 'Hold the band';
+  screen.querySelector<HTMLElement>('#pause-label')!.textContent = s.paused ? 'Play' : 'Pause';
+  const rec = screen.querySelector<HTMLButtonElement>('#record-midi')!;
+  rec.classList.toggle('recording', s.recording);
+  rec.setAttribute('aria-pressed', String(s.recording));
+  screen.querySelector<HTMLElement>('#record-label')!.textContent = s.recording ? 'Save' : 'Rec';
+  rec.title = s.recording ? 'Recording… tap to save the MIDI' : 'Tap to record you + the band, tap again to save the MIDI';
+  screen.querySelector<HTMLElement>('#model-latency')!.textContent = s.modelLatencyMs == null ? '' : `${Math.round(s.modelLatencyMs)} ms`;
+  screen.querySelector<HTMLElement>('#output-latency')!.textContent = s.outputLatencyMs == null ? '' : `Output latency: ${Math.round(s.outputLatencyMs)} ms`;
+  screen.querySelector<HTMLElement>('#engine-status')!.textContent = s.engineConnecting ? `${ENGINE_NAMES[s.engine]} · connecting…` : s.offlineEngines.includes(s.engine) ? `${ENGINE_NAMES[s.engine]} · offline` : '';
   for (const [id, value] of [['noise', s.noiseVolume], ['drone', s.droneVolume]] as const) {
     const input = screen.querySelector<HTMLInputElement>(`#${id}-volume`)!;
     if (document.activeElement !== input) input.value = String(value);
@@ -355,6 +459,9 @@ function update(screen: HTMLElement, s: AppState, changeLatencyMs: number): void
   }
   const sound = screen.querySelector<HTMLSelectElement>('#sound')!;
   if (document.activeElement !== sound) sound.value = s.sound;
+
+  const countInBtn = screen.querySelector<HTMLButtonElement>('#count-in-toggle')!;
+  countInBtn.classList.toggle('on', s.countIn);
 }
 
 function mark(state: SourceState): string {
@@ -378,6 +485,7 @@ export function midiLabel(s: AppState): string {
 function lcdText(s: AppState): string {
   if (s.power === 'off') return 'STARTING…';
   if (s.audioSuspended) return 'TAP ANYWHERE TO ENABLE SOUND';
+  if (s.countInBeat != null) return `COUNT-IN · ${[1, 2, 3, 4].map(n => (n === s.countInBeat ? n : '·')).join(' ')}`;
   if (s.locked) {
     const d = s.input.dynamics;
     // What the band is doing with the gap the player left, in the two words that matter.
@@ -558,6 +666,19 @@ function updateMicMute(screen: HTMLElement, s: AppState): void {
   micMute.disabled = midiOnly;
   micMute.classList.toggle('on', s.micMuted);
   micMute.firstChild!.textContent = s.micMuted ? 'MIC MUTED' : 'MIC';
+}
+
+/** VOICE chip: same look and place as MIC, off by default, and disabled on a phone
+ *  (headphones-only monitoring) regardless of anything else about the current state. */
+function updateVoiceMonitor(screen: HTMLElement, s: AppState): void {
+  const voice = screen.querySelector<HTMLButtonElement>('#voice-monitor')!;
+  const midiOnly = s.sources.mic === 'denied' || s.sources.mic === 'none';
+  const phone = isPhoneUA();
+  voice.hidden = midiOnly;
+  voice.disabled = midiOnly || phone;
+  voice.title = phone ? 'Headphones only' : 'Monitor your own mic through the mix';
+  voice.classList.toggle('on', s.voiceMonitor && !phone);
+  voice.firstChild!.textContent = s.voiceMonitor && !phone ? 'VOICE ON' : 'VOICE';
 }
 
 const enabledAtBar = new WeakMap<HTMLElement, Partial<Record<Instrument, number>>>();

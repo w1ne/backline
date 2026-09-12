@@ -1,9 +1,11 @@
+import { audioRecorder } from '../export/audioRecorder';
 import * as Tone from 'tone';
 import type { Source } from './listener';
 import { OnsetDetector } from './onset';
 import { FFT_SIZE, HOP_SIZE, magnitudeSpectrum } from './fft';
 import { detectPitch } from './pitch';
-import { PitchTracker, type StablePitch } from './pitchTracker';
+import { PitchTracker, VOICE_PROFILE, type StablePitch } from './pitchTracker';
+import { micConstraints } from './micConstraints';
 
 const WORKLET_URL = `${import.meta.env.BASE_URL}worklet/onset-processor.js`;
 /** one level update every N hops — the meter does not need 93 repaints a second */
@@ -64,6 +66,13 @@ export class MicSource implements Source {
     return this.deviceId;
   }
 
+  /** The mic's MediaStreamAudioSourceNode, for a monitor tap (e.g. the vocal chain) to
+   *  connect from — this does not touch or gate the analysis path above. Undefined until
+   *  start() has built it. */
+  get sourceNode(): MediaStreamAudioSourceNode | undefined {
+    return this.srcNode;
+  }
+
   /**
    * Gates the mic's contribution to the listener without touching the MediaStream track,
    * so unmuting is instant (no getUserMedia round trip). MIDI input is a separate Source
@@ -85,16 +94,10 @@ export class MicSource implements Source {
   ) {
     this.cbs = { onNote, onLevel, onPitch };
     const ctx = Tone.getContext().rawContext as AudioContext;
-    this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        ...(this.deviceId ? { deviceId: { exact: this.deviceId } } : {}),
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false,
-      },
-    });
+    this.stream = await navigator.mediaDevices.getUserMedia({ audio: micConstraints(this.deviceId) });
     const src = ctx.createMediaStreamSource(this.stream);
     this.srcNode = src;
+    audioRecorder.addSource(src);
     // kept for pitch only: continuously polled independently of onset timing
     const an = ctx.createAnalyser();
     an.fftSize = 4096; // longer window than the onset hop for better low-note resolution
@@ -102,7 +105,8 @@ export class MicSource implements Source {
     src.connect(an);
     const pitchBuf = new Float32Array(an.fftSize);
     const onset = new OnsetDetector({ sampleRate: ctx.sampleRate });
-    const tracker = new PitchTracker();
+    // the mic is mostly a voice at a duet.ai session; instruments still pass, just a little sooner
+    const tracker = new PitchTracker(VOICE_PROFILE);
 
     // onsets now only drive tempo; note pitch comes from the continuous tracker below
     const fire = (t: number) => {
@@ -182,6 +186,7 @@ export class MicSource implements Source {
       this.node.disconnect();
       this.node = undefined;
     }
+    if (this.srcNode) audioRecorder.removeSource(this.srcNode);
     this.srcNode?.disconnect();
     this.srcNode = undefined;
     this.stream?.getTracks().forEach(t => t.stop());

@@ -130,6 +130,38 @@ describe('AmtEngine', () => {
     engine.stop();
   });
 
+  it('sends manual amount to AMT and updates already scheduled audio through the bus', async () => {
+    const { engine, players } = mk();
+    const setBandAmount = vi.fn();
+    Object.assign(players, { setBandAmount });
+    await engine.start(120, 0);
+    startedSocket().open();
+    engine.setAmount(.2);
+    engine.flushSetForTest();
+    expect(setBandAmount).toHaveBeenLastCalledWith(.2);
+    expect(startedSocket().sent).toContainEqual(expect.objectContaining({type:'set', amount:.2}));
+    engine.setAmount(0);
+    expect(setBandAmount).toHaveBeenLastCalledWith(0);
+    engine.stop();
+    expect(setBandAmount).toHaveBeenLastCalledWith(1);
+  });
+
+  it('resends all controls after a tempo change', async () => {
+    const {engine, players} = mk();
+    const cancelScheduled = vi.fn();
+    Object.assign(players, {cancelScheduled});
+    engine.set({creativity:.9});
+    engine.setAmount(.7);
+    await engine.start(100, 0);
+    startedSocket().open();
+    engine.setBpm(150);
+    expect(cancelScheduled).toHaveBeenCalledOnce();
+    startedSocket().open();
+    expect(startedSocket().sent).toContainEqual(expect.objectContaining({type:'start', bpm:150}));
+    expect(startedSocket().sent).toContainEqual(expect.objectContaining({type:'set', creativity:.9, amount:.7}));
+    engine.stop();
+  });
+
   it('applies band amount to model voices, with zero silent', async () => {
     const {engine,players} = mk(); engine.setEnabled('keys',true);
     await engine.start(120,0); startedSocket().open();
@@ -203,6 +235,91 @@ describe('AmtEngine', () => {
       notes: [{ beat: 1, pitch: 60 }],
     });
     engine.stop();
+  });
+
+  function cues(ws: FakeWebSocket) {
+    return ws.sent.filter((m: any) => m.type === 'tick' || m.type === 'bar');
+  }
+
+  it('cues the server every half bar with tick once it has said ready', async () => {
+    vi.useFakeTimers();
+    try {
+      const { engine, clock } = mk();
+      await engine.start(120, 0); // 0.5 s/beat, a half bar is 1 s
+      const ws = startedSocket();
+      ws.open();
+      ws.receiveJson({ type: 'ready', tick: true });
+      now = 2;
+      clock.tick(1, 2);
+      expect(cues(ws)).toEqual([{ type: 'tick', beat: 4 }]);
+      vi.advanceTimersByTime(999);
+      expect(cues(ws)).toHaveLength(1);
+      vi.advanceTimersByTime(2);
+      expect(cues(ws)).toEqual([{ type: 'tick', beat: 4 }, { type: 'tick', beat: 6 }]);
+      now = 4;
+      clock.tick(2, 4);
+      expect(cues(ws).at(-1)).toEqual({ type: 'tick', beat: 8 });
+      engine.stop();
+      vi.advanceTimersByTime(5000);
+      expect(cues(ws)).toHaveLength(3); // no half-bar cue after stop
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps cueing with bar against a server that never says ready', async () => {
+    vi.useFakeTimers();
+    try {
+      const { engine, clock } = mk();
+      await engine.start(120, 0);
+      const ws = startedSocket();
+      ws.open();
+      now = 2;
+      clock.tick(1, 2);
+      vi.advanceTimersByTime(1500);
+      expect(cues(ws)).toEqual([{ type: 'bar', bar: 1 }]);
+      engine.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('flushes pending input before a half-bar tick', async () => {
+    vi.useFakeTimers();
+    try {
+      const { engine, clock, notes } = mk();
+      await engine.start(120, 0);
+      const ws = startedSocket();
+      ws.open();
+      ws.receiveJson({ type: 'ready', tick: true });
+      now = 2;
+      clock.tick(1, 2);
+      notes.fire({ midi: 62, velocity: 0.8, timeSec: 2.5 });
+      vi.advanceTimersByTime(1001);
+      expect(ws.sent.slice(-2).map((m: any) => m.type)).toEqual(['notes', 'tick']);
+      engine.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('schedules a half-bar plan that arrives mid-bar', async () => {
+    const { engine, players } = mk();
+    now = 0;
+    await engine.start(120, 0);
+    startedSocket().open();
+    engine.setEnabled('keys', true);
+    engine.setEnabled('bass', true);
+    startedSocket().receiveJson({
+      type: 'plan', fromBeat: 6, toBeat: 8,
+      notes: [
+        { beat: 6, pitch: 45, dur: 2, vel: 0.5, voice: 'bass' },
+        { beat: 7, pitch: 64, dur: 1, vel: 0.5, voice: 'keys' },
+      ],
+    });
+    expect(players.calls.map(c => [c.i, c.barStart, c.events[0].time])).toEqual(
+      expect.arrayContaining([['bass', 2, 2], ['keys', 2, 3]]),
+    );
   });
 
   it('sends the last input batch before asking the model for a bar', async () => {
@@ -321,6 +438,31 @@ describe('AmtEngine', () => {
     expect(players.calls.every(c => c.i === 'keys')).toBe(true);
   });
 
+  it('schedules a polyphonic keys onset as one chord, not deduped down to one note', async () => {
+    const { engine, players } = mk();
+    now = 0;
+    await engine.start(120, 0);
+    startedSocket().open();
+    engine.setEnabled('keys', true);
+
+    // A single model onset voiced as a 3-note chord: same voice+beat, three different pitches.
+    startedSocket().receiveJson({
+      type: 'plan',
+      fromBeat: 0,
+      notes: [
+        { beat: 1, pitch: 60, dur: 1, vel: 0.6, voice: 'keys' },
+        { beat: 1, pitch: 64, dur: 1, vel: 0.6, voice: 'keys' },
+        { beat: 1, pitch: 67, dur: 1, vel: 0.6, voice: 'keys' },
+      ],
+    });
+
+    // All three land in a single schedule() call, so Players' PolySynth plays them together.
+    expect(players.calls).toHaveLength(1);
+    expect(players.calls[0].i).toBe('keys');
+    const pitches = players.calls[0].events.map(e => e.note).sort((a, b) => a - b);
+    expect(pitches).toEqual([60, 64, 67]);
+  });
+
   it('does not re-schedule a note a later plan repeats', async () => {
     const { engine, players } = mk();
     now = 0;
@@ -407,9 +549,10 @@ describe('AmtEngine', () => {
     engine.flushSetForTest();
 
     const frames = setFrames(startedSocket());
-    expect(frames).toHaveLength(2);
-    expect(frames[0]).toMatchObject({ type: 'set', genre: 'jazz' });
-    expect(frames[1]).toMatchObject({ type: 'set', instruments: { keys: true } });
+    expect(frames).toHaveLength(3); // initial controls, then each real change
+    expect(frames[1]).toMatchObject({ type: 'set', genre: 'jazz' });
+    expect(frames[2]).toMatchObject({ type: 'set', instruments: { keys: true } });
+    engine.stop();
   });
 
   it('ignores delayed events from the socket replaced by a tempo change', async () => {

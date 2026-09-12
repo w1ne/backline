@@ -258,3 +258,16 @@ describe('Players.route', () => {
     expect(busses.bass.connected).toEqual([morph]);
   });
 });
+
+ it('band amount changes all routed instrument gains, including scheduled tails', () => {
+    const players = new Players();
+    const ramps: number[][] = [];
+    const busses = Object.fromEntries(['drums','bass','keys','lead'].map(name =>
+      [name, {gain:{rampTo:(value:number, seconds:number) => ramps.push([value,seconds])}}]));
+    Object.assign(players, { busses });
+    players.setBandAmount(.3);
+    expect(ramps).toEqual(Array.from({length:4}, () => [.3,.03]));
+    ramps.length = 0;
+    players.setBandAmount(0);
+    expect(ramps).toEqual(Array.from({length:4}, () => [0,.03]));
+ });

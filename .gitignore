@@ -9,3 +9,6 @@ __pycache__/
 .dev-logs/
 .env.local
 relay/.dev.vars
+# local relay secrets written by scripts/run-local.sh
+COMMIT.pi
+.claude/

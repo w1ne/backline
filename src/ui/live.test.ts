@@ -82,6 +82,10 @@ describe('the listening LCD', () => {
   it('drops the estimate once the band is live', () => {
     expect(lcd({ onsets: 12, pendingBpm: 98.4 }, { locked: true, bar: 2 })).toBe('LIVE · BAR 2');
   });
+
+  it('shows the count-in beat ahead of the band entering', () => {
+    expect(lcd({}, { countInBeat: 3 })).toBe('COUNT-IN · · · 3 ·');
+  });
 });
 
 describe('waking the audio context', () => {
@@ -252,6 +256,14 @@ describe('instrument controls and model feedback', () => {
     expect(calls).toEqual(['wake', 0.3, 0.3]);
   });
 
+  it('shows the output latency next to the model latency', () => {
+    const store = new Store();
+    store.update({ power: 'on', outputLatencyMs: 42 });
+    const root = document.createElement('div');
+    renderLive(root, store, { wake: () => {}, toggle: () => {}, setGenre: () => {}, setEngine: () => {}, setCreativity: () => {} });
+    expect(root.querySelector('#output-latency')!.textContent).toBe('Output latency: 42 ms');
+  });
+
   it('shows model status and latency without inventing activity', () => {
     const store = new Store();
     store.update({ power: 'on', locked: true, accompanimentStatus: 'Waiting for a model phrase', modelLatencyMs: 1234, activeParts: {} });
@@ -261,7 +273,7 @@ describe('instrument controls and model feedback', () => {
     store.update({ bar: 2 });
     renderLive(root, store, actions);
     expect(root.querySelector('#band-status')!.textContent).toContain('Waiting for a model phrase');
-    expect(root.querySelector('#model-latency')!.textContent).toContain('1.2 s');
+    expect(root.querySelector('#model-latency')!.textContent).toContain('1234 ms');
     expect(root.querySelector('[data-inst="drums"] .st-text')!.textContent).toBe('ready');
     expect(root.querySelector('[data-inst="drums"] .meter')).toBeNull();
   });
@@ -276,6 +288,93 @@ it('does not show an unavailable selected model as connected', () => {
   expect(root.querySelector('[data-engine-led="amt"]')!.classList.contains('online')).toBe(false);
 });
 
+
+describe('tap tempo', () => {
+  it('flashes the beat dots and forwards the tap to actions().tap()', () => {
+    let taps = 0;
+    const store = new Store();
+    const root = document.createElement('div');
+    renderLive(root, store, {
+      wake: () => {}, toggle: () => {}, setGenre: () => {}, setEngine: () => {}, setCreativity: () => {},
+      tap: () => { taps++; return null; },
+    });
+    const beats = root.querySelector<HTMLElement>('#beats')!;
+    root.querySelector<HTMLButtonElement>('#tap-tempo')!.click();
+    expect(taps).toBe(1);
+    expect(beats.classList.contains('tap-flash')).toBe(true);
+  });
+
+  it('fills the bpm field once tap() reports an adopted tempo', () => {
+    const store = new Store();
+    const root = document.createElement('div');
+    renderLive(root, store, {
+      wake: () => {}, toggle: () => {}, setGenre: () => {}, setEngine: () => {}, setCreativity: () => {},
+      tap: () => ({ bpm: 128, downbeat: 3 }),
+    });
+    root.querySelector<HTMLButtonElement>('#tap-tempo')!.click();
+    expect(root.querySelector<HTMLInputElement>('#bpm')!.value).toBe('128');
+  });
+
+  it('reflects the countIn flag on the toggle button', () => {
+    const store = new Store();
+    store.update({ countIn: false });
+    const root = document.createElement('div');
+    renderLive(root, store, { wake: () => {}, toggle: () => {}, setGenre: () => {}, setEngine: () => {}, setCreativity: () => {} });
+    expect(root.querySelector('#count-in-toggle')!.classList.contains('on')).toBe(false);
+    store.update({ countIn: true });
+    renderLive(root, store, { wake: () => {}, toggle: () => {}, setGenre: () => {}, setEngine: () => {}, setCreativity: () => {} });
+    expect(root.querySelector('#count-in-toggle')!.classList.contains('on')).toBe(true);
+  });
+});
+
+describe('the VOICE chip', () => {
+  const noop = (): void => {};
+  const baseActions: LiveActions = { wake: noop, toggle: noop, setGenre: noop, setEngine: noop, setCreativity: noop };
+
+  it('is off by default, sits next to MIC, and shows the state MIC uses', () => {
+    const store = new Store();
+    const root = document.createElement('div');
+    renderLive(root, store, baseActions);
+    const voice = root.querySelector<HTMLButtonElement>('#voice-monitor')!;
+    expect(voice).not.toBeNull();
+    expect(voice.classList.contains('on')).toBe(false);
+    expect(voice.previousElementSibling!.id).toBe('mic-mute');
+  });
+
+  it('calls setVoiceMonitor with the flipped value on click', () => {
+    const calls: boolean[] = [];
+    const store = new Store();
+    const root = document.createElement('div');
+    renderLive(root, store, { ...baseActions, setVoiceMonitor: v => calls.push(v) });
+    root.querySelector<HTMLButtonElement>('#voice-monitor')!.click();
+    expect(calls).toEqual([true]);
+  });
+
+  it('reflects store.voiceMonitor once toggled on', () => {
+    const store = new Store();
+    store.update({ voiceMonitor: true });
+    const root = document.createElement('div');
+    renderLive(root, store, baseActions);
+    expect(root.querySelector<HTMLButtonElement>('#voice-monitor')!.classList.contains('on')).toBe(true);
+  });
+
+  it('hides alongside MIC when there is no mic source at all', () => {
+    const store = new Store();
+    store.update({ sources: { mic: 'none', midi: 'off' } });
+    const root = document.createElement('div');
+    renderLive(root, store, baseActions);
+    expect(root.querySelector<HTMLButtonElement>('#voice-monitor')!.hidden).toBe(true);
+    expect(root.querySelector<HTMLButtonElement>('#mic-mute')!.hidden).toBe(true);
+  });
+
+  it('carries a headphones-only tooltip', () => {
+    const store = new Store();
+    const root = document.createElement('div');
+    renderLive(root, store, baseActions);
+    const voice = root.querySelector<HTMLButtonElement>('#voice-monitor')!;
+    expect(voice.title.length).toBeGreaterThan(0);
+  });
+});
 
 it('only offers RunPod models and offline Patterns', () => {
   const root = document.createElement('div');

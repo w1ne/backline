@@ -24,6 +24,8 @@ export type SourceStatus = { mic: SourceState; midi: SourceState };
 
 /** onsets needed before the LCD dares show a running tempo estimate */
 const PENDING_MIN_ONSETS = 6;
+/** seconds of onsets, with no lock yet, before a provisional tempo is adopted from pendingBpm */
+const PROVISIONAL_WAIT_SEC = 8;
 
 export class Listener {
   private tempo = new TempoLock();
@@ -38,6 +40,8 @@ export class Listener {
   private pitchNotes: { n: number; t: number }[] = [];
   private pitch: StablePitch | null = null;
   private lastStableMidi: number | null = null;
+  /** when a MIDI note last arrived; while none is recent the chord detector runs in melody mode */
+  private lastMidiNoteAt = -Infinity;
   private level = 0;
   private onsetCount = 0;
   /** onset times kept only for the live "~98 BPM" readout while listening */
@@ -56,9 +60,13 @@ export class Listener {
   private kinds: SourceKind[];
   private status: SourceStatus = { mic: 'off', midi: 'off' };
 
-  constructor(sources: Source[], kinds?: SourceKind[]) {
+  /** seconds on the clock every note, level and chord tick is stamped with; injectable for offline replay */
+  private now: () => number;
+
+  constructor(sources: Source[], kinds?: SourceKind[], now: () => number = () => performance.now() / 1000) {
     this.sources = sources;
     this.kinds = kinds ?? sources.map((_, i) => (i === 0 ? 'midi' : 'mic'));
+    this.now = now;
   }
 
   setTempoMode(m: 'locked' | 'follow') {
@@ -86,7 +94,19 @@ export class Listener {
       this.activity.onset(t);
       this.onsetTimes.push(t);
       if (this.onsetTimes.length > 24) this.onsetTimes.shift();
+      // A singer with a fast tempo shouldn't wait the full 12 onsets for the band to start:
+      // once there's been 6+ onsets' worth of signal for 8s with still no real lock, adopt
+      // the running estimate as a provisional one — bpmFromOnsets(..., 12) below still runs
+      // every push and will replace it with the real lock as soon as it's ready.
+      if (!this.tempo.locked && this.onsetTimes.length >= PENDING_MIN_ONSETS) {
+        const first = this.onsetTimes[0];
+        if (t - first >= PROVISIONAL_WAIT_SEC) {
+          const pending = bpmFromOnsets(this.onsetTimes, PENDING_MIN_ONSETS);
+          if (pending) this.tempo.adoptProvisional(pending.bpm, pending.downbeat);
+        }
+      }
       if (n >= 0) {
+        this.lastMidiNoteAt = t;
         this.keyDet.addNote(n, v);
         this.chordDet.addNote(n, t, Math.max(0.3, v));
         this.recent.push({ n, t });
@@ -97,19 +117,22 @@ export class Listener {
     };
     const onLevel = (lvl: number) => {
       this.level = lvl;
-      this.activity.level(lvl, performance.now() / 1000);
+      this.activity.level(lvl, this.now());
       this.emit();
     };
     const onPitch = (p: StablePitch | null) => {
       this.pitch = p;
-      const now = performance.now() / 1000;
+      const now = this.now();
       if (p && p.stable) {
-        if (p.midi !== this.lastStableMidi) {
-          this.lastStableMidi = p.midi;
-          this.keyDet.addNote(p.midi, 0.8);
-          this.chordDet.addNote(p.midi, now, 0.8);
-          this.pitchNotes.push({ n: p.midi, t: now });
-          this.noteCbs.forEach(cb => cb({ midi: p.midi, velocity: 0.8, timeSec: now }));
+        // A voice glides through the cracks between scale tones; once the key is known,
+        // land each sung pitch on the nearest scale tone so a slide does not drag the harmony.
+        const midi = snapToKey(p.midi, this.override.key ?? this.keyDet.key);
+        if (midi !== this.lastStableMidi) {
+          this.lastStableMidi = midi;
+          this.keyDet.addNote(midi, 0.8);
+          this.chordDet.addNote(midi, now, 0.8);
+          this.pitchNotes.push({ n: midi, t: now });
+          this.noteCbs.forEach(cb => cb({ midi, velocity: 0.8, timeSec: now }));
         }
       } else {
         this.lastStableMidi = null;
@@ -190,7 +213,7 @@ export class Listener {
    * clock (`beatIndex` is absolute beats since the band started), not per note — the band
    * re-reads the player once a beat, the same rate it makes decisions at.
    */
-  tickBeat(beatIndex: number, t = performance.now() / 1000): Dynamics {
+  tickBeat(beatIndex: number, t = this.now()): Dynamics {
     const d = this.activity.tick(beatIndex, t);
     this.emit();
     return d;
@@ -204,7 +227,9 @@ export class Listener {
   tickChord(beatIndex: number): Chord | null {
     const bpm = this.input.bpm;
     if (bpm) this.chordDet.windowSec = (2 * 60) / bpm;
-    this.chord = this.chordDet.tick(performance.now() / 1000, this.input.key);
+    const now = this.now();
+    const mode = now - this.lastMidiNoteAt > this.chordDet.windowSec * 2 ? 'melody' : 'auto';
+    this.chord = this.chordDet.tick(now, this.input.key, mode);
     this.lastChordBeat = beatIndex;
     this.emit();
     return this.chord;
@@ -215,4 +240,16 @@ export class Listener {
   private emit() { const i = this.input; this.cbs.forEach(c => c(i)); }
 
   private emitStatus() { const s = this.status; this.statusCbs.forEach(c => c(s)); }
+}
+
+const MAJOR = [0, 2, 4, 5, 7, 9, 11];
+const MINOR = [0, 2, 3, 5, 7, 8, 10];
+
+/** Nearest scale tone of `key` to `midi` (ties resolve downward); `midi` itself when no key is known. */
+export function snapToKey(midi: number, key: { root: number; mode: 'major' | 'minor' } | null): number {
+  if (!key) return midi;
+  const scale = key.mode === 'major' ? MAJOR : MINOR;
+  const inKey = (m: number) => scale.includes((((m - key.root) % 12) + 12) % 12);
+  if (inKey(midi)) return midi;
+  return inKey(midi - 1) ? midi - 1 : midi + 1;
 }

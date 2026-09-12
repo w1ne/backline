@@ -28,10 +28,20 @@ export interface AppState {
   input: BandInput;
   locked: boolean;
   tempoMode: 'locked' | 'follow';
+  /** play a two-bar count-in click before the band's first bar; default on, persisted */
+  countIn: boolean;
+  /** current count-in beat (1..4), or null when no count-in is playing */
+  countInBeat: number | null;
+  /** AudioContext.outputLatency (or baseLatency), read once the context is running */
+  outputLatencyMs: number | null;
   /** AudioContext still waiting for the first user gesture */
   audioSuspended: boolean;
   bar: number;
   error: string | null;
+  /** the Record button is armed: notes are being collected for the MIDI download */
+  recording: boolean;
+  /** the band is held: no scheduling, listener keeps running */
+  paused: boolean;
   loops: number;
   loopsUpdatedAt: number | undefined;
   /** engines the /health probe found unreachable at page load; still selectable, just flagged in the UI */
@@ -49,6 +59,9 @@ export interface AppState {
   micIn: string | null;
   /** mic gated from the listener (onsets/pitch/level); MIDI is unaffected */
   micMuted: boolean;
+  /** the singer's own mic monitored back through the vocal chain — off by default, and
+   *  only ever actually audible when monitorAllowed() agrees it is safe */
+  voiceMonitor: boolean;
   audioInputs: DeviceOption[];
   /** chosen MIDI input id, or null for "all" */
   midiIn: string | null;
@@ -61,7 +74,7 @@ export interface AppState {
 
 const defaults: AppState = {
   power: 'off',
-  accompanimentStatus: 'Listening for your melody',
+  accompanimentStatus: 'Listening',
   modelLatencyMs: null,
   activeParts: {},
   sources: { mic: 'off', midi: 'off' },
@@ -77,9 +90,14 @@ const defaults: AppState = {
   input: { bpm: null, key: null, chord: null, notesNow: [], pitch: null, inputLevel: 0, onsets: 0, pendingBpm: null, dynamics: IDLE_DYNAMICS },
   locked: false,
   tempoMode: 'locked',
+  countIn: true,
+  countInBeat: null,
+  outputLatencyMs: null,
   audioSuspended: false,
   bar: 0,
   error: null,
+  recording: false,
+  paused: false,
   loops: 0,
   loopsUpdatedAt: undefined,
   offlineEngines: [],
@@ -90,6 +108,7 @@ const defaults: AppState = {
   audioOutputs: [],
   micIn: null,
   micMuted: false,
+  voiceMonitor: false,
   audioInputs: [],
   midiIn: null,
   midiInputs: [],
