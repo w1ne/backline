@@ -51,11 +51,34 @@ export function bpmFromOnsets(onsets: number[], minOnsets: number): { bpm: numbe
 export class TempoLock {
   private onsets: number[] = [];
   private result: { bpm: number; downbeat: number } | null = null;
+  /** true while `result` came from adoptProvisional() rather than a full 12-onset estimate;
+   * a provisional result is still replaceable by the real thing. */
+  private provisional = false;
+
   push(t: number) {
-    if (this.result) return;
+    if (this.result && !this.provisional) return;
     this.onsets.push(t);
-    this.result = estimateTempo(this.onsets);
+    const real = estimateTempo(this.onsets);
+    if (real) {
+      this.result = real;
+      this.provisional = false;
+    }
   }
+
+  /** Adopts a faster, lower-confidence estimate (e.g. the listener's running pendingBpm)
+   * while the full 12-onset lock is still pending — a real lock, once it lands, replaces
+   * this. No-op once a real lock already exists. */
+  adoptProvisional(bpm: number, downbeat: number) {
+    if (this.result && !this.provisional) return;
+    this.result = { bpm, downbeat };
+    this.provisional = true;
+  }
+
   get locked() { return this.result; }
-  reset() { this.onsets = []; this.result = null; }
+  get isProvisional() { return this.provisional; }
+  reset() {
+    this.onsets = [];
+    this.result = null;
+    this.provisional = false;
+  }
 }

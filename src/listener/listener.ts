@@ -24,6 +24,8 @@ export type SourceStatus = { mic: SourceState; midi: SourceState };
 
 /** onsets needed before the LCD dares show a running tempo estimate */
 const PENDING_MIN_ONSETS = 6;
+/** seconds of onsets, with no lock yet, before a provisional tempo is adopted from pendingBpm */
+const PROVISIONAL_WAIT_SEC = 8;
 
 export class Listener {
   private tempo = new TempoLock();
@@ -92,6 +94,17 @@ export class Listener {
       this.activity.onset(t);
       this.onsetTimes.push(t);
       if (this.onsetTimes.length > 24) this.onsetTimes.shift();
+      // A singer with a fast tempo shouldn't wait the full 12 onsets for the band to start:
+      // once there's been 6+ onsets' worth of signal for 8s with still no real lock, adopt
+      // the running estimate as a provisional one — bpmFromOnsets(..., 12) below still runs
+      // every push and will replace it with the real lock as soon as it's ready.
+      if (!this.tempo.locked && this.onsetTimes.length >= PENDING_MIN_ONSETS) {
+        const first = this.onsetTimes[0];
+        if (t - first >= PROVISIONAL_WAIT_SEC) {
+          const pending = bpmFromOnsets(this.onsetTimes, PENDING_MIN_ONSETS);
+          if (pending) this.tempo.adoptProvisional(pending.bpm, pending.downbeat);
+        }
+      }
       if (n >= 0) {
         this.lastMidiNoteAt = t;
         this.keyDet.addNote(n, v);
