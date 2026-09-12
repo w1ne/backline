@@ -1701,3 +1701,6 @@ button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-v
     box-shadow: 3px 3px 0 var(--ink);
   }
 }
+
+.instrument-zone { margin-top: 12px; }
+.instrument-zone .instrument-controls { margin-top: 10px; }

@@ -75,20 +75,6 @@ function skeleton(): string {
       <section class="instrument-section" aria-labelledby="instrument-heading">
         <div class="section-heading"><div><h2 id="instrument-heading">Your instrument</h2></div><button type="button" id="enable-audio" class="audio-start">Enable sound</button></div>
         <p class="connection-line" id="input-status"></p>
-        <div class="instrument-controls">          <div class="field">
-            <label for="sound">Keyboard sound</label>
-            <select id="sound">
-              ${SOUND_GROUPS.map(
-                g =>
-                  `<optgroup label="${g}">${SOUNDS.filter(s => s.group === g)
-                    .map(s => `<option value="${s.id}">${s.label}</option>`)
-                    .join('')}</optgroup>`,
-              ).join('')}
-            </select>
-          </div>
-          <div class="field"><label for="noise-volume">White noise <output id="noise-value"></output></label><input id="noise-volume" type="range" min="0" max="1" step="0.01" /></div>
-          <div class="field"><label for="drone-volume">Drone <output id="drone-value"></output></label><input id="drone-volume" type="range" min="0" max="1" step="0.01" /></div>
-        </div>
       </section>
       <div class="section-heading band-heading"><div><h2>Your band</h2><p id="band-status" role="status"></p></div><span id="model-latency"></span></div>
       <div class="readout">
@@ -186,7 +172,25 @@ function skeleton(): string {
             </button>
           </div>
         </div>
-<p id="engine-status" role="status"></p></details>
+<p id="engine-status" role="status"></p>
+        <div class="zone zone--orange instrument-zone">
+          <span class="zone-label">Your instrument</span>
+        <div class="instrument-controls">          <div class="field">
+            <label for="sound">Keyboard sound</label>
+            <select id="sound">
+              ${SOUND_GROUPS.map(
+                g =>
+                  `<optgroup label="${g}">${SOUNDS.filter(s => s.group === g)
+                    .map(s => `<option value="${s.id}">${s.label}</option>`)
+                    .join('')}</optgroup>`,
+              ).join('')}
+            </select>
+          </div>
+          <div class="field"><label for="noise-volume">White noise <output id="noise-value"></output></label><input id="noise-volume" type="range" min="0" max="1" step="0.01" /></div>
+          <div class="field"><label for="drone-volume">Drone <output id="drone-value"></output></label><input id="drone-volume" type="range" min="0" max="1" step="0.01" /></div>
+        </div>
+        </div>
+      </details>
     </div>
   `;
 }
