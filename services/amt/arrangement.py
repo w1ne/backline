@@ -49,6 +49,39 @@ def shape_notes(notes, start, end, beat_seconds, space, time_resolution=100, key
             for i, (t, d, *rest) in enumerate(kept)]
 
 
+def voice_chord(pitch, chord_tones, want=3):
+    """Build a keys voicing around `pitch`: up to `want` simultaneous notes,
+    all chord tones, stacked within a couple of octaves of the seed pitch.
+
+    The seed is first snapped to the nearest chord tone (same nearest-pitch
+    search shape_notes uses for melodic correction), so every note this
+    returns -- not just the extra ones -- is guaranteed to be a chord tone.
+    Without `chord_tones` (no key/chord known yet) it returns the pitch
+    unchanged, i.e. today's monophonic behavior.
+    """
+    if not chord_tones or want <= 1:
+        return [pitch]
+    seed = min((p for p in range(max(0, pitch - 6), min(127, pitch + 6) + 1)),
+               key=lambda p: (0 if p % 12 in chord_tones else 1, abs(p - pitch), p))
+    notes = [seed]
+    used_pcs = {seed % 12}
+    octave_base = seed - seed % 12
+    candidates = sorted(
+        {octave_base + pc + off for off in (12, -12, 24, 0) for pc in chord_tones
+         if pc not in used_pcs and 0 <= octave_base + pc + off <= 127},
+        key=lambda p: abs(p - seed),
+    )
+    for p in candidates:
+        if len(notes) >= want:
+            break
+        pc = p % 12
+        if pc in used_pcs:
+            continue
+        notes.append(p)
+        used_pcs.add(pc)
+    return sorted(notes)
+
+
 def bass_pitch(chord, key):
     for harmony in (chord, key):
         match = re.match(r'^([A-G])([#b]?)', harmony or '')

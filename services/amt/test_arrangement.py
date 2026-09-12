@@ -1,5 +1,5 @@
 import unittest
-from arrangement import shape_notes, bass_pitch
+from arrangement import shape_notes, bass_pitch, voice_chord, harmony_classes
 
 
 class ArrangementTest(unittest.TestCase):
@@ -66,6 +66,17 @@ class ArrangementTest(unittest.TestCase):
                 self.assertAlmostEqual((t - start) / beat * 4, round((t-start) / beat * 4))
                 self.assertGreaterEqual(d / beat, .25 - 1e-8)
                 self.assertLessEqual(t+d, start + 4 * beat + 1e-8)
+
+    def test_voice_chord_yields_two_to_three_chord_tone_notes(self):
+        chord_tones = harmony_classes('C major', 'Dm')
+        notes = voice_chord(66, chord_tones, want=3)
+        self.assertGreaterEqual(len(notes), 2)
+        self.assertLessEqual(len(notes), 3)
+        self.assertTrue(all(p % 12 in chord_tones for p in notes))
+        self.assertEqual(len(set(notes)), len(notes))
+
+    def test_voice_chord_falls_back_to_monophonic_without_a_chord(self):
+        self.assertEqual(voice_chord(66, set()), [66])
 
     def test_bass_uses_the_players_harmony_in_a_fixed_bass_register(self):
         self.assertEqual(bass_pitch('Dm', 'C major'), 38)
