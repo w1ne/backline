@@ -1,5 +1,5 @@
-import type { BandState, Chord, Instrument, Key } from '../types';
-import { INSTRUMENTS, IDLE_DYNAMICS } from '../types';
+import type { BandState, Chord, Dynamics, Instrument, Key } from '../types';
+import { IDLE_DYNAMICS } from '../types';
 import { chordName } from '../listener/chordDetector';
 import type { BandEngine } from './engine';
 import { PcmPlayer } from './pcmPlayer';
@@ -15,6 +15,56 @@ const CHORD_HISTORY = 4;
 
 function keyString(k: Key): string {
   return `${KEY_NAMES[k.root]} ${k.mode === 'major' ? 'major' : 'minor'}`;
+}
+
+/** intensity above which the player is "busy" and the band should lay back to drums + bass */
+export const BUSY_INTENSITY = 0.6;
+/** intensity below which (or on space) the band fills out and answers with a lead fill */
+export const QUIET_INTENSITY = 0.3;
+
+/** What the ACE block should ask for, chosen from the player's effective dynamics. */
+export interface BlockSelection {
+  /** instruments to render this block, after the user's on/off toggles are applied */
+  instruments: Instrument[];
+  /** this block answers the player with a guitar lead fill */
+  fill: boolean;
+  /** how full the band should sound, 0 (sparse) .. 1 (busy) — a prompt/energy hint */
+  density: number;
+}
+
+/**
+ * Picks the block's instrument set from the effective dynamics, then masks it against the
+ * user's on/off toggles (never adding an instrument the user turned off).
+ *
+ * - busy (intensity > 0.6, not space): rhythm section only — drums + bass.
+ * - medium (0.3–0.6): drums + bass + keys.
+ * - space (space) or quiet (intensity < 0.3): full set incl. guitar lead, marked as a FILL.
+ *
+ * Pure so it can be unit-tested and reasoned about independently of the WebSocket engine.
+ */
+export function selectBlockInstruments(
+  dyn: Pick<Dynamics, 'intensity' | 'space'>,
+  enabled: Record<Instrument, boolean>,
+): BlockSelection {
+  const intensity = Math.min(1, Math.max(0, dyn.intensity));
+  const quiet = dyn.space || intensity < QUIET_INTENSITY;
+  const busy = !quiet && intensity > BUSY_INTENSITY;
+
+  let base: Instrument[];
+  let fill = false;
+  if (quiet) {
+    base = ['drums', 'bass', 'keys', 'lead'];
+    fill = true;
+  } else if (busy) {
+    base = ['drums', 'bass'];
+  } else {
+    base = ['drums', 'bass', 'keys'];
+  }
+
+  const instruments = base.filter(i => enabled[i]);
+  // density: busy → ~1, quiet → ~0, so the server can pick energy words / guidance.
+  const density = dyn.space ? 0 : intensity;
+  return { instruments, fill, density };
 }
 
 function sameKey(a: Key, b: Key): boolean {
@@ -36,6 +86,10 @@ interface BlockRequest {
   intensity: number;
   /** the player has left room, so the lead instrument may be prompted for */
   space: boolean;
+  /** this block answers the player with a guitar lead fill */
+  fill: boolean;
+  /** how full the band should sound, 0 (sparse) .. 1 (busy); server maps to energy words */
+  density: number;
 }
 
 /** Streams bar-quantized blocks from the ACE-Step service and schedules them back-to-back
@@ -135,6 +189,11 @@ export class AceStepEngine implements BandEngine {
     }, delay);
   }
 
+  /** Tap on the streamed audio, for the visualiser's spectrum. Valid once start() has run. */
+  getAnalyser(): AnalyserNode | undefined {
+    return this.player?.getAnalyser();
+  }
+
   stop(): void {
     this.stopping = true;
     if (this.startTimer !== undefined) clearTimeout(this.startTimer);
@@ -214,18 +273,24 @@ export class AceStepEngine implements BandEngine {
   private requestBlock(): void {
     const seq = this.nextSeq++;
     this.latestRequestedSeq = seq;
+    // The instrument set is the strongest "lay back" lever: fewer track_classes and the model
+    // thins out. Chosen from the effective dynamics at the moment the block is requested, then
+    // masked against the user's on/off toggles.
+    const sel = selectBlockInstruments(this.state.dynamics, this.state.enabled);
     const req: BlockRequest = {
       type: 'block',
       seq,
       bpm: this.bpm,
       key: keyString(this.state.key),
       genre: this.state.genre,
-      instruments: INSTRUMENTS.filter(i => this.state.enabled[i]),
+      instruments: sel.instruments,
       creativity: this.state.creativity,
       bars: BARS_PER_BLOCK,
       chords: [...this.chords],
       intensity: this.state.dynamics.intensity,
       space: this.state.dynamics.space,
+      fill: sel.fill,
+      density: sel.density,
     };
     this.send(req);
   }
