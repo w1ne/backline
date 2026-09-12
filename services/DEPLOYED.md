@@ -30,6 +30,20 @@ curl -s http://127.0.0.1:8080/health
 Model load takes a couple of minutes, so `/health` stays unreachable for
 a while after the restart.
 
+For an AMT change, use `services/deploy-amt.sh` instead of the manual
+steps above: it does the pull + tmux restart, waits (up to 3 min) for
+`/health` to report `amt:true`, then runs `npm run smoke:live` and
+fails loudly (with the tail of `/var/log/amt.log`) if either step
+doesn't come up clean. Run it after every AMT pod deploy:
+
+```bash
+services/deploy-amt.sh
+```
+
+`services/watchdog.sh` runs the same health check on a cron schedule
+and restarts just the affected tmux session (`amt` or `ace`) without
+touching the pod itself -- see that script for the crontab line.
+
 ## Resume wipes the disk -- rerun pod-bootstrap.sh
 
 `podResume` on this pod does not preserve the container's ephemeral

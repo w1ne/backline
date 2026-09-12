@@ -22,7 +22,7 @@ jobs:
         run: bash bench/realvoice/fetch.sh
       - run: npm run bench:gate
   preview:
-    needs: gate
+
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

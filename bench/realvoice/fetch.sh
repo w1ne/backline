@@ -12,7 +12,7 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATA_DIR="$HERE/data/MIR-1K"
-HF_MIRROR="${HF_MIRROR:-https://huggingface.co/datasets/qingyun/MIR-1K/resolve/main}"
+HF_MIRROR="${HF_MIRROR:-https://huggingface.co/datasets/AnhP/Mir-1k-use-DJCM-training/resolve/main/MIR-1K}"
 
 warn_skip() {
   echo "WARNING: $1 -- real-voice gate will skip (see bench/realvoice/dataset.ts)." >&2
