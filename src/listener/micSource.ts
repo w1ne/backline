@@ -18,18 +18,56 @@ export class MicSource implements Source {
   private timer = 0;
   private pitchTimer = 0;
   private node?: AudioWorkletNode;
+  private srcNode?: MediaStreamAudioSourceNode;
   private lastRms = 0;
+  /** chosen audioinput device, or null for the system default */
+  private deviceId: string | null = null;
+  /** kept so a device change can restart the same pipeline without the Listener noticing */
+  private cbs?: {
+    onNote: (m: number, v: number, t: number) => void;
+    onLevel: (l: number) => void;
+    onPitch?: (p: StablePitch | null) => void;
+  };
+
+  constructor(deviceId: string | null = null) {
+    this.deviceId = deviceId;
+  }
+
+  /**
+   * Switches input device. While running this tears the stream down and builds it again
+   * on the new device; the Listener keeps its tempo lock, key and chord state, because
+   * only this source's audio nodes are replaced — nothing calls back into it.
+   */
+  async setDevice(deviceId: string | null): Promise<void> {
+    if (deviceId === this.deviceId) return;
+    this.deviceId = deviceId;
+    const cbs = this.cbs;
+    if (!cbs) return;
+    this.stop();
+    await this.start(cbs.onNote, cbs.onLevel, cbs.onPitch);
+  }
+
+  get device(): string | null {
+    return this.deviceId;
+  }
 
   async start(
     onNote: (m: number, v: number, t: number) => void,
     onLevel: (l: number) => void,
     onPitch?: (p: StablePitch | null) => void,
   ) {
+    this.cbs = { onNote, onLevel, onPitch };
     const ctx = Tone.getContext().rawContext as AudioContext;
     this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      audio: {
+        ...(this.deviceId ? { deviceId: { exact: this.deviceId } } : {}),
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+      },
     });
     const src = ctx.createMediaStreamSource(this.stream);
+    this.srcNode = src;
     // kept for pitch only: continuously polled independently of onset timing
     const an = ctx.createAnalyser();
     an.fftSize = 4096; // longer window than the onset hop for better low-note resolution
@@ -113,6 +151,9 @@ export class MicSource implements Source {
       this.node.disconnect();
       this.node = undefined;
     }
+    this.srcNode?.disconnect();
+    this.srcNode = undefined;
     this.stream?.getTracks().forEach(t => t.stop());
+    this.stream = undefined;
   }
 }

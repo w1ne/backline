@@ -18,6 +18,19 @@ import { DEBUG, installDebug, recordToggle } from './debug';
 import { chooseFallback } from './engines/fallback';
 import { RELAY_URL } from './config';
 import type { EngineChoice } from './ui/state';
+import { MorphBus, setSinkSupported } from './audio/morphBus';
+import {
+  listInputs,
+  listOutputs,
+  loadDeviceId,
+  onDeviceChange,
+  resolveDeviceId,
+  saveDeviceId,
+  MIC_DEVICE_KEY,
+  MIDI_INPUT_KEY,
+  MORPH_SINK_KEY,
+} from './audio/devices';
+import { defaultRouting, isAllMain, nextRoute } from './audio/routing';
 
 const FALLBACK_TIMEOUT_MS = 8000;
 const BEATS_PER_BAR = 4;
@@ -27,6 +40,11 @@ const store = new Store();
 let listener: Listener | undefined;
 let band: BandEngine | undefined;
 const players = new Players();
+let morph: MorphBus | undefined;
+let mic: MicSource | undefined;
+let midi: MidiSource | undefined;
+/** true once players.init() has built the AudioContext the morph bus has to live in */
+let audioReady = false;
 let lastFollowedBpm: number | undefined;
 let disarmFallback: (() => void) | undefined;
 let halfBarTimer: ReturnType<typeof setTimeout> | undefined;
@@ -54,6 +72,47 @@ function tickChord(beat: number): void {
   band?.set({ chord, chordBeat: beat });
 }
 
+
+/** Re-reads the device pickers, dropping a remembered device that is no longer plugged in. */
+async function refreshDevices(): Promise<void> {
+  const [outputs, inputs] = await Promise.all([listOutputs(), listInputs()]);
+  store.update({
+    audioOutputs: outputs,
+    audioInputs: inputs,
+    morphOut: resolveDeviceId(store.state.morphOut, outputs),
+    micIn: resolveDeviceId(store.state.micIn, inputs),
+  });
+  if (audioReady) await applyMorph();
+}
+
+/** Builds (or tears down) the morph bus for the currently chosen output device. */
+async function applyMorph(): Promise<void> {
+  if (!audioReady) return; // no AudioContext yet; power() applies it
+  const id = store.state.morphOut;
+  if (!id) {
+    players.setMorphBus(undefined);
+    morph?.dispose();
+    morph = undefined;
+    applyRouting();
+    return;
+  }
+  morph ??= new MorphBus(players.rawContext());
+  try {
+    await morph.setSink(id);
+  } catch (err) {
+    store.update({ error: `morph out: ${err instanceof Error ? err.message : String(err)}` });
+  }
+  players.setMorphBus(morph.input);
+  applyRouting();
+}
+
+/** Pushes the store's routing into the audio graph: pads via Players, engines via the band. */
+function applyRouting(): void {
+  const r = store.state.routing;
+  INSTRUMENTS.forEach(i => players.route(i, r[i]));
+  band?.routeBand?.(r.band, morph?.input);
+}
+
 function makeBand(engine: EngineChoice): BandEngine {
   if (engine === 'lyria') return new LyriaEngine(players.rawContext());
   if (engine === 'acestep') return new AceStepEngine(players.rawContext());
@@ -63,6 +122,7 @@ function makeBand(engine: EngineChoice): BandEngine {
 
 function wireBand(b: BandEngine): void {
   INSTRUMENTS.forEach(i => b.setEnabled(i, store.state.enabled[i]));
+  b.routeBand?.(store.state.routing.band, morph?.input);
   b.onBar = bar => {
     store.update({ bar });
     setLatency(root, players.latencyMs());
@@ -143,12 +203,15 @@ fetch(RELAY_URL + '/health').catch(() => {
 async function power() {
   store.update({ error: null });
   await players.init();
+  audioReady = true;
   players.setGenre(store.state.genre);
+  await applyMorph();
 
   const engine = store.state.engine;
 
-  const midi = new MidiSource();
-  const mic = new MicSource();
+  midi = new MidiSource(store.state.midiIn);
+  mic = new MicSource(store.state.micIn);
+  midi.onInputs(inputs => store.update({ midiInputs: inputs }));
   const perfOffset = Tone.now() - performance.now() / 1000; // MIDI times are performance.now-based
 
   listener = new Listener([midi, mic], ['midi', 'mic']);
@@ -188,6 +251,9 @@ async function power() {
   store.update({ power: 'on', error: null });
   await listener.start();
   store.update({ sources: { ...listener.sourceStatus } });
+  // labels only come back from enumerateDevices() once a media permission has been
+  // granted, so the pickers are worth re-reading right after the mic starts
+  await refreshDevices();
 }
 
 function powerOff() {
@@ -279,6 +345,30 @@ store.subscribe(s => {
     setKeyOverride: key => {
       listener?.setOverride({ key });
     },
+    cycleMorph: t => {
+      const routing = { ...store.state.routing, [t]: nextRoute(store.state.routing[t]) };
+      store.update({ routing });
+      applyRouting();
+    },
+    setMorphOutput: id => {
+      saveDeviceId(MORPH_SINK_KEY, id);
+      // First time a box is chosen, put the parts worth morphing on it; once the user
+      // has moved anything by hand their routing is left alone.
+      const routing = id && isAllMain(store.state.routing) ? defaultRouting(true) : store.state.routing;
+      store.update({ morphOut: id, routing });
+      applyMorph().catch(err => store.update({ error: err instanceof Error ? err.message : String(err) }));
+    },
+    setMicInput: id => {
+      saveDeviceId(MIC_DEVICE_KEY, id);
+      store.update({ micIn: id });
+      // Only this source restarts: the Listener keeps its tempo lock, so the band plays on.
+      mic?.setDevice(id).catch(err => store.update({ error: `mic: ${err instanceof Error ? err.message : String(err)}` }));
+    },
+    setMidiInput: id => {
+      saveDeviceId(MIDI_INPUT_KEY, id);
+      midi?.setInput(id);
+      store.update({ midiIn: id, sources: { ...store.state.sources, midi: midi?.getStatus() ?? store.state.sources.midi } });
+    },
     setTempoMode: m => {
       lastFollowedBpm = undefined;
       listener?.setTempoMode(m);
@@ -298,6 +388,16 @@ if (DEBUG) {
     if (scheduled.length > 200) scheduled.shift();
   };
 }
+
+store.update({
+  morphSupported: setSinkSupported(),
+  morphOut: loadDeviceId(MORPH_SINK_KEY),
+  micIn: loadDeviceId(MIC_DEVICE_KEY),
+  midiIn: loadDeviceId(MIDI_INPUT_KEY),
+});
+if (store.state.morphOut) store.update({ routing: defaultRouting(true) });
+void refreshDevices();
+onDeviceChange(() => void refreshDevices());
 
 installDebug({
   store,

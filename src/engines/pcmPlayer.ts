@@ -1,3 +1,5 @@
+import { routeTargets, type MorphRoute } from '../audio/routing';
+
 /** Convert little-endian PCM16 bytes to Float32 samples in [-1, 1]. */
 export function pcm16ToFloat32(bytes: Uint8Array): Float32Array {
   const n = bytes.length >> 1;
@@ -41,12 +43,35 @@ export class PcmPlayer {
   private watchdog?: ReturnType<typeof setInterval>;
   stats = { loops: 0, starvedSec: 0 };
 
+  /** Where the generated stream goes; 'morph' sends the whole band through the morph box. */
+  private bandRoute: MorphRoute = 'main';
+  private morphNode?: AudioNode;
+
   constructor(
     private ctx: AudioContext,
     private bufferAheadSec = 3,
+    morphNode?: AudioNode,
   ) {
     this.nextLead = bufferAheadSec;
+    this.morphNode = morphNode;
     this.watchdog = setInterval(() => this.checkUnderrun(), 50);
+  }
+
+  /** Re-routes the whole generated stream, including chunks already scheduled ahead of
+   *  the playhead — otherwise a route change would not be audible for the ~3 s of audio
+   *  already queued. */
+  routeBand(route: MorphRoute, morphNode?: AudioNode): void {
+    this.bandRoute = route;
+    if (arguments.length > 1) this.morphNode = morphNode;
+    for (const s of this.queue) this.attach(s.gain);
+  }
+
+  /** Connects a chunk's gain to whichever outputs its route currently feeds. */
+  private attach(gain: GainNode): void {
+    gain.disconnect();
+    const to = routeTargets(this.bandRoute, !!this.morphNode);
+    if (to.main) gain.connect(this.ctx.destination);
+    if (to.morph && this.morphNode) gain.connect(this.morphNode);
   }
 
   /** Bar length in seconds (240 / bpm), used both for the loop segment length and ring capacity. */
@@ -73,7 +98,7 @@ export class PcmPlayer {
     this.nextLead = this.bufferAheadSec;
 
     const gain = this.ctx.createGain();
-    gain.connect(this.ctx.destination);
+    this.attach(gain);
     if (this.pendingFadeInSec !== undefined) {
       gain.gain.setValueAtTime(0, startAt);
       gain.gain.linearRampToValueAtTime(1, startAt + this.pendingFadeInSec);
@@ -144,7 +169,7 @@ export class PcmPlayer {
     }
 
     const gain = this.ctx.createGain();
-    gain.connect(this.ctx.destination);
+    this.attach(gain);
     const fadeSec = Math.min(LOOP_FADE_SEC, buffer.duration / 2);
     // Equal-power-ish fade in at the start and fade out at the end so the loop
     // seam (into and out of it) is smoothed rather than clicking.

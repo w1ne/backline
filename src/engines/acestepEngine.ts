@@ -3,6 +3,7 @@ import { INSTRUMENTS, IDLE_DYNAMICS } from '../types';
 import { chordName } from '../listener/chordDetector';
 import type { BandEngine } from './engine';
 import { PcmPlayer } from './pcmPlayer';
+import type { MorphRoute } from '../audio/routing';
 import { RELAY_URL } from '../config';
 
 const KEY_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -70,7 +71,18 @@ export class AceStepEngine implements BandEngine {
   private keepalive?: ReturnType<typeof setInterval>;
   private stopping = false;
 
+  private bandRoute: MorphRoute = 'main';
+  private morphNode?: AudioNode;
+
   constructor(private ctx: AudioContext) {}
+
+  /** Sends the generated stream to the main output, the MORPH output, or both. */
+  routeBand(route: MorphRoute, morphNode?: AudioNode): void {
+    this.bandRoute = route;
+    this.morphNode = morphNode;
+    this.player?.routeBand(route, morphNode);
+  }
+
 
   get changeLatencyMs(): number {
     if (!this.bpm) return 0;
@@ -88,7 +100,8 @@ export class AceStepEngine implements BandEngine {
     this.blockSeconds = (240 / bpm) * BARS_PER_BLOCK;
     this.firstBarAt = firstBarAt;
     this.nextBlockAt = firstBarAt;
-    this.player = new PcmPlayer(this.ctx);
+    this.player = new PcmPlayer(this.ctx, undefined, this.morphNode);
+    this.player.routeBand(this.bandRoute, this.morphNode);
     this.player.setBarSeconds(240 / bpm);
 
     const wsUrl = RELAY_URL.replace(/^http/, 'ws') + '/acestep';
