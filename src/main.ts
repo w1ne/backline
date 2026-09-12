@@ -291,7 +291,7 @@ async function power() {
   listener.onNote(n => {
     const t = n.timeSec + perfOffset();
     viz?.addNote('you', n.midi, t, YOU_NOTE_SEC, n.velocity);
-    midiRecorder.addYou(n.midi, n.velocity, t);
+    if (store.state.recording) midiRecorder.addYou(n.midi, n.velocity, t);
   });
 
   listener.onChange(input => {
@@ -363,14 +363,19 @@ function powerOff() {
 
 store.subscribe(s => {
   liveActions = {
-    exportMidi: () => {
+    toggleRecord: () => {
+      if (!store.state.recording) {
+        midiRecorder.reset();
+        store.update({ recording: true });
+        return;
+      }
+      store.update({ recording: false });
       if (midiRecorder.empty) {
-        store.update({ error: 'Nothing recorded yet: sing or play a few bars first' });
+        store.update({ error: 'Nothing was played while recording' });
         return;
       }
       const bpm = lastFollowedBpm ?? store.state.input.bpm ?? undefined;
       downloadMidi(midiRecorder.toMidi(bpm), `duetai-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}.mid`);
-      midiRecorder.reset();
     },
     wake: () => {
       if (store.state.audioSuspended) {
@@ -537,7 +542,7 @@ viz = createViz(
 // the visualiser and, in ?debug=1, also records the schedule for chord-following checks.
 players.onSchedule = (inst, events, barStart, bpm) => {
   playbackActivity.add(inst, events, barStart, bpm);
-  midiRecorder.addBand(inst, events, barStart, bpm);
+  if (store.state.recording) midiRecorder.addBand(inst, events, barStart, bpm);
   const spb = 60 / bpm;
   for (const e of events) viz?.addNote(inst, e.note, barStart + e.time * spb, e.duration * spb, e.velocity);
   if (DEBUG) {

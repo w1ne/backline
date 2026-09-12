@@ -24,8 +24,8 @@ export interface LiveActions {
   setGenre(g: Genre): void;
   setEngine(e: 'lyria' | 'patterns' | 'acestep' | 'amt'): void;
   setCreativity(c: number): void;
-  /** download everything sung/played and scheduled since the last export as a .mid */
-  exportMidi?(): void;
+  /** start recording you + the band; a second call stops and downloads the .mid */
+  toggleRecord?(): void;
   /** manual INTENSITY knob — how much the band adds */
   setIntensity?(i: number): void;
   setBpmOverride?(bpm: number | undefined): void;
@@ -99,6 +99,12 @@ function skeleton(): string {
           <div><small>Key</small><strong id="ro-key">&mdash;</strong></div>
           <div><small>Chord</small><strong id="chord">&mdash;</strong></div>
           <div><small>Bar</small><strong id="ro-bar">0</strong></div>
+          <div class="ro-rec"><small>Rec</small>
+            <button type="button" class="rec-btn" id="record-midi" aria-pressed="false"
+                    title="Tap to record you + the band, tap again to save the MIDI">
+              <span class="rec-dot"></span>
+            </button>
+          </div>
         </div>
         <div class="beats" id="beats">
           <b>Beat</b><i style="--n:0"></i><i style="--n:1"></i><i style="--n:2"></i><i style="--n:3"></i>
@@ -211,15 +217,6 @@ function skeleton(): string {
         </div>
 <p id="engine-status" role="status"></p>
       </details>
-      <div class="zone zone--orange export">
-        <button type="button" class="engine-key" id="export-midi">
-          <span class="engine-key-text">
-            <span class="engine-key-name">Export MIDI</span>
-            <span class="engine-key-desc">You + band since the last export</span>
-          </span>
-          <span class="engine-led" id="export-led"></span>
-        </button>
-      </div>
     </div>
   `;
 }
@@ -283,7 +280,7 @@ function wireControls(screen: HTMLElement, store: Store): void {
     btn.addEventListener('click', () => actions().setEngine(btn.dataset.engine as 'lyria' | 'patterns' | 'acestep' | 'amt'));
   });
 
-  screen.querySelector<HTMLButtonElement>('#export-midi')!.addEventListener('click', () => actions().exportMidi?.());
+  screen.querySelector<HTMLButtonElement>('#record-midi')!.addEventListener('click', () => actions().toggleRecord?.());
 
   const bpmInput = screen.querySelector<HTMLInputElement>('#bpm')!;
   bpmInput.addEventListener('change', () => {
@@ -370,6 +367,10 @@ function update(screen: HTMLElement, s: AppState, changeLatencyMs: number): void
   screen.querySelector<HTMLElement>('#input-status')!.textContent = `${midiLabel(s)}${hearingLabel(s)}${s.audioSuspended ? ' · TAP TO ENABLE SOUND' : ''}`;
   screen.querySelector<HTMLElement>('#midi-status')!.textContent = midiLabel(s);
   screen.querySelector<HTMLElement>('#band-status')!.textContent = s.accompanimentStatus;
+  const rec = screen.querySelector<HTMLButtonElement>('#record-midi')!;
+  rec.classList.toggle('recording', s.recording);
+  rec.setAttribute('aria-pressed', String(s.recording));
+  rec.title = s.recording ? 'Recording… tap to save the MIDI' : 'Tap to record you + the band, tap again to save the MIDI';
   screen.querySelector<HTMLElement>('#model-latency')!.textContent = s.modelLatencyMs == null ? '' : `${Math.round(s.modelLatencyMs)} ms`;
   screen.querySelector<HTMLElement>('#engine-status')!.textContent = s.engineConnecting ? `${ENGINE_NAMES[s.engine]} · connecting…` : s.offlineEngines.includes(s.engine) ? `${ENGINE_NAMES[s.engine]} · offline` : '';
   for (const [id, value] of [['noise', s.noiseVolume], ['drone', s.droneVolume]] as const) {
