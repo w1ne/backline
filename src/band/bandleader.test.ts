@@ -185,10 +185,10 @@ describe('Bandleader song form', () => {
     expect(seen[5]).toEqual({ intro: false, lift: false, breakdown: true, ending: false });
   });
 
-  it('plays one ending bar after two bars of silence, then stops the clock itself', () => {
+  it('plays one ending bar after four bars of silence, then stops the clock itself', () => {
     const { clock, seen, b } = mkSpy();
     clock.tick(0); clock.tick(1); // intro
-    b.set({ dynamics: { ...IDLE_DYNAMICS, silenceBeats: 8 } });
+    b.set({ dynamics: { ...IDLE_DYNAMICS, silenceBeats: 16 } });
     clock.tick(2);
     expect(seen[2]).toEqual({ intro: false, lift: false, breakdown: false, ending: true });
     expect(clock.stopped).toBe(true);
@@ -205,7 +205,7 @@ describe('Bandleader song form', () => {
   it('restarting the band resets the form back to intro', () => {
     const { clock, seen, b } = mkSpy();
     clock.tick(0); clock.tick(1);
-    b.set({ dynamics: { ...IDLE_DYNAMICS, silenceBeats: 8 } });
+    b.set({ dynamics: { ...IDLE_DYNAMICS, silenceBeats: 16 } });
     clock.tick(2); // ends and stops
     b.start(120, 0); // restart, as the app does on the singer's next onset
     clock.tick(0);

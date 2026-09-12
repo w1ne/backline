@@ -29,8 +29,9 @@ const INTRO_BARS = 2;
 const HYSTERESIS_BARS = 4;
 const LIFT_INTENSITY = 0.7;
 const BREAKDOWN_INTENSITY = 0.3;
-/** two full 4-beat bars of silence */
-const ENDING_SILENCE_BEATS = 8;
+/** four full 4-beat bars of silence: a singer's breath between phrases is two, and a
+ *  false ending restarts with a count-in, which is far worse than a late one */
+const ENDING_SILENCE_BEATS = 16;
 
 const NO_ARRANGEMENT: Arrangement = { intro: false, lift: false, breakdown: false, ending: false };
 

@@ -71,10 +71,10 @@ describe('SongForm', () => {
     expect(last!.section).toBe('breakdown');
   });
 
-  it('ends after two full bars (8 beats) of silence, past intro', () => {
+  it('ends after four full bars (16 beats) of silence, past intro', () => {
     const form = new SongForm();
     tick(form, 0, 0.5); tick(form, 1, 0.5);
-    const r = tick(form, 2, 0, 8);
+    const r = tick(form, 2, 0, 16);
     expect(r.section).toBe('ending');
     expect(r.arrangement).toEqual({ intro: false, lift: false, breakdown: false, ending: true });
     expect(r.shouldStop).toBe(true);
@@ -106,7 +106,7 @@ describe('SongForm', () => {
   it('goes idle (ended) the tick after the ending bar, and stays idle', () => {
     const form = new SongForm();
     tick(form, 0, 0.5); tick(form, 1, 0.5);
-    tick(form, 2, 0, 8);
+    tick(form, 2, 0, 16);
     const r1 = tick(form, 3, 0.5, 0);
     expect(r1.section).toBe('ended');
     expect(r1.shouldStop).toBe(false);
@@ -117,7 +117,7 @@ describe('SongForm', () => {
   it('reset() returns the form to intro', () => {
     const form = new SongForm();
     tick(form, 0, 0.5); tick(form, 1, 0.5);
-    tick(form, 2, 0, 8);
+    tick(form, 2, 0, 16);
     tick(form, 3, 0.5);
     form.reset();
     const r = tick(form, 0, 0.5);
