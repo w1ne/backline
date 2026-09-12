@@ -85,6 +85,29 @@ describe('Listener.setMicMuted', () => {
   });
 });
 
+describe('Listener voice tempo', () => {
+  const syllables = (beatBpm: number, beatsN: number) => {
+    const p = 60 / beatBpm, out: number[] = [];
+    for (let i = 0; i < beatsN; i++) { out.push(1 + i * p); if (i % 2 === 1) out.push(1 + i * p + p / 2); }
+    return out;
+  };
+  it('folds a singer\'s syllable rate to the beat, but not a MIDI player\'s', async () => {
+    const mic = new Fake(); const lm = new Listener([mic], ['mic']); await lm.start();
+    syllables(87, 20).forEach(t => mic.note(-1, 0.8, t));
+    expect(Math.abs(lm.input.bpm! - 87)).toBeLessThan(2);
+    const midi = new Fake(); const lk = new Listener([midi], ['midi']); await lk.start();
+    syllables(87, 20).forEach(t => midi.note(60, 0.8, t));
+    expect(Math.abs(lk.input.bpm! - 174)).toBeLessThan(3);
+  });
+  it('a held sung note weighs in the key by how long it is held', async () => {
+    const a = new Fake(); let now = 0; const l = new Listener([a], ['mic'], () => now); await l.start();
+    // A F G B A held half a second each, frames every 50 ms: locks A minor from coverage
+    // (the correlation alone would not, see keyDetector.test.ts)
+    for (const midi of [69, 77, 79, 71, 69]) for (let i = 0; i < 10; i++) { now += 0.05; a.pitch!({ midi, cents: 0, stable: true }); }
+    expect(l.input.key).toEqual({ root: 9, mode: 'minor' });
+  });
+});
+
 describe('Listener continuous pitch', () => {
   it('exposes the stable pitch and folds new stable notes into notesNow/keyDetector', async () => {
     const a = new Fake();
