@@ -350,6 +350,12 @@ function wireBand(b: BandEngine): void {
     const increased = s.loops > store.state.loops;
     store.update({ loops: s.loops, loopsUpdatedAt: increased ? Date.now() : store.state.loopsUpdatedAt });
   };
+  if (b instanceof AceStepEngine) {
+    // rendered audio has no note events: every enabled part is playing once blocks arrive
+    b.onActive = parts => {
+      if (band === b) store.update({ activeParts: parts });
+    };
+  }
   if (b instanceof AmtEngine) {
     b.onChord = (chord, fromBeat) => {
       planChord = chord;

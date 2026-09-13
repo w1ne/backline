@@ -130,6 +130,9 @@ export class AceStepEngine implements BandEngine {
   onError?: (msg: string) => void;
   onFirstBlock?: () => void;
   onStats?: (s: { loops: number; starvedSec: number }) => void;
+  onStatus?: (message: string, latencyMs?: number) => void;
+  /** which band parts are audible right now (rendered audio: every enabled part, once playing) */
+  onActive?: (parts: Partial<Record<Instrument, boolean>>) => void;
   private gotFirstBlock = false;
 
   private state: BandState = {
@@ -400,6 +403,16 @@ export class AceStepEngine implements BandEngine {
       try {
         const msg = JSON.parse(ev.data);
         if (msg.type === 'error') this.onError?.(`ACE: ${msg.message}`);
+        if (msg.type === 'done' && typeof msg.hum_s === 'number') {
+          const heard = Math.round(msg.hum_s);
+          const need = Math.round(msg.hum_needed_s ?? 0);
+          this.onStatus?.(
+            msg.following ? `Following your voice · ${heard} s heard`
+              : heard >= need && need > 0 ? 'Voice heard · following from the next segment'
+              : `Listening · ${heard} / ${need} s of your voice`,
+            msg.ms > 0 ? Math.round(msg.ms) : undefined,
+          );
+        }
       } catch {
         // ignore malformed control messages
       }
@@ -417,6 +430,7 @@ export class AceStepEngine implements BandEngine {
         this.gotFirstBlock = true;
         this.onFirstBlock?.();
       }
+      this.onActive?.({ ...this.state.enabled });
       this.nextBlockAt += this.blockSeconds;
       this.requestBlock();
     } catch (err) {

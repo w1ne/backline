@@ -133,7 +133,7 @@ class SongModeTest(unittest.TestCase):
 
         async def run():
             session = server.Session(Model())
-            for seq in range(1, 11):  # 16-bar segment = 8 two-bar blocks, so block 9 re-renders
+            for seq in range(1, 11):  # 8-bar segment = 4 two-bar blocks, so blocks 5 and 9 re-render
                 await session.handle_block(dict(seq=seq, bpm=120, bars=2, key='C major',
                                                 instruments=['drums', 'bass']), send_binary, send_json)
             return session
@@ -144,10 +144,10 @@ class SongModeTest(unittest.TestCase):
              patch.object(server.os, 'unlink'):
             asyncio.run(run())
 
-        self.assertEqual([p.task_type for p in requests], ['text2music', 'repaint'])
-        self.assertEqual(requests[0].audio_duration, 32)          # 16 bars at 120 bpm
+        self.assertEqual([p.task_type for p in requests], ['text2music', 'repaint', 'repaint'])
+        self.assertEqual(requests[0].audio_duration, 16)          # 8 bars at 120 bpm
         self.assertEqual(requests[1].repainting_start, server.CONTEXT_MAX_SECONDS)
-        self.assertEqual(requests[1].audio_duration, server.CONTEXT_MAX_SECONDS + 32)
+        self.assertEqual(requests[1].audio_duration, server.CONTEXT_MAX_SECONDS + 16)
         self.assertEqual(requests[0].seed, requests[1].seed)
         self.assertEqual(len(packets), 10)
         for packet in packets:
@@ -157,7 +157,7 @@ class SongModeTest(unittest.TestCase):
         b2 = np.frombuffer(packets[1][4:], dtype='<i2')[::2]
         self.assertLess(b1.mean(), b2.mean())
         self.assertLessEqual(abs(int(b2[0]) - int(b1[-1])), 2)
-        self.assertEqual(len(sleeps), 8)  # every sliced block was paced
+        self.assertEqual(len(sleeps), 7)  # every sliced block was paced
 
 
 class SongModeFollowsSwitchesTest(unittest.TestCase):
@@ -251,7 +251,7 @@ class VoiceFollowingTest(unittest.TestCase):
             self.assertEqual(len(session.hum), 0)
             msg = dict(bpm=120, bars=2, key='C major', instruments=['drums', 'bass'])
             await session.handle_block(dict(seq=1, **msg), nothing, nothing)   # nothing sung yet
-            # 32 s of singing = one 16-bar segment at 120 bpm
+            # 32 s of singing = two 8-bar segments at 120 bpm
             pcm = (np.zeros(32 * server.HUM_SR, dtype='<i2')).tobytes()
             for i in range(0, len(pcm), 8000):
                 session.ingest_audio(server.HUM_MAGIC + pcm[i:i + 8000])
@@ -266,9 +266,9 @@ class VoiceFollowingTest(unittest.TestCase):
 
         self.assertEqual([p.task_type for p in requests], ['text2music', 'cover'])
         self.assertEqual(requests[1].audio_cover_strength, server.creativity_to_cover_strength(0.5))
-        self.assertEqual(requests[1].audio_duration, 32)
+        self.assertEqual(requests[1].audio_duration, 16)
         self.assertIsNone(requests[1].repainting_start)
-        self.assertEqual(written[-1], ((32 * server.HUM_SR, 1), server.HUM_SR))
+        self.assertEqual(written[-1], ((16 * server.HUM_SR, 1), server.HUM_SR))
 
 
 class ControlsReachAceTest(unittest.TestCase):

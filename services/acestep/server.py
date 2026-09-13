@@ -81,7 +81,9 @@ CONTEXT_MAX_SECONDS = float(os.environ.get("ACE_CONTEXT_MAX_SECONDS", "12"))
 # CONTEXT_MAX_SECONDS as context. One coherent arrangement instead of a new 2-bar idea
 # every request; the client protocol (2-bar blocks) is unchanged.
 SONG_MODE = os.environ.get("ACE_SONG_MODE", "0").lower() in ("1", "true", "yes")
-SONG_SEGMENT_BARS = int(os.environ.get("ACE_SONG_SEGMENT_BARS", "16"))
+# 8 bars: the band re-voices what you sang ~20 s ago instead of ~40 s ago, and a style or
+# key change lands within one segment. Canvas stays >= 10 s (ACE's minimum) up to ~190 bpm.
+SONG_SEGMENT_BARS = int(os.environ.get("ACE_SONG_SEGMENT_BARS", "8"))
 # how far ahead of the block's due time a sliced block may be sent (gives the client
 # a buffer to ride out a 2-5 s re-render)
 SONG_PACE_LEAD_SECONDS = 3.0
@@ -493,6 +495,7 @@ class Session:
         self.song_blocks_served = 0
         # what the current segment was rendered with; a change re-renders at the next block
         self.song_prompt_key: Optional[tuple] = None
+        self.song_task: Optional[str] = None
         # the player's voice, 16 kHz mono float32, most recent HUM_MAX_SECONDS
         self.hum = np.zeros(0, dtype=np.float32)
 
@@ -500,6 +503,8 @@ class Session:
         if not data.startswith(HUM_MAGIC):
             return
         pcm = np.frombuffer(data[len(HUM_MAGIC):], dtype="<i2").astype(np.float32) / 32768.0
+        if len(self.hum) == 0:
+            log.info("first mic frame from this client (%d samples)", len(pcm))
         keep = int(HUM_MAX_SECONDS * HUM_SR)
         self.hum = np.concatenate([self.hum, pcm])[-keep:]
 
@@ -723,6 +728,7 @@ async def _run_song_block(self: "Session", msg: dict, seq: int, bpm: int, key: s
                  task, SONG_SEGMENT_BARS, bpm, key, len(self.hum) / HUM_SR, (time.monotonic() - t0) * 1000.0)
         self.song = audio
         self.song_prompt_key = prompt_key
+        self.song_task = task
         self.song_pos = 0
         self.song_t0 = time.monotonic()
         self.song_blocks_served = 0
@@ -743,7 +749,14 @@ async def _run_song_block(self: "Session", msg: dict, seq: int, bpm: int, key: s
     self.prev_audio = block.copy() if self.prev_audio is None else np.concatenate([self.prev_audio, block])[-keep:]
     header = struct.pack("<I", seq)
     await send_binary(header + float_to_pcm16(block))
-    await send_json({"type": "done", "seq": seq, "ms": elapsed_ms})
+    await send_json({
+        "type": "done", "seq": seq, "ms": elapsed_ms,
+        # how the band is being driven right now, for the UI: seconds of voice heard, how many
+        # a segment needs, and whether the current segment is a cover of the singing
+        "hum_s": round(len(self.hum) / HUM_SR, 1),
+        "hum_needed_s": round(SONG_SEGMENT_BARS * 240.0 / bpm, 1),
+        "following": self.song_task == "cover",
+    })
 
 
 Session._run_song_block = _run_song_block
