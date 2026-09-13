@@ -14,4 +14,4 @@
 - [x] Review spec compliance, then code quality with an independent subagent. Resolve findings and rerun relevant tests.
 - [x] Run all AMT tests plus web/Pi builds as applicable. Create reproducible matched musical examples and a short validation report. Merge main without overwriting concurrent work, deploy verified backend when idle, confirm health and real generation (deployment tracked below). Public/Pi need no rebuild for backend-only behavior unless integration changes require it.
 
-Deployment: local validation complete; publication and live verification in progress.
+Deployment procedure: publish the verified merge to main, await web CI, update the idle Pi through its transactional updater, then restart and verify the RunPod service. Record live results in the user handoff.
