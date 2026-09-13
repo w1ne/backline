@@ -225,13 +225,15 @@ async function handleMe(req: Request, env: Env): Promise<Response> {
 // them. What keeps the upstream keys from being a free API for the whole
 // internet is (a) an Origin allowlist, which browsers set on every WebSocket
 // upgrade and scripts cannot forge from another page, and (b) a per-IP cap on
-// how many upgrades one caller may open per minute.
+// how many upgrades one caller may open per minute. Twenty: a client that
+// reconnects with backoff after a blip, plus an old build that still reopens
+// the socket on every tempo step, has to fit under it for a whole set.
 //
 // The counter lives in the isolate, so it is per-colo and resets on eviction.
 // That is deliberate: it is a cheap brake on runaway clients, not a billing
 // guarantee, and it costs no storage round-trip on the hot path.
 
-const UPGRADE_LIMIT = 6;
+const UPGRADE_LIMIT = 20;
 const UPGRADE_WINDOW_MS = 60_000;
 const upgradeHits = new Map<string, number[]>();
 
@@ -274,7 +276,9 @@ export function guardUpgrade(req: Request, env: Env): Response | null {
   }
   const ip = req.headers.get("cf-connecting-ip") ?? "unknown";
   if (!allowUpgrade(ip)) {
-    return new Response("too many requests", { status: 429, headers: { "Retry-After": "60" } });
+    return new Response(`too many requests: at most ${UPGRADE_LIMIT} websocket upgrades per minute per IP`, {
+      status: 429, headers: { "Retry-After": "60" },
+    });
   }
   return null;
 }

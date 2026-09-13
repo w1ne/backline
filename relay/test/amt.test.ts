@@ -48,19 +48,21 @@ describe("handleAmt", () => {
     expect(await resp.text()).toBe("amt upstream not configured");
   });
 
-  it("returns 429 on the seventh upgrade from one IP within a minute", async () => {
+  it("returns 429 on the twenty-first upgrade from one IP within a minute, and says what the cap is", async () => {
     const env = baseEnv(); // 503 means the request passed the gate
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 20; i++) {
       const resp = await handleAmt(upgradeRequest(), env);
       expect(resp.status).toBe(503);
     }
-    const seventh = await handleAmt(upgradeRequest(), env);
-    expect(seventh.status).toBe(429);
+    const over = await handleAmt(upgradeRequest(), env);
+    expect(over.status).toBe(429);
+    expect(over.headers.get("Retry-After")).toBe("60");
+    expect(await over.text()).toBe("too many requests: at most 20 websocket upgrades per minute per IP");
   });
 
   it("counts the cap per client IP, not globally", async () => {
     const env = baseEnv();
-    for (let i = 0; i < 6; i++) await handleAmt(upgradeRequest(), env);
+    for (let i = 0; i < 20; i++) await handleAmt(upgradeRequest(), env);
     const other = await handleAmt(upgradeRequest({ "cf-connecting-ip": "198.51.100.4" }), env);
     expect(other.status).toBe(503);
   });
