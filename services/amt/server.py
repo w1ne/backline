@@ -31,6 +31,7 @@ from typing import Optional
 
 import torch
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse
 import uvicorn
 
 # bench/amt/ lives two directories up from this file (repo_root/bench/amt),
@@ -57,6 +58,7 @@ from cached import cached_generate  # noqa: E402
 from brain import HarmonyBrain, sampling_for  # noqa: E402
 from performance_history import PerformanceHistory  # noqa: E402
 from instruments import resolve as resolve_instruments, TOGGLEABLE_PRESETS, DEFAULT_PRESETS  # noqa: E402,F401
+from readiness import health_response  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("amt-server")
@@ -85,25 +87,55 @@ app = FastAPI()
 inference_lock = asyncio.Lock()
 _model = None
 _device = None
+_load_error = None
+_load_task: Optional[asyncio.Task] = None
 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok" if _model is not None else "loading", "model": MODEL_NAME, "device": _device, "sampler": SAMPLER}
+    # Readiness, not liveness: 503 `loading` until the model is in memory, 503 `error` if the
+    # load failed, so the relay/watchdog/deploy can tell a slow pod from a broken one.
+    code, body = health_response(_model is not None, _load_error, MODEL_NAME, _device, SAMPLER)
+    return JSONResponse(body, status_code=code)
 
 
 def load_model():
-    global _model, _device
+    global _model, _device, _load_error
     if _model is not None:
         return _model
     _device = "cuda" if torch.cuda.is_available() else "cpu"
     log.info("loading %s on %s ...", MODEL_NAME, _device)
-    from transformers import AutoModelForCausalLM
+    try:
+        from transformers import AutoModelForCausalLM
 
-    _model = AutoModelForCausalLM.from_pretrained(MODEL_NAME).to(_device)
-    _model.eval()
+        model = AutoModelForCausalLM.from_pretrained(MODEL_NAME).to(_device)
+        model.eval()
+    except Exception as error:
+        _load_error = error
+        log.exception("model load failed")
+        raise
+    _model = model
+    _load_error = None
     log.info("model loaded")
     return _model
+
+
+@app.on_event("startup")
+async def load_model_at_start():
+    """Load at process start, in a thread, so /health can answer 503 `loading` meanwhile and the
+    first WebSocket no longer pays the ~4 s load under the inference lock."""
+    global _load_task
+    _load_task = asyncio.create_task(asyncio.to_thread(load_model))
+
+
+async def model_ready():
+    """The loaded model; awaits the startup load (or starts one when the app is run without it)."""
+    global _load_task
+    if _model is not None:
+        return _model
+    if _load_task is None or (_load_task.done() and _load_task.exception() is not None):
+        _load_task = asyncio.create_task(asyncio.to_thread(load_model))
+    return await asyncio.shield(_load_task)
 
 
 class ChordInference:
@@ -412,13 +444,12 @@ async def websocket_endpoint(websocket: WebSocket):
     from live_session import LatestPlanner, InputOverflow
 
     await websocket.accept()
-    async with inference_lock:
-        loading = asyncio.create_task(asyncio.to_thread(load_model))
-        try:
-            model = await asyncio.shield(loading)
-        except asyncio.CancelledError:
-            await loading
-            raise
+    try:
+        model = await model_ready()
+    except Exception as error:
+        await websocket.send_text(json.dumps({"type": "error", "message": f"model not ready: {error}"}))
+        await websocket.close(code=1013)
+        return
     send_lock = asyncio.Lock()
 
     async def send(msg):

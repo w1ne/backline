@@ -16,7 +16,10 @@
 #   AMT_PORT      18081
 #   RELAY_BASE    https://backline-relay.shylenkoa.workers.dev
 #   RESTART_WAIT_S 60   (seconds to wait after restarting a session before re-checking health)
+#   RESTART_GRACE_S 180 (seconds after a restart during which the watchdog only observes: the
+#                        model takes a while to load and /health says 503 "loading" meanwhile)
 #   LOG_FILE      ~/backline-watchdog.log
+#   STATE_FILE    ~/.backline-watchdog-restarted-at  (epoch seconds of the last restart)
 set -euo pipefail
 
 POD_HOST="${POD_HOST:-root@103.196.86.81}"
@@ -24,7 +27,9 @@ POD_SSH_PORT="${POD_SSH_PORT:-34907}"
 AMT_PORT="${AMT_PORT:-18081}"
 RELAY_BASE="${RELAY_BASE:-https://backline-relay.shylenkoa.workers.dev}"
 RESTART_WAIT_S="${RESTART_WAIT_S:-60}"
+RESTART_GRACE_S="${RESTART_GRACE_S:-180}"
 LOG_FILE="${LOG_FILE:-$HOME/backline-watchdog.log}"
+STATE_FILE="${STATE_FILE:-$HOME/.backline-watchdog-restarted-at}"
 
 ssh_pod() {
   ssh -p "$POD_SSH_PORT" "$POD_HOST" "$@"
@@ -45,7 +50,32 @@ if [ "$amt_ok" = "true" ] && [ "$acestep_ok" = "true" ]; then
   exit 0
 fi
 
+# A pod whose /health is 503 is up and loading its model: not ready, not broken. Leave it.
+if echo "$health_json" | grep -q '"amtState":"loading"'; then
+  log "amt loading (503), not restarting: ${health_json}"
+  amt_ok="true"
+fi
+if echo "$health_json" | grep -q '"acestepState":"loading"'; then
+  log "acestep loading (503), not restarting: ${health_json}"
+  acestep_ok="true"
+fi
+if [ "$amt_ok" = "true" ] && [ "$acestep_ok" = "true" ]; then
+  exit 0
+fi
+
+# After a restart the service needs time to load before /health can go green; another restart
+# inside that window would only reset the clock.
+if [ -f "$STATE_FILE" ]; then
+  last_restart="$(cat "$STATE_FILE" 2>/dev/null || echo 0)"
+  since=$(( $(date +%s) - ${last_restart:-0} ))
+  if [ "$since" -lt "$RESTART_GRACE_S" ]; then
+    log "unhealthy but restarted ${since}s ago (< ${RESTART_GRACE_S}s grace), waiting: ${health_json}"
+    exit 0
+  fi
+fi
+
 log "unhealthy: ${health_json}"
+date +%s > "$STATE_FILE"
 
 if [ "$amt_ok" != "true" ]; then
   log "restarting amt tmux session"
