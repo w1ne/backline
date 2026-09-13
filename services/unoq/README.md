@@ -20,6 +20,14 @@ first-time setup done once in Arduino App Lab (board name, password, Wi-Fi is op
 Manual run on the board: `arduino-app-cli app restart /home/arduino/ArduinoApps/duet-hearts`,
 logs with `arduino-app-cli app logs /home/arduino/ArduinoApps/duet-hearts`.
 
+The sketch also provides `demo(seconds)` for a 156 BPM hearts-and-sparkles preview.
+`demo(0)` cancels it; durations from 1 to 3600 seconds automatically return to the latest
+band state. The normal status poller continues updating that state during the preview.
+
+On early UNO Q firmware, avoid `sinf`, `expf` and `fmodf`: the compiler can link them,
+but the dynamic sketch loader cannot resolve them. This renderer uses exported `sin`
+and arithmetic phase/decay calculations instead.
+
 ## Tests
 
 `python3 -m unittest discover -s services/unoq/python -p 'test_*.py'`
