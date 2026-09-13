@@ -370,7 +370,11 @@ function wireBand(b: BandEngine): void {
 /** Arms the 8s connect/first-block watchdog for `engine`'s band `b`. If it fails to connect or
  *  produce a first block in time (or errors out sooner), stops it and starts Patterns in its
  *  place at the same bpm. Returns a disposer to call once the engine is confirmed healthy or the
- *  band is torn down for another reason. */
+ *  band is torn down for another reason.
+ *
+ *  After `settle()` the error hook stays as the terminal fallback only: the AMT engine now keeps a
+ *  dropped socket to itself and reconnects with backoff for up to 20 s (resuming the session), so
+ *  an error that reaches here mid-set is one it has already given up on, not a blip. */
 function armFallback(engine: EngineChoice, b: BandEngine): () => void {
   const fallback = chooseFallback(engine, '');
   if (!fallback) return () => {};
@@ -387,6 +391,7 @@ function armFallback(engine: EngineChoice, b: BandEngine): () => void {
 
   const timer = setTimeout(() => trigger('timeout'), FALLBACK_TIMEOUT_MS);
 
+  // The engine's own onError (status + message) runs first; the fallback decision follows.
   const userOnError = b.onError;
   b.onFirstBlock = settle;
   // AMT is allowed to listen before producing notes; an open socket establishes

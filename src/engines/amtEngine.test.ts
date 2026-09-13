@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { AmtEngine } from './amtEngine';
 import type { ClockLike } from '../band/clockTypes';
 import type { Instrument, NoteEvent } from '../types';
@@ -850,5 +850,165 @@ describe('AmtEngine round-trip estimate', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('AmtEngine reconnect', () => {
+  let now = 0;
+  const nowFn = () => now;
+  beforeEach(() => { FakeWebSocket.instances = []; now = 0; vi.useFakeTimers(); });
+  afterEach(() => vi.useRealTimers());
+
+  function mk() {
+    const players = new FakePlayers();
+    const clock = new FakeClock();
+    const engine = new AmtEngine(players, new FakeNoteSource(), clock, nowFn, nowFn);
+    const error = vi.fn(); engine.onError = error;
+    return { players, clock, engine, error };
+  }
+
+  it('reopens the socket with backoff after a drop, resends start with resume and the last set, and never reports an error', async () => {
+    const { engine, clock, error } = mk();
+    engine.set({ creativity: .9 });
+    engine.setEnabled('keys', true);
+    await engine.start(120, 0);
+    const ws1 = startedSocket(); ws1.open();
+    ws1.receiveJson({ type: 'ready', tick: true, setBpm: true });
+    expect(ws1.sent[0]).toEqual(expect.objectContaining({ type: 'start', bpm: 120 }));
+    expect(ws1.sent[0]).not.toHaveProperty('resume');
+
+    ws1.emit('close', { reason: 'gone' });
+    ws1.emit('error', {});
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    // A cue while the socket is down is dropped, not queued behind the reconnect.
+    clock.tick(1, 2);
+    vi.advanceTimersByTime(499);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    const ws2 = startedSocket();
+    ws2.open();
+    expect(ws2.sent[0]).toEqual(expect.objectContaining({ type: 'start', bpm: 120, resume: true }));
+    expect(ws2.sent).toContainEqual(expect.objectContaining({ type: 'set', creativity: .9 }));
+    expect(ws2.sent.some(m => ['tick', 'bar'].includes((m as { type: string }).type))).toBe(false);
+    ws2.receiveJson({ type: 'ready', tick: true, setBpm: true });
+    clock.tick(2, 4);
+    expect(ws2.sent.at(-1)).toEqual(expect.objectContaining({ type: 'tick', beat: 8 }));
+    ws2.receiveJson({ type: 'plan', notes: [] });
+    vi.advanceTimersByTime(30000);
+    expect(error).not.toHaveBeenCalled();
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    engine.stop();
+  });
+
+  it('gives up and reports the error once the 20 s budget is spent when every attempt fails', async () => {
+    const { engine, error } = mk();
+    await engine.start(120, 0);
+    const ws1 = startedSocket(); ws1.open();
+    ws1.emit('close', { reason: '1006' });
+    let seen = 1;
+    const failNewSockets = () => {
+      while (FakeWebSocket.instances.length > seen) {
+        const ws = FakeWebSocket.instances[seen++];
+        ws.emit('error', {});
+        ws.emit('close', { reason: '' });
+      }
+    };
+    for (let t = 0; t < 10000; t += 100) { vi.advanceTimersByTime(100); failNewSockets(); }
+    expect(error).not.toHaveBeenCalled();
+    for (let t = 10000; t < 20000; t += 100) { vi.advanceTimersByTime(100); failNewSockets(); }
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(error.mock.calls[0][0]).toMatch(/^AMT: (closed|connection error)/);
+    // 0.5 + 1 + 2 + 4 + 8 s: five attempts after the original socket.
+    expect(FakeWebSocket.instances).toHaveLength(6);
+    vi.advanceTimersByTime(60000);
+    expect(FakeWebSocket.instances).toHaveLength(6);
+    expect(error).toHaveBeenCalledTimes(1);
+    engine.stop();
+  });
+
+  it('closes an attempt that never opens and keeps the give-up inside the budget', async () => {
+    const { engine, error } = mk();
+    await engine.start(120, 0);
+    startedSocket().open();
+    startedSocket().emit('close', { reason: '' });
+    vi.advanceTimersByTime(20000);
+    expect(error).toHaveBeenCalledTimes(1);
+    engine.stop();
+  });
+
+  it('reports a socket that fails before it ever opened straight away', async () => {
+    const { engine, error } = mk();
+    await engine.start(120, 0);
+    startedSocket().emit('close', { reason: '' });
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    engine.stop();
+  });
+
+  it('does not reconnect after stop', async () => {
+    const { engine, error } = mk();
+    await engine.start(120, 0);
+    startedSocket().open();
+    engine.stop();
+    vi.advanceTimersByTime(30000);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(error).not.toHaveBeenCalled();
+  });
+});
+
+describe('AmtEngine tempo change', () => {
+  let now = 0;
+  const nowFn = () => now;
+  beforeEach(() => { FakeWebSocket.instances = []; now = 0; });
+
+  function mk() {
+    const players = new FakePlayers();
+    const clock = new FakeClock();
+    const engine = new AmtEngine(players, new FakeNoteSource(), clock, nowFn, nowFn);
+    return { players, clock, engine };
+  }
+  type Sent = { type: string; bpm?: number; beat?: number };
+
+  it('sends set {bpm} at the next downbeat instead of reconnecting when the server can take it', async () => {
+    const { engine, clock, players } = mk();
+    engine.setEnabled('keys', true);
+    await engine.start(120, 0);
+    const ws = startedSocket(); ws.open();
+    ws.receiveJson({ type: 'ready', tick: true, setBpm: true });
+    clock.tick(0, 0);
+    now = 1;
+    engine.setBpm(100);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(clock.bpm).toBe(100);
+    expect(ws.closed).toBe(false);
+    // Not applied until the bar line, like the clock.
+    expect((ws.sent as Sent[]).some(m => m.type === 'set' && m.bpm === 100)).toBe(false);
+    now = 2;
+    clock.tick(1, 2);
+    const setAt = (ws.sent as Sent[]).findIndex(m => m.type === 'set' && m.bpm === 100);
+    const tickAt = (ws.sent as Sent[]).findIndex(m => m.type === 'tick' && m.beat === 4);
+    expect(setAt).toBeGreaterThan(-1);
+    expect(tickAt).toBeGreaterThan(setAt);
+    expect(engine.changeLatencyMs).toBeCloseTo(1200);
+    // The beat grid stays continuous: beat 6 is two beats past the bar-1 downbeat at 100 bpm.
+    ws.receiveJson({ type: 'plan', notes: [{ beat: 6, pitch: 60, dur: 1, vel: .5, voice: 'keys' }] });
+    expect(players.calls[0]).toMatchObject({ barStart: 2, bpm: 100 });
+    expect(players.calls[0].events[0].time).toBeCloseTo(2);
+    engine.stop();
+  });
+
+  it('still reconnects for a tempo change against a server without setBpm', async () => {
+    const { engine } = mk();
+    await engine.start(120, 0);
+    const ws = startedSocket(); ws.open();
+    ws.receiveJson({ type: 'ready', tick: true });
+    engine.setBpm(100);
+    expect(ws.closed).toBe(true);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    startedSocket().open();
+    expect(startedSocket().sent[0]).toEqual(expect.objectContaining({ type: 'start', bpm: 100 }));
+    expect(startedSocket().sent[0]).not.toHaveProperty('resume');
+    engine.stop();
   });
 });

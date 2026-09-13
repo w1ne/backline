@@ -30,6 +30,13 @@ const MIN_LEAD_SEC = 0.02;
 const DEDUPE_WINDOW_BEATS = 32;
 /** Upper bound on how often a `set` frame goes out, however fast the store churns. */
 const SET_THROTTLE_MS = 250;
+/** Reconnect after a dropped socket: wait these long between attempts (the last one repeats),
+ *  give up once the next attempt would start past the budget. A pod restart or a network blip
+ *  then costs a couple of bars; it used to cost the rest of the set. */
+const RECONNECT_DELAYS_MS = [500, 1000, 2000, 4000, 8000];
+const RECONNECT_BUDGET_MS = 20_000;
+/** A reconnect attempt that has neither opened nor closed by then is abandoned for the next. */
+const CONNECT_ATTEMPT_MS = 5_000;
 
 function keyString(k: Key): string {
   return `${KEY_NAMES[k.root]} ${k.mode === 'major' ? 'major' : 'minor'}`;
@@ -109,6 +116,16 @@ export class AmtEngine implements BandEngine {
    *  then (and against an older server, forever) the engine cues with `bar` once a bar. */
   private tickCapable = false;
   private performanceCapable = false;
+  /** Set by `ready {setBpm:true}`: the server rescales its session on `set {bpm}`, so a tempo
+   *  change is a frame, not a reconnect. An older server still gets the reconnect. */
+  private setBpmCapable = false;
+  /** Tempo waiting for the next downbeat, where the clock applies its own (see ToneClock). */
+  private pendingBpm?: number;
+  /** Reconnect bookkeeping: wall time of the drop that started it, attempts made, timers. */
+  private reconnectSince?: number;
+  private reconnectAttempt = 0;
+  private reconnectTimer?: ReturnType<typeof setTimeout>;
+  private attemptTimer?: ReturnType<typeof setTimeout>;
   private cueId = 0;
   private latestCaptureTimeSec?: number;
   private releaseBuf: { id: string; dur: number; captureTimeSec: number }[] = [];
@@ -187,42 +204,13 @@ export class AmtEngine implements BandEngine {
     this.cueSentAt.clear();
     this.lastPlanCueId = undefined;
     this.rttMs = undefined;
-    // A fresh socket means a fresh server session, so nothing has been told to it yet.
-    this.lastSetPayload = undefined;
-    this.lastSetAt = 0;
-
-    const wsUrl = RELAY_URL.replace(/^http/, 'ws') + '/amt';
-    const ws = this.ws = new WebSocket(wsUrl);
-    ws.addEventListener('open', () => {
-      if (this.ws !== ws || this.stopping) return;
-      this.send({
-        type: 'start',
-        bpm: this.bpm,
-        key: keyString(this.state.key),
-        genre: this.state.genre,
-        lookaheadBeats: LOOKAHEAD_BEATS,
-        commitBeats: COMMIT_BEATS,
-        listenBeats: LISTEN_BEATS,
-        enabledRoles: { keys: this.state.enabled.keys, bass: this.state.enabled.bass, lead: this.state.enabled.lead },
-        accompInstruments: this.effectiveAccompPresets,
-        accompBias: this.accompBias,
-      });
-      this.queueSet();
-      this.flushSet();
-      this.onConnected?.();
-    });
-    ws.addEventListener('message', ev => { if (this.ws === ws && !this.stopping) this.onMessage(ev); });
-    ws.addEventListener('error', () => {
-      if (this.ws !== ws || this.stopping) return;
-      this.onError?.('AMT: connection error');
-    });
-    ws.addEventListener('close', ev => {
-      if (this.ws !== ws || this.stopping) return;
-      this.onError?.(`AMT: closed${ev.reason ? ` (${ev.reason})` : ''}`);
-    });
+    this.pendingBpm = undefined;
+    this.clearReconnect();
+    this.connect(false);
 
     this.clock.onBar((bar, time) => {
       if (bar === 0) this.firstBarAt = time;
+      if (this.pendingBpm !== undefined) this.applyBpm(this.pendingBpm, bar, time);
       this.bar = bar;
       this.onBar?.(bar);
       this.cue(bar, bar * BEATS_PER_BAR);
@@ -281,8 +269,106 @@ export class AmtEngine implements BandEngine {
     this.commitPollTimer = setInterval(() => this.scheduleDue(), NOTE_BATCH_MS);
   }
 
+  /** Opens the socket and, once it is up, tells the server where the set stands: `start`
+   *  (flagged `resume` on a reconnect so the server listens two beats, not eight) and the
+   *  full `set`. Every socket starts a fresh server session, so nothing is assumed told. */
+  private connect(resume: boolean): void {
+    this.lastSetPayload = undefined;
+    this.lastSetAt = 0;
+    this.tickCapable = false;
+    this.performanceCapable = false;
+    this.setBpmCapable = false;
+    this.cueSentAt.clear();
+    this.lastPlanCueId = undefined;
+    clearTimeout(this.responseTimer);
+    this.responseTimer = undefined;
+
+    const wsUrl = RELAY_URL.replace(/^http/, 'ws') + '/amt';
+    const ws = this.ws = new WebSocket(wsUrl);
+    let opened = false;
+    if (resume) {
+      // Leave the attempt room inside what is left of the budget, so the give-up is on time.
+      const left = RECONNECT_BUDGET_MS - (Date.now() - (this.reconnectSince ?? Date.now()));
+      this.attemptTimer = setTimeout(() => {
+        this.attemptTimer = undefined;
+        if (this.ws === ws && !opened) ws.close();
+      }, Math.max(0, Math.min(CONNECT_ATTEMPT_MS, left)));
+    }
+    const dropped = (reason: string) => {
+      if (this.ws !== ws || this.stopping) return;
+      this.ws = undefined;
+      clearTimeout(this.attemptTimer);
+      this.attemptTimer = undefined;
+      // The first socket failing to open at all is a connectivity failure the app decides
+      // about (it falls back to Patterns); a drop after that, or a failed retry, is retried.
+      if (!opened && !resume) {
+        this.onError?.(reason);
+        return;
+      }
+      this.scheduleReconnect(reason);
+    };
+    ws.addEventListener('open', () => {
+      if (this.ws !== ws || this.stopping) return;
+      opened = true;
+      clearTimeout(this.attemptTimer);
+      this.attemptTimer = undefined;
+      this.clearReconnect();
+      this.send({
+        type: 'start',
+        bpm: this.bpm,
+        key: keyString(this.state.key),
+        genre: this.state.genre,
+        lookaheadBeats: LOOKAHEAD_BEATS,
+        commitBeats: COMMIT_BEATS,
+        listenBeats: LISTEN_BEATS,
+        enabledRoles: { keys: this.state.enabled.keys, bass: this.state.enabled.bass, lead: this.state.enabled.lead },
+        accompInstruments: this.effectiveAccompPresets,
+        accompBias: this.accompBias,
+        ...(resume ? { resume: true } : {}),
+      });
+      this.queueSet();
+      this.flushSet();
+      if (resume) this.onStatus?.('Listening');
+      this.onConnected?.();
+    });
+    ws.addEventListener('message', ev => { if (this.ws === ws && !this.stopping) this.onMessage(ev); });
+    ws.addEventListener('error', () => dropped('AMT: connection error'));
+    ws.addEventListener('close', ev => dropped(`AMT: closed${ev.reason ? ` (${ev.reason})` : ''}`));
+  }
+
+  /** Backoff: 0.5, 1, 2, 4, 8 s between attempts, none starting past `RECONNECT_BUDGET_MS`
+   *  after the drop. Only then is the error reported, and the app decides what to do. */
+  private scheduleReconnect(reason: string): void {
+    const now = Date.now();
+    if (this.reconnectSince === undefined) this.reconnectSince = now;
+    const delay = RECONNECT_DELAYS_MS[Math.min(this.reconnectAttempt, RECONNECT_DELAYS_MS.length - 1)];
+    if (now - this.reconnectSince + delay > RECONNECT_BUDGET_MS) {
+      this.clearReconnect();
+      this.onError?.(reason);
+      return;
+    }
+    this.reconnectAttempt++;
+    this.onStatus?.('Reconnecting');
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = undefined;
+      if (this.stopping) return;
+      this.connect(true);
+    }, delay);
+  }
+
+  private clearReconnect(): void {
+    clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = undefined;
+    this.reconnectSince = undefined;
+    this.reconnectAttempt = 0;
+  }
+
   stop(): void {
     this.stopping = true;
+    this.clearReconnect();
+    clearTimeout(this.attemptTimer);
+    this.attemptTimer = undefined;
+    this.pendingBpm = undefined;
     this.responseTimings.clear();
     this.timingFlushPending = false;
     this.onResponseTiming?.(null);
@@ -349,6 +435,7 @@ export class AmtEngine implements BandEngine {
   private queueSet(): void {
     const payload = JSON.stringify({
       type: 'set',
+      bpm: this.bpm,
       genre: this.state.genre,
       key: keyString(this.state.key),
       chord: this.state.chord ? chordName(this.state.chord) : null,
@@ -400,13 +487,31 @@ export class AmtEngine implements BandEngine {
     this.flushSet();
   }
 
+  /** A tempo change. Against a server that takes `set {bpm}` it is applied at the next downbeat,
+   *  together with the clock's own change: the beat grid stays continuous, the server rescales
+   *  its session in place and the socket stays open. An older server, or one not yet heard
+   *  from, gets what this always did: a new socket and a new session. */
   setBpm(bpm: number): void {
-    if (bpm === this.bpm) return;
+    if (bpm === this.bpm || bpm === this.pendingBpm) return;
+    if (this.setBpmCapable && this.ws?.readyState === WebSocket.OPEN) {
+      this.pendingBpm = bpm;
+      this.clock.setBpm(bpm);
+      return;
+    }
     const firstBarAt = this.now() + 0.1;
     this.stop();
     this.start(bpm, firstBarAt).catch(err => {
       this.onError?.(`AMT: ${err instanceof Error ? err.message : String(err)}`);
     });
+  }
+
+  /** Re-anchors the beat grid so that beat `bar * 4` is exactly at `time` under the new tempo,
+   *  and queues the `set` that carries it; the cue that follows flushes it first. */
+  private applyBpm(bpm: number, bar: number, time: number): void {
+    this.pendingBpm = undefined;
+    this.bpm = bpm;
+    this.firstBarAt = time - (bar * BEATS_PER_BAR * 60) / bpm;
+    this.queueSet();
   }
 
   /** Current absolute beat position (fractional), used to decide which plan notes are
@@ -602,6 +707,7 @@ export class AmtEngine implements BandEngine {
     if (msg.type === 'ready') {
       this.tickCapable = msg.tick === true;
       this.performanceCapable = msg.performanceEvents === true;
+      this.setBpmCapable = msg.setBpm === true;
       this.flushNotes();
       return;
     }
