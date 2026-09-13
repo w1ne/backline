@@ -24,7 +24,7 @@ import { MicSource } from './listener/micSource';
 import { Players } from './players/players';
 import { PATTERNS } from './patterns';
 import { INSTRUMENTS, IDLE_DYNAMICS } from './types';
-import type { AccompPreset, Chord } from './types';
+import type { AccompPreset, Chord, Instrument } from './types';
 import { GM_INSTRUMENTS } from './players/gmInstruments';
 import { mod12 } from './music/pitchClass';
 
