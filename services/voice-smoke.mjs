@@ -147,7 +147,7 @@ try {
   // Never contact a production relay, paid inference service, or sample CDN.
   await cdp.send('Fetch.enable', {patterns: [{urlPattern: '*', requestStage: 'Request'}]});
   cdp.on(msg => {
-    if (msg.method === 'Runtime.exceptionThrown') evidence.browserErrors.push(msg.params.exceptionDetails.text);
+    if (msg.method === 'Runtime.exceptionThrown') evidence.browserErrors.push((msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text).slice(0, 300));
     if (msg.method === 'Fetch.requestPaused') {
       const {requestId, request} = msg.params;
       const local = request.url.startsWith(origin + '/') || /^(data:|blob:)/.test(request.url);
@@ -178,6 +178,9 @@ try {
     await cdp.send('Input.dispatchMouseEvent', {type:'mousePressed', ...point, button:'left', clickCount:1});
     await cdp.send('Input.dispatchMouseEvent', {type:'mouseReleased', ...point, button:'left', clickCount:1});
   };
+  // The gate exercises the note-following (AMT) path against its fake relay; ACE-Step is the
+  // app's default engine, so pick AMT explicitly the way a player would on the panel.
+  await evaluate("__backline.actions.setEngine('amt')");
   if (await evaluate('__backline.store.state.enabled.drums')) await click('[data-inst="drums"]');
   await click('#enable-audio');
   // Twenty real seconds covers two-bar count-in, AMT listening and the old false ending.

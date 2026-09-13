@@ -281,3 +281,12 @@ describe('Bandleader song form', () => {
     expect(seen[3]).toEqual({ intro: true, lift: false, breakdown: false, ending: false });
   });
 });
+
+describe('set with undefined fields', () => {
+  it('keeps the current key when an engine switch passes key: undefined', () => {
+    const { b } = mk();
+    b.set({ genre: 'lofi', creativity: 0.5, key: undefined });
+    expect(() => b.chordAtBeat(0)).not.toThrow();
+    expect(b.chordAtBeat(0).root).toBe(0);
+  });
+});
