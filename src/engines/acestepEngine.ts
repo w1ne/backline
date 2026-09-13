@@ -112,6 +112,9 @@ interface BlockRequest {
   fill: boolean;
   /** how full the band should sound, 0 (sparse) .. 1 (busy); server maps to energy words */
   density: number;
+  /** the user's own on/off toggles, before dynamics thin them out: song mode arranges for
+   *  these and only re-renders when *they* change, not when the player gets busy */
+  enabled: Instrument[];
 }
 
 /** Streams bar-quantized blocks from the ACE-Step service and schedules them back-to-back
@@ -349,6 +352,7 @@ export class AceStepEngine implements BandEngine {
       space: this.state.dynamics.space,
       fill: sel.fill,
       density: sel.density,
+      enabled: (Object.keys(this.state.enabled) as Instrument[]).filter(i => this.state.enabled[i]),
     };
     this.send(req);
   }

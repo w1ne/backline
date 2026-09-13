@@ -605,7 +605,10 @@ async def _run_song_block(self: "Session", msg: dict, seq: int, bpm: int, key: s
     if needs_restart:
         self.song = None
         self.prev_audio = None
-    instruments = msg.get("instruments", ["drums", "bass"])
+    # Song mode arranges for everything the user switched on ("enabled"); the per-block
+    # dynamics-thinned "instruments" list would otherwise re-render the song every time the
+    # player got busy or left space.
+    instruments = msg.get("enabled") or msg.get("instruments", ["drums", "bass"])
     prompt_key = (msg.get("genre", "lofi"), tuple(sorted(instruments)), msg.get("player_instrument"))
     if self.song is not None and self.song_prompt_key is not None and prompt_key != self.song_prompt_key:
         # style or instrument switch: drop the rest of this segment and re-render from here,

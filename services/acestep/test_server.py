@@ -203,6 +203,17 @@ class SongModeFollowsSwitchesTest(unittest.TestCase):
         self.assertEqual(requests[1].repainting_start, 2 * 4.8)   # 9.6 s already heard as context
         self.assertEqual(len(packets), 5)
 
+    def test_dynamics_thinning_the_instruments_does_not_re_render_but_a_toggle_does(self):
+        base = dict(bpm=100, key='A minor', genre='lofi', enabled=['drums', 'bass', 'keys'])
+        requests, _ = self.drive([
+            dict(base, instruments=['drums', 'bass', 'keys']),
+            dict(base, instruments=['drums', 'bass']),                 # busy player: keys thinned out
+            dict(base, instruments=['drums', 'bass', 'keys', 'lead']), # space: lead fill
+            dict(base, enabled=['drums', 'bass'], instruments=['drums', 'bass']),  # user switched keys off
+        ])
+        self.assertEqual([p.task_type for p in requests], ['text2music', 'repaint'])
+        self.assertNotIn('electric piano', requests[1].prompt.lower())
+
     def test_key_change_or_large_tempo_change_starts_a_fresh_song(self):
         base = dict(bpm=100, key='A minor', genre='lofi', instruments=['drums', 'bass'])
         requests, _ = self.drive([base, dict(base, key='C major'), dict(base, key='C major', bpm=125)])
