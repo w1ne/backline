@@ -1,8 +1,11 @@
 import type { Chord, ChordQuality, Key } from '../types';
 import { scaleOf } from './scales';
-import { mod12, NOTE_NAMES } from './pitchClass';
+import { mod12, NOTE_NAMES, MODE_FAMILY } from './pitchClass';
 
-/** Semitone offsets from the chord root, per quality. */
+/** Semitone offsets from the chord root, per quality. Order matters beyond just "which
+ *  pitches": {@link chordScale} reads index 1/2/3 positionally as the third/fifth/seventh, so
+ *  any quality that has a real third/fifth/seventh must keep them in those slots — extensions
+ *  (a 9th, say) belong after, at index 4+, never inserted earlier. */
 export const QUALITY_TONES: Record<ChordQuality, number[]> = {
   maj: [0, 4, 7],
   min: [0, 3, 7],
@@ -11,6 +14,14 @@ export const QUALITY_TONES: Record<ChordQuality, number[]> = {
   maj7: [0, 4, 7, 11],
   sus4: [0, 5, 7],
   dim: [0, 3, 6],
+  maj6: [0, 4, 7, 9],
+  min6: [0, 3, 7, 9],
+  dom9: [0, 4, 7, 10, 2],
+  maj9: [0, 4, 7, 11, 2],
+  min9: [0, 3, 7, 10, 2],
+  add9: [0, 4, 7, 2],
+  dim7: [0, 3, 6, 9],
+  aug: [0, 4, 8],
 };
 
 export const QUALITIES = Object.keys(QUALITY_TONES) as ChordQuality[];
@@ -23,9 +34,18 @@ const SUFFIX: Record<ChordQuality, string> = {
   maj7: 'maj7',
   sus4: 'sus4',
   dim: 'dim',
+  maj6: '6',
+  min6: 'm6',
+  dom9: '9',
+  maj9: 'maj9',
+  min9: 'm9',
+  add9: 'add9',
+  dim7: 'dim7',
+  aug: 'aug',
 };
 
-export const chordName = (c: Chord): string => NOTE_NAMES[mod12(c.root)] + SUFFIX[c.quality];
+export const chordName = (c: Chord): string =>
+  NOTE_NAMES[mod12(c.root)] + SUFFIX[c.quality] + (c.bass != null ? `/${NOTE_NAMES[mod12(c.bass)]}` : '');
 
 export const chordTones = (c: Chord): number[] => QUALITY_TONES[c.quality].map(t => mod12(c.root + t));
 
@@ -33,18 +53,26 @@ export const chordTones = (c: Chord): number[] => QUALITY_TONES[c.quality].map(t
  *  Returns null for anything else (unknown root, unknown suffix, garbage), so callers
  *  can ignore unrecognized values from an external source safely. */
 export function parseChordName(name: string): Chord | null {
+  const [main, bassName] = name.split('/');
   const rootIndex = [...NOTE_NAMES.keys()]
-    .filter(i => name.startsWith(NOTE_NAMES[i]))
+    .filter(i => main.startsWith(NOTE_NAMES[i]))
     .sort((a, b) => NOTE_NAMES[b].length - NOTE_NAMES[a].length)[0];
   if (rootIndex === undefined) return null;
-  const suffix = name.slice(NOTE_NAMES[rootIndex].length);
+  const suffix = main.slice(NOTE_NAMES[rootIndex].length);
   const quality = QUALITIES.find(q => SUFFIX[q] === suffix);
   if (quality === undefined) return null;
-  return { root: rootIndex, quality };
+  if (bassName === undefined) return { root: rootIndex, quality };
+  const bassIndex = [...NOTE_NAMES.keys()]
+    .filter(i => bassName.startsWith(NOTE_NAMES[i]))
+    .sort((a, b) => NOTE_NAMES[b].length - NOTE_NAMES[a].length)[0];
+  return bassIndex === undefined ? { root: rootIndex, quality } : { root: rootIndex, quality, bass: bassIndex };
 }
 
 /** The chord the band falls back to when nothing is being played: the key's tonic triad. */
-export const tonicTriad = (k: Key): Chord => ({ root: k.root, quality: k.mode === 'major' ? 'maj' : 'min' });
+export const tonicTriad = (k: Key): Chord => ({ root: k.root, quality: MODE_FAMILY[k.mode] === 'major' ? 'maj' : 'min' });
+
+export const sameChord = (a: Chord | null, b: Chord | null): boolean =>
+  a === b || (!!a && !!b && a.root === b.root && a.quality === b.quality && a.bass === b.bass);
 
 /**
  * The seven scale degrees the patterns play over `chord`, as semitone offsets from the chord

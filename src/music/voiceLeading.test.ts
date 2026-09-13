@@ -37,6 +37,14 @@ describe('voiceLead', () => {
     expect(pcs).toEqual(new Set([0, 4, 7, 11]));
   });
 
+  it('caps a 9th chord (5 tones) at 4 voices, all of them real chord tones', () => {
+    const v = voiceLead(null, chord(0, 'dom9'), RANGE);
+    expect(v).toHaveLength(4);
+    expect(new Set(v).size).toBe(4);
+    const pcs = v.map(n => ((n % 12) + 12) % 12);
+    for (const pc of pcs) expect([0, 4, 7, 10, 2]).toContain(pc); // root, 3rd, 5th, b7, 9th
+  });
+
   it('respects an explicit voices override', () => {
     const v = voiceLead(null, chord(0, 'maj'), { ...RANGE, voices: 4 });
     expect(v).toHaveLength(4);

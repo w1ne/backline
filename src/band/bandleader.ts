@@ -1,6 +1,6 @@
 import type { BandState, Chord, Genre, Instrument, NoteEvent, Pattern } from '../types';
 import { INSTRUMENTS, IDLE_DYNAMICS, DRUM } from '../types';
-import { tonicTriad } from '../music/chords';
+import { sameChord, tonicTriad } from '../music/chords';
 import { colorChord } from '../music/chordColor';
 import { mulberry32 } from '../rng';
 import type { ClockLike } from './clockTypes';
@@ -105,7 +105,7 @@ export class Bandleader {
       last.chord = chord;
       return;
     }
-    if (last && last.chord.root === chord.root && last.chord.quality === chord.quality) return;
+    if (last && sameChord(last.chord, chord)) return;
     this.chordLog.push({ beat, chord });
     if (this.chordLog.length > CHORD_LOG_MAX) this.chordLog.shift();
   }

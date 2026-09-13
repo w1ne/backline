@@ -1,8 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 const m = vi.hoisted(() => ({gain:vi.fn(), frequency:vi.fn(), oscillator:vi.fn()}));
 vi.mock('tone',()=>({
- Gain:class {gain={rampTo:m.gain};toDestination(){return this;}dispose(){}},
+ Gain:class {gain={rampTo:m.gain};toDestination(){return this;}connect(){return this;}disconnect(){return this;}dispose(){}},
  Oscillator:class {frequency={rampTo:m.frequency};constructor(options:unknown){m.oscillator(options);}connect(){return this;}start(){return this;}dispose(){}},
+ connect:(src:{connect:(d:unknown)=>unknown},dst:unknown)=>src.connect(dst),
 }));
 import { Drone } from './drone';
 describe('continuous drone',()=>{

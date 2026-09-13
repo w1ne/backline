@@ -1,12 +1,12 @@
 import type { Chord, Key } from '../types';
 import { scaleOf } from '../music/scales';
-import { mod12 } from '../music/pitchClass';
-import { QUALITIES, chordTones } from '../music/chords';
+import { mod12, MODE_FAMILY } from '../music/pitchClass';
+import { QUALITIES, chordTones, sameChord } from '../music/chords';
 import { DEFAULT_TUNING, type ChordTuning } from './tuning';
 
 /** Chord theory now lives in src/music/chords.ts; these re-exports stay for one release so
  *  existing imports (and the benches) keep resolving. Import from '../music/chords' instead. */
-export { QUALITY_TONES, chordName, chordTones, parseChordName, tonicTriad, chordScale, chordDegreeToMidi } from '../music/chords';
+export { QUALITY_TONES, chordName, chordTones, parseChordName, tonicTriad, chordScale, chordDegreeToMidi, sameChord } from '../music/chords';
 
 /** Notes at or below this MIDI number count 1.5x — the bass note names the chord. */
 const BASS_MAX_MIDI = 55; // G3
@@ -46,6 +46,27 @@ export interface ChordReading extends Chord {
   confidence: number;
 }
 
+/** Pitch class of the lowest note currently sounding in the bass register (at/below
+ *  {@link BASS_MAX_MIDI}) within the window, or null when nothing down there is active. */
+function lowestBassPc(notes: TimedNote[], now: number, windowSec: number): number | null {
+  let lowest: number | null = null;
+  for (const n of notes) {
+    const age = now - n.t;
+    if (age < 0 || age >= windowSec || n.midi > BASS_MAX_MIDI) continue;
+    if (lowest === null || n.midi < lowest) lowest = n.midi;
+  }
+  return lowest === null ? null : mod12(lowest);
+}
+
+/** Marks `chord` as a slash chord when the lowest bass note is one of its own tones but not
+ *  the root — a genuine inversion. A bass note outside the chord's tones is left alone: that's
+ *  an approach note or the start of a chord change, not a deliberate inversion. */
+function withBass(chord: Chord, notes: TimedNote[], now: number, windowSec: number): Chord {
+  const bass = lowestBassPc(notes, now, windowSec);
+  if (bass === null || bass === mod12(chord.root) || !chordTones(chord).includes(bass)) return chord;
+  return { ...chord, bass };
+}
+
 /**
  * Cosine similarity between the pitch-class weights and a 0/1 chord template, minus the
  * share of the energy that lands on non-chord tones. Cosine (rather than a plain dot
@@ -72,7 +93,7 @@ export function scoreChord(weights: number[], chord: Chord): number {
   return Math.max(0, cos - OFF_CHORD_PENALTY * (off / total));
 }
 
-/** Best-scoring of the 84 templates (7 qualities x 12 roots). */
+/** Best-scoring of the templates (one per quality x 12 roots). */
 export function bestChord(weights: number[]): ChordReading {
   let best: ChordReading = { root: 0, quality: 'maj', confidence: 0 };
   for (let root = 0; root < 12; root++) {
@@ -83,9 +104,6 @@ export function bestChord(weights: number[]): ChordReading {
   }
   return best;
 }
-
-export const sameChord = (a: Chord | null, b: Chord | null): boolean =>
-  a === b || (!!a && !!b && a.root === b.root && a.quality === b.quality);
 
 /**
  * Rolling chord estimate over the notes the player just played.
@@ -161,7 +179,7 @@ export class ChordDetector {
       this.current = best;
     }
 
-    if (this.current) return { root: this.current.root, quality: this.current.quality };
+    if (this.current) return withBass({ root: this.current.root, quality: this.current.quality }, this.notes, nowSec, this.windowSec);
     if (!key) return null;
     // A single voice never fills a triad template, so harmonize the melody instead.
     this.melody = harmonizeMelody(w, key, this.melody, this.tuning);
@@ -178,7 +196,10 @@ export class ChordDetector {
 /** The six diatonic triads of `key` the band may sit on, tonic first, then by harmonic weight. */
 export function diatonicTriads(key: Key): Chord[] {
   const scale = scaleOf(key);
-  const order = key.mode === 'major' ? [0, 4, 3, 5, 1, 2] : [0, 4, 5, 3, 6, 2];
+  // Harmonic-centrality ranking of scale degrees (tonic first); shared within a mode's
+  // major/minor family since the functional roles (which degree acts as "the dominant", etc.)
+  // carry over even though a mode's own chord qualities differ (e.g. Mixolydian's v is minor).
+  const order = MODE_FAMILY[key.mode] === 'major' ? [0, 4, 3, 5, 1, 2] : [0, 4, 5, 3, 6, 2];
   return order.map(deg => {
     const root = scale[deg];
     const third = mod12(scale[(deg + 2) % 7] - root);

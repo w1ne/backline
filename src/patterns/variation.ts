@@ -1,7 +1,7 @@
 import { mulberry32 } from '../rng';
 import type { Arrangement, BarContext, Instrument, NoteEvent, Pattern } from '../types';
 import { DRUM } from '../types';
-import { chordDegreeToMidi, chordScale } from '../music/chords';
+import { chordDegreeToMidi, chordScale, sameChord } from '../music/chords';
 import { chordAt } from './toolkit';
 
 /** Where a bar sits in the song's 4-bar phrase / 8-bar section structure. Pure function of
@@ -76,9 +76,17 @@ export function bassApproachNote(ctx: BarContext, octave: number): NoteEvent[] {
   if (ctx.creativity <= 0) return [];
   const nowChord = chordAt(ctx, 3.5);
   const nextChord = chordAt(ctx, 4);
-  if (nowChord.root === nextChord.root && nowChord.quality === nextChord.quality) return [];
+  if (sameChord(nowChord, nextChord)) return [];
   if (ctx.rng() >= Math.min(1, ctx.creativity + 0.3)) return [];
-  const target = chordDegreeToMidi(ctx.key, nextChord, 0, octave);
+  const rootTarget = chordDegreeToMidi(ctx.key, nextChord, 0, octave);
+  // A slash chord's approach note leads into the note that's actually sounding underneath,
+  // not the chord's root — nearest instance of that pitch class to the root's octave.
+  const bassShift = ((): number => {
+    if (nextChord.bass == null) return 0;
+    const diff = (((nextChord.bass - nextChord.root) % 12) + 12) % 12;
+    return diff > 6 ? diff - 12 : diff;
+  })();
+  const target = rootTarget + bassShift;
   const below = ctx.rng() < 0.5 ? target - 1 : target - 2;
   return [{ time: 3.75, note: below, duration: 0.25, velocity: 0.75 }];
 }

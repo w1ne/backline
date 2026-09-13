@@ -23,8 +23,24 @@ interface Voice {
   dispose(): void;
 }
 
-function sampled(ctx: AudioContext, def: SoundDef): Voice {
-  const opts = { destination: ctx.destination, volume: 75 };
+/** Reverb send level into the shared plate bus, once connected. */
+export const MONITOR_REVERB_SEND = 0.15;
+
+/** A plain destination `AudioNode` wired into the band's master chain (dry) and reverb send,
+ *  for handing to a smplr instrument, which writes to a raw AudioNode, not a Tone one. */
+function routedDestination(ctx: AudioContext, masterInput: Tone.ToneAudioNode | AudioNode, reverbBus: Tone.ToneAudioNode | AudioNode): AudioNode {
+  const node = ctx.createGain();
+  Tone.connect(node, masterInput);
+  const send = ctx.createGain();
+  send.gain.value = MONITOR_REVERB_SEND;
+  node.connect(send);
+  Tone.connect(send, reverbBus);
+  return node;
+}
+
+function sampled(ctx: AudioContext, def: SoundDef, reverbBus?: Tone.ToneAudioNode | AudioNode, masterInput?: Tone.ToneAudioNode | AudioNode): Voice {
+  const destination = masterInput && reverbBus ? routedDestination(ctx, masterInput, reverbBus) : ctx.destination;
+  const opts = { destination, volume: 75 };
   const inst =
     def.kind === 'grand'
       ? SplendidGrandPiano(ctx, PI_EDITION ? { ...opts, baseUrl: `${import.meta.env.BASE_URL}samples/grand`, formats: ['ogg'] } : opts)
@@ -43,7 +59,7 @@ function sampled(ctx: AudioContext, def: SoundDef): Voice {
   };
 }
 
-function synth(id = 'synth'): Voice {
+function synth(id = 'synth', reverbBus?: Tone.ToneAudioNode | AudioNode, masterInput?: Tone.ToneAudioNode | AudioNode): Voice {
   const soft = id === 'synth_soft';
   const bell = id === 'synth_bell';
   const pluck = id === 'synth_pluck';
@@ -52,7 +68,15 @@ function synth(id = 'synth'): Voice {
     oscillator: { type: soft || bell ? 'sine' : pluck || pad ? 'triangle' : id === 'synth_square' ? 'square' : 'fatsawtooth', count: 3, spread: 20 },
     envelope: { attack: pad ? 0.2 : 0.01, decay: bell ? 1.2 : pluck ? 0.18 : 0.2, sustain: bell || pluck ? 0 : 0.5, release: pad ? 1.2 : 0.4 },
     volume: -10,
-  }).toDestination();
+  });
+  if (masterInput && reverbBus) {
+    Tone.connect(s, masterInput);
+    const send = new Tone.Gain(MONITOR_REVERB_SEND);
+    s.connect(send);
+    Tone.connect(send, reverbBus);
+  } else {
+    s.toDestination();
+  }
   const f = (n: number) => Tone.Frequency(n, 'midi').toFrequency();
   return {
     noteOn: (n, v) => s.triggerAttack(f(n), Tone.immediate(), v),
@@ -82,6 +106,8 @@ export class MidiMonitor {
   constructor(
     private ctx: AudioContext,
     private sound: MonitorSound = DEFAULT_SOUND,
+    private reverbBus?: Tone.ToneAudioNode | AudioNode,
+    private masterInput?: Tone.ToneAudioNode | AudioNode,
   ) {}
 
   async start() {
@@ -124,7 +150,7 @@ export class MidiMonitor {
     let voice = this.voices.get(sound);
     if (!voice) {
       const def = soundDef(sound);
-      voice = def.kind === 'synth' ? synth(def.id) : sampled(this.ctx, def);
+      voice = def.kind === 'synth' ? synth(def.id, this.reverbBus, this.masterInput) : sampled(this.ctx, def, this.reverbBus, this.masterInput);
       this.voices.set(sound, voice);
     }
     return voice;

@@ -5,6 +5,7 @@ import {
   chordDegreeToMidi,
   chordName,
   chordScale,
+  diatonicTriads,
   parseChordName,
   pitchClassWeights,
   chordTones,
@@ -89,6 +90,27 @@ describe('ChordDetector', () => {
     expect(chordName(d.tick(t, C_MAJOR)!)).toBe('C');
   });
 
+  it('recognizes a slash chord: a low bass note that is one of the chord\'s own tones', () => {
+    const d = make();
+    // C major triad over a low G (43 = G2, well under the bass register cutoff).
+    const t = play(d, [43, 60, 64, 67], 0, 12);
+    // A hair before the cycle's own length re-lands exactly on the window edge, which would
+    // otherwise exclude one of the four notes on a knife's edge; step back to give it margin.
+    const chord = d.tick(t - 0.2, C_MAJOR)!;
+    expect(chordName(chord)).toBe('C/G');
+    expect(chord).toEqual({ root: 0, quality: 'maj', bass: 7 });
+  });
+
+  it('ignores a low note outside the chord\'s tones -- that\'s noise, not a deliberate inversion', () => {
+    const d = make();
+    // C major triad over a low F# (42 = F#2) -- not a tone of any quality that also wants
+    // this window's real major third, so the winning template stays a plain C major.
+    const t = play(d, [42, 60, 64, 67], 0, 12);
+    const chord = d.tick(t - 0.2, C_MAJOR)!;
+    expect(chordName(chord)).toBe('C');
+    expect(chord.bass).toBeUndefined();
+  });
+
   it('falls back to the key tonic triad before anything has settled', () => {
     const d = make();
     expect(d.tick(0, A_MINOR)).toEqual({ root: 9, quality: 'min' });
@@ -117,6 +139,22 @@ describe('ChordDetector', () => {
       }
     }
     expect(seen).toEqual(['C', 'C', 'F', 'F', 'G', 'G']);
+  });
+});
+
+describe('tonicTriad', () => {
+  it('is minor for Dorian and major for Mixolydian, matching each mode\'s own 1-3-5', () => {
+    expect(tonicTriad({ root: 0, mode: 'dorian' })).toEqual({ root: 0, quality: 'min' });
+    expect(tonicTriad({ root: 0, mode: 'mixolydian' })).toEqual({ root: 0, quality: 'maj' });
+  });
+});
+
+describe('diatonicTriads', () => {
+  it('gives Dorian a major IV and Mixolydian a minor v, the modes\' signature chords', () => {
+    const dorianIV = diatonicTriads({ root: 0, mode: 'dorian' }).find(c => c.root === 5);
+    expect(dorianIV).toEqual({ root: 5, quality: 'maj' });
+    const mixoV = diatonicTriads({ root: 0, mode: 'mixolydian' }).find(c => c.root === 7);
+    expect(mixoV).toEqual({ root: 7, quality: 'min' });
   });
 });
 
@@ -160,6 +198,14 @@ describe('chordName', () => {
   it('names every quality', () => {
     expect(['maj', 'min', 'dom7', 'min7', 'maj7', 'sus4', 'dim'].map(q => chordName({ root: 9, quality: q } as Chord)))
       .toEqual(['A', 'Am', 'A7', 'Am7', 'Amaj7', 'Asus4', 'Adim']);
+  });
+
+  it('appends a /bass suffix for a slash chord, and round-trips through parseChordName', () => {
+    const slash: Chord = { root: 0, quality: 'maj', bass: 7 };
+    expect(chordName(slash)).toBe('C/G');
+    expect(parseChordName('C/G')).toEqual(slash);
+    // a plain chord's name has no slash and still round-trips with no `bass` key at all
+    expect(parseChordName('Am7')).toEqual({ root: 9, quality: 'min7' });
   });
 });
 

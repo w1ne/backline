@@ -10,10 +10,14 @@ export type AccompPreset = 'strings' | 'violin' | 'guitar' | 'sax' | 'brass' | '
  *  valid server-side but not surfaced in the UI. */
 export const ACCOMP_ROW: AccompPreset[] = ['sax', 'strings', 'orchestral', 'ambient'];
 
-export interface Key { root: number; mode: 'major' | 'minor' } // root 0=C … 11=B
+export interface Key { root: number; mode: 'major' | 'minor' | 'dorian' | 'mixolydian' } // root 0=C … 11=B
 
-export type ChordQuality = 'maj' | 'min' | 'dom7' | 'min7' | 'maj7' | 'sus4' | 'dim';
-export interface Chord { root: number; quality: ChordQuality } // root 0=C … 11=B
+export type ChordQuality =
+  | 'maj' | 'min' | 'dom7' | 'min7' | 'maj7' | 'sus4' | 'dim'
+  | 'maj6' | 'min6' | 'dom9' | 'maj9' | 'min9' | 'add9' | 'dim7' | 'aug';
+/** `bass`, when present, is the pitch class (0-11) actually sounding underneath the chord,
+ *  when it differs from `root` — an inversion/slash chord (e.g. C major over a G bass). */
+export interface Chord { root: number; quality: ChordQuality; bass?: number } // root/bass 0=C … 11=B
 
 /** How the player is playing right now, measured per beat by the ActivityTracker. */
 export interface Dynamics {

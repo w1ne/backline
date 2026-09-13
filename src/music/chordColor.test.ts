@@ -17,17 +17,17 @@ describe('colorChord', () => {
   });
 
   describe('jazz', () => {
-    it('gives I and IV maj7', () => {
-      expect(colorChord(c(0, 'maj'), 'jazz', CMAJ)).toEqual(c(0, 'maj7')); // I
+    it('gives the tonic maj6 (a "landing" color) and IV maj7', () => {
+      expect(colorChord(c(0, 'maj'), 'jazz', CMAJ)).toEqual(c(0, 'maj6')); // I
       expect(colorChord(c(5, 'maj'), 'jazz', CMAJ)).toEqual(c(5, 'maj7')); // IV
     });
-    it('gives ii, iii, vi min7', () => {
-      expect(colorChord(c(2, 'min'), 'jazz', CMAJ)).toEqual(c(2, 'min7')); // ii
+    it('gives ii min9 (the front half of a ii-V), and iii/vi min7', () => {
+      expect(colorChord(c(2, 'min'), 'jazz', CMAJ)).toEqual(c(2, 'min9')); // ii
       expect(colorChord(c(4, 'min'), 'jazz', CMAJ)).toEqual(c(4, 'min7')); // iii
       expect(colorChord(c(9, 'min'), 'jazz', CMAJ)).toEqual(c(9, 'min7')); // vi
     });
-    it('gives V dom7', () => {
-      expect(colorChord(c(7, 'maj'), 'jazz', CMAJ)).toEqual(c(7, 'dom7')); // V
+    it('gives V dom9', () => {
+      expect(colorChord(c(7, 'maj'), 'jazz', CMAJ)).toEqual(c(7, 'dom9')); // V
     });
     it('works the same way relative to a minor key', () => {
       expect(colorChord(c(9, 'min'), 'jazz', AMIN)).toEqual(c(9, 'min7')); // i of A minor
@@ -36,17 +36,17 @@ describe('colorChord', () => {
   });
 
   describe('lofi', () => {
-    it('gives every major diatonic triad a maj7 and every minor one a min7', () => {
-      expect(colorChord(c(0, 'maj'), 'lofi', CMAJ)).toEqual(c(0, 'maj7'));
-      expect(colorChord(c(2, 'min'), 'lofi', CMAJ)).toEqual(c(2, 'min7'));
-      expect(colorChord(c(4, 'min'), 'lofi', CMAJ)).toEqual(c(4, 'min7'));
-      expect(colorChord(c(5, 'maj'), 'lofi', CMAJ)).toEqual(c(5, 'maj7'));
-      expect(colorChord(c(7, 'maj'), 'lofi', CMAJ)).toEqual(c(7, 'maj7'));
-      expect(colorChord(c(9, 'min'), 'lofi', CMAJ)).toEqual(c(9, 'min7'));
+    it('gives every major diatonic triad a maj9 and every minor one a min9', () => {
+      expect(colorChord(c(0, 'maj'), 'lofi', CMAJ)).toEqual(c(0, 'maj9'));
+      expect(colorChord(c(2, 'min'), 'lofi', CMAJ)).toEqual(c(2, 'min9'));
+      expect(colorChord(c(4, 'min'), 'lofi', CMAJ)).toEqual(c(4, 'min9'));
+      expect(colorChord(c(5, 'maj'), 'lofi', CMAJ)).toEqual(c(5, 'maj9'));
+      expect(colorChord(c(7, 'maj'), 'lofi', CMAJ)).toEqual(c(7, 'maj9'));
+      expect(colorChord(c(9, 'min'), 'lofi', CMAJ)).toEqual(c(9, 'min9'));
     });
     it('works in a minor key too', () => {
-      expect(colorChord(c(9, 'min'), 'lofi', AMIN)).toEqual(c(9, 'min7'));
-      expect(colorChord(c(0, 'maj'), 'lofi', AMIN)).toEqual(c(0, 'maj7'));
+      expect(colorChord(c(9, 'min'), 'lofi', AMIN)).toEqual(c(9, 'min9'));
+      expect(colorChord(c(0, 'maj'), 'lofi', AMIN)).toEqual(c(0, 'maj9'));
     });
   });
 
@@ -54,8 +54,8 @@ describe('colorChord', () => {
     it('keeps a minor tonic minor: Am in A minor becomes Am7, never A7', () => {
       expect(colorChord(c(9, 'min'), 'funk', { root: 9, mode: 'minor' })).toEqual(c(9, 'min7'));
     });
-    it('gives I and IV dom7', () => {
-      expect(colorChord(c(0, 'maj'), 'funk', CMAJ)).toEqual(c(0, 'dom7')); // I
+    it('gives the tonic vamp a dom9 (P-Funk/Meters-style "one") and IV a plain dom7', () => {
+      expect(colorChord(c(0, 'maj'), 'funk', CMAJ)).toEqual(c(0, 'dom9')); // I
       expect(colorChord(c(5, 'maj'), 'funk', CMAJ)).toEqual(c(5, 'dom7')); // IV
     });
     it('gives minor chords min7', () => {
@@ -83,13 +83,13 @@ describe('colorChord', () => {
       }
     });
     it("is unaffected when source is 'midi' or omitted", () => {
-      expect(colorChord(c(0, 'maj'), 'lofi', CMAJ, 'midi')).toEqual(c(0, 'maj7'));
-      expect(colorChord(c(0, 'maj'), 'lofi', CMAJ)).toEqual(c(0, 'maj7'));
+      expect(colorChord(c(0, 'maj'), 'lofi', CMAJ, 'midi')).toEqual(c(0, 'maj9'));
+      expect(colorChord(c(0, 'maj'), 'lofi', CMAJ)).toEqual(c(0, 'maj9'));
     });
   });
 
   describe('only produces qualities from the ChordQuality union', () => {
-    const ALLOWED = new Set(['maj', 'min', 'dom7', 'min7', 'maj7', 'sus4', 'dim']);
+    const ALLOWED = new Set(['maj', 'min', 'dom7', 'min7', 'maj7', 'sus4', 'dim', 'maj6', 'dom9', 'min9', 'maj9']);
     it('across every diatonic degree, key and genre', () => {
       for (const key of [CMAJ, AMIN]) {
         const scale = key.mode === 'major' ? [0, 2, 4, 5, 7, 9, 11] : [0, 2, 3, 5, 7, 8, 10];

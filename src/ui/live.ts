@@ -1,6 +1,6 @@
 import { GM_INSTRUMENTS } from '../players/gmInstruments';
 import { GENRES, INSTRUMENTS, ACCOMP_ROW } from '../types';
-import type { AccompPreset, Genre, Instrument } from '../types';
+import type { AccompPreset, Genre, Instrument, Key } from '../types';
 import { SOUNDS, SOUND_GROUPS, type MonitorSound } from '../players/soundCatalog';
 import { keyName, mod12, NOTE_NAMES } from '../music/pitchClass';
 import { chordName } from '../music/chords';
@@ -10,9 +10,11 @@ import type { SourceState } from '../listener/listener';
 import { shortDeviceName } from '../audio/devices';
 import { isPhoneUA } from '../listener/micConstraints';
 
-const ALL_KEYS: { root: number; mode: 'major' | 'minor' }[] = [
+const ALL_KEYS: Key[] = [
   ...NOTE_NAMES.map((_, root) => ({ root, mode: 'major' as const })),
   ...NOTE_NAMES.map((_, root) => ({ root, mode: 'minor' as const })),
+  ...NOTE_NAMES.map((_, root) => ({ root, mode: 'dorian' as const })),
+  ...NOTE_NAMES.map((_, root) => ({ root, mode: 'mixolydian' as const })),
 ];
 
 export interface LiveActions {
@@ -34,7 +36,7 @@ export interface LiveActions {
   /** manual INTENSITY knob — how much the band adds */
   setIntensity?(i: number): void;
   setBpmOverride?(bpm: number | undefined): void;
-  setKeyOverride?(key: { root: number; mode: 'major' | 'minor' } | undefined): void;
+  setKeyOverride?(key: Key | undefined): void;
   /** Registers one tap on the audio clock; once enough taps have landed to apply a tempo
    * (the 4th and later), returns the tapped bpm/downbeat that was just adopted — null otherwise. */
   tap?(): { bpm: number; downbeat: number } | null;
@@ -44,6 +46,8 @@ export interface LiveActions {
   setSound?(s: MonitorSound): void;
   setNoiseVolume?(volume: number): void;
   setDroneVolume?(volume: number): void;
+  /** shift the drone's whole register up or down, in octaves (-2..2) */
+  setDroneOctave?(octave: number): void;
   /** gate the mic out of the listener (onsets/pitch/level); MIDI keeps working */
   setMicMuted?(muted: boolean): void;
   /** monitor the singer's own mic back through the vocal chain — only ever actually
@@ -259,10 +263,7 @@ function skeleton(): string {
             <label for="key">Key</label>
             <select id="key">
               <option value="auto">auto</option>
-              ${ALL_KEYS.map(
-                k =>
-                  `<option value="${k.root}-${k.mode}">${keyName(k)}</option>`,
-              ).join('')}
+              ${ALL_KEYS.map(k => `<option value="${k.root}-${k.mode}">${keyName(k)}</option>`).join('')}
             </select>
           </div>
 
@@ -285,6 +286,7 @@ function skeleton(): string {
           </div>
           <div class="field"><label for="noise-volume">White noise <output id="noise-value"></output></label><input id="noise-volume" type="range" min="0" max="1" step="0.01" /></div>
           <div class="field"><label for="drone-volume">Drone <output id="drone-value"></output></label><input id="drone-volume" type="range" min="0" max="1" step="0.01" /></div>
+          <div class="field"><label for="drone-octave">Drone octave <output id="drone-octave-value"></output></label><input id="drone-octave" type="range" min="-2" max="2" step="1" /></div>
         </div>
         </div>
       </details>
@@ -336,7 +338,7 @@ function wireControls(screen: HTMLElement, store: Store): void {
     if (a.setPlaying) a.setPlaying(store.state.power !== 'on' || store.state.audioSuspended);
     else a.wake();
   });
-  for (const [id, action] of [['noise-volume', 'setNoiseVolume'], ['drone-volume', 'setDroneVolume']] as const) {
+  for (const [id, action] of [['noise-volume', 'setNoiseVolume'], ['drone-volume', 'setDroneVolume'], ['drone-octave', 'setDroneOctave']] as const) {
     const input = screen.querySelector<HTMLInputElement>(`#${id}`)!;
     input.addEventListener('input', () => actions()[action]?.(Number(input.value)));
   }
@@ -462,7 +464,7 @@ function wireControls(screen: HTMLElement, store: Store): void {
       return;
     }
     const [root, mode] = keySelect.value.split('-');
-    actions().setKeyOverride?.({ root: Number(root), mode: mode as 'major' | 'minor' });
+    actions().setKeyOverride?.({ root: Number(root), mode: mode as Key['mode'] });
   });
 
 
@@ -549,6 +551,11 @@ function update(screen: HTMLElement, s: AppState, changeLatencyMs: number): void
     const input = screen.querySelector<HTMLInputElement>(`#${id}-volume`)!;
     if (document.activeElement !== input) input.value = String(value);
     screen.querySelector<HTMLElement>(`#${id}-value`)!.textContent = `${Math.round(value * 100)}%`;
+  }
+  {
+    const input = screen.querySelector<HTMLInputElement>('#drone-octave')!;
+    if (document.activeElement !== input) input.value = String(s.droneOctave);
+    screen.querySelector<HTMLElement>('#drone-octave-value')!.textContent = s.droneOctave > 0 ? `+${s.droneOctave}` : String(s.droneOctave);
   }
   const sound = screen.querySelector<HTMLSelectElement>('#sound')!;
   if (document.activeElement !== sound) sound.value = s.sound;
