@@ -49,6 +49,7 @@ def session_class(generate):
                      resolve_instruments=lambda names: tuple(p for name in names for p in PRESETS.get(name, ())),
                      resolve_groups=lambda names: [PRESETS[name] for name in names if name in PRESETS],
                      generate_duet=generate, parse_events=lambda result: result,
+                     build_prompt=lambda history, *a: (history, 0.0),
                      ops=SimpleNamespace(clip=lambda *a, **kw: [], pad=lambda *a, **kw: []),
                      time=__import__('time'), log=logging.getLogger('test'))
     exec(compile(ast.Module(body=[node, apply_node], type_ignores=[]), 'server.py', 'exec'), namespace)

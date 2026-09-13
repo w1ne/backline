@@ -59,6 +59,7 @@ from brain import HarmonyBrain, sampling_for  # noqa: E402
 from musical_identity import MusicalIdentity
 from performance_history import PerformanceHistory  # noqa: E402
 from instruments import resolve as resolve_instruments, resolve_groups, TOGGLEABLE_PRESETS, DEFAULT_PRESETS  # noqa: E402,F401
+from priming import build_prompt  # noqa: E402
 from readiness import health_response  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -411,8 +412,12 @@ class Session:
         tokens_generated = 0
         result = []
         for group in groups:
+            # Style prime + chord pad live only in the prompt (see priming.py); the
+            # prime moves the live timeline later by `shift_s`.
+            prompt, shift_s = build_prompt(history_before, group, self.key, self.genre, self.chord,
+                                           start_s, end_s, self.beat_s)
             result = generate_duet(
-                self.model, start_s, end_s, history_before, group, self.top_p, self.accomp_bias,
+                self.model, start_s + shift_s, end_s + shift_s, prompt, group, self.top_p, self.accomp_bias,
                 temperature=self.temperature,
                 deadline_s=pass_deadline_s,
                 # The committed voice is monophonic and the app plays to a beat grid, so a
@@ -421,7 +426,7 @@ class Session:
             )
             if SAMPLER == "cached":
                 tokens_generated += getattr(self.model, "amt_sampled_tokens", 0)
-            accomp.extend((t, d, instr, p) for (t, d, instr, p) in parse_events(result) if instr in group)
+            accomp.extend((t - shift_s, d, instr, p) for (t, d, instr, p) in parse_events(result) if instr in group)
         latency_ms = (time.monotonic() - t0) * 1000.0
 
         # Compare on the model's own tick grid: the window bounds are bar lines
