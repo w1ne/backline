@@ -234,7 +234,7 @@ function skeleton(): string {
         <div class="zone zone--orange engine">
           <span class="zone-label">Accompaniment model</span>
           <div class="engine-keys" id="engine-choice">
-            <button type="button" class="engine-key" id="engine-patterns" data-engine="patterns" hidden>
+            <button type="button" class="engine-key" id="engine-patterns" data-engine="patterns">
               <span class="engine-key-text">
                 <span class="engine-key-name">Patterns</span>
               </span>
