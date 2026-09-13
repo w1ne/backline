@@ -46,6 +46,7 @@ from anticipation.vocab import TIME_OFFSET, DUR_OFFSET, MAX_DUR  # noqa: E402
 from amt import (  # noqa: E402
     MELODY_INSTR,
     ACCOMP_BIAS,
+    STRING_ENSEMBLE_ACCOMP_INSTRS,
     make_event,
     parse_events,
     generate_duet,
@@ -125,6 +126,16 @@ def load_model():
         _load_error = error
         log.exception("model load failed")
         raise
+    # Warm-up: the first sampling call on a fresh process costs ~500 ms (CUDA context,
+    # kernel compilation, allocator) against ~50 ms afterwards. With several processes
+    # behind nginx round-robin every new connection used to pay it on its first bar.
+    try:
+        t0 = time.monotonic()
+        generate_duet(model, 0.0, 1.2, [], STRING_ENSEMBLE_ACCOMP_INSTRS, 0.95, ACCOMP_BIAS,
+                      deadline_s=2.0, min_interval_ticks=15)
+        log.info("warm-up generation %.0f ms", (time.monotonic() - t0) * 1000.0)
+    except Exception:
+        log.exception("warm-up generation failed (continuing)")
     _model = model
     _load_error = None
     log.info("model loaded")
