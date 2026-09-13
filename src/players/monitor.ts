@@ -28,9 +28,10 @@ export const MONITOR_REVERB_SEND = 0.15;
 
 /** A plain destination `AudioNode` wired into the band's master chain (dry) and reverb send,
  *  for handing to a smplr instrument, which writes to a raw AudioNode, not a Tone one. */
-function routedDestination(ctx: AudioContext, masterInput: Tone.ToneAudioNode | AudioNode, reverbBus: Tone.ToneAudioNode | AudioNode): AudioNode {
+function routedDestination(ctx: AudioContext, masterInput: Tone.ToneAudioNode | AudioNode, reverbBus: Tone.ToneAudioNode | AudioNode, tap?: AudioNode): AudioNode {
   const node = ctx.createGain();
   Tone.connect(node, masterInput);
+  if (tap) node.connect(tap);
   const send = ctx.createGain();
   send.gain.value = MONITOR_REVERB_SEND;
   node.connect(send);
@@ -38,8 +39,8 @@ function routedDestination(ctx: AudioContext, masterInput: Tone.ToneAudioNode | 
   return node;
 }
 
-function sampled(ctx: AudioContext, def: SoundDef, reverbBus?: Tone.ToneAudioNode | AudioNode, masterInput?: Tone.ToneAudioNode | AudioNode): Voice {
-  const destination = masterInput && reverbBus ? routedDestination(ctx, masterInput, reverbBus) : ctx.destination;
+function sampled(ctx: AudioContext, def: SoundDef, reverbBus?: Tone.ToneAudioNode | AudioNode, masterInput?: Tone.ToneAudioNode | AudioNode, tap?: AudioNode): Voice {
+  const destination = masterInput && reverbBus ? routedDestination(ctx, masterInput, reverbBus, tap) : ctx.destination;
   const opts = { destination, volume: 75 };
   const inst =
     def.kind === 'grand'
@@ -59,7 +60,7 @@ function sampled(ctx: AudioContext, def: SoundDef, reverbBus?: Tone.ToneAudioNod
   };
 }
 
-function synth(id = 'synth', reverbBus?: Tone.ToneAudioNode | AudioNode, masterInput?: Tone.ToneAudioNode | AudioNode): Voice {
+function synth(id = 'synth', reverbBus?: Tone.ToneAudioNode | AudioNode, masterInput?: Tone.ToneAudioNode | AudioNode, tap?: AudioNode): Voice {
   const soft = id === 'synth_soft';
   const bell = id === 'synth_bell';
   const pluck = id === 'synth_pluck';
@@ -69,6 +70,7 @@ function synth(id = 'synth', reverbBus?: Tone.ToneAudioNode | AudioNode, masterI
     envelope: { attack: pad ? 0.2 : 0.01, decay: bell ? 1.2 : pluck ? 0.18 : 0.2, sustain: bell || pluck ? 0 : 0.5, release: pad ? 1.2 : 0.4 },
     volume: -10,
   });
+  if (tap) Tone.connect(s, tap);
   if (masterInput && reverbBus) {
     Tone.connect(s, masterInput);
     const send = new Tone.Gain(MONITOR_REVERB_SEND);
@@ -110,6 +112,26 @@ export class MidiMonitor {
     private masterInput?: Tone.ToneAudioNode | AudioNode,
   ) {}
 
+  private tapNode?: GainNode;
+  private streamDest?: MediaStreamAudioDestinationNode;
+
+  /** A silent side bus every keyboard voice also feeds, so the sound can be captured. */
+  private tap(): AudioNode | undefined {
+    if (!this.tapNode && typeof this.ctx.createGain === 'function') this.tapNode = this.ctx.createGain();
+    return this.tapNode;
+  }
+
+  /** The keyboard sound as a MediaStream, so the band can follow what the player plays the
+   *  same way it follows the mic. Undefined where the context cannot make one. */
+  get stream(): MediaStream | undefined {
+    if (this.streamDest) return this.streamDest.stream;
+    const tap = this.tap();
+    if (!tap || typeof this.ctx.createMediaStreamDestination !== 'function') return undefined;
+    this.streamDest = this.ctx.createMediaStreamDestination();
+    tap.connect(this.streamDest);
+    return this.streamDest.stream;
+  }
+
   async start() {
     const lifecycle = this.lifecycle;
     // A singer without a controller needs no keyboard samples. Explicit sound changes
@@ -150,7 +172,7 @@ export class MidiMonitor {
     let voice = this.voices.get(sound);
     if (!voice) {
       const def = soundDef(sound);
-      voice = def.kind === 'synth' ? synth(def.id, this.reverbBus, this.masterInput) : sampled(this.ctx, def, this.reverbBus, this.masterInput);
+      voice = def.kind === 'synth' ? synth(def.id, this.reverbBus, this.masterInput, this.tap()) : sampled(this.ctx, def, this.reverbBus, this.masterInput, this.tap());
       this.voices.set(sound, voice);
     }
     return voice;

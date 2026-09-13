@@ -1,6 +1,6 @@
 # Neutone / LYDIA morph output
 
-duet.ai can send chosen parts to a **second** audio output, so a hardware timbre-transfer
+Backline can send chosen parts to a **second** audio output, so a hardware timbre-transfer
 box — a Roland/Neutone LYDIA on the interface's outputs — hears only those parts while the
 rest of the band stays dry on the laptop's output.
 

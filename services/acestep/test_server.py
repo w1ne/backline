@@ -198,9 +198,11 @@ class SongModeFollowsSwitchesTest(unittest.TestCase):
             dict(base, genre='rock', bpm=104),             # 4% drift -> keep slicing
             dict(base, genre='rock', bpm=104, instruments=['drums', 'bass', 'keys']),  # switch -> repaint
         ])
-        self.assertEqual([p.task_type for p in requests], ['text2music', 'repaint', 'repaint'])
-        self.assertIn('rock', requests[1].prompt.lower())
-        self.assertEqual(requests[1].repainting_start, 2 * 4.8)   # 9.6 s already heard as context
+        # block 2 prefetches the continuation (dropped by the switch), block 3 re-renders in
+        # rock, block 5 re-renders with keys
+        self.assertEqual([p.task_type for p in requests], ['text2music', 'repaint', 'repaint', 'repaint'])
+        self.assertIn('rock', requests[2].prompt.lower())
+        self.assertEqual(requests[2].repainting_start, 2 * 4.8)   # 9.6 s already heard as context
         self.assertEqual(len(packets), 5)
 
     def test_dynamics_thinning_the_instruments_does_not_re_render_but_a_toggle_does(self):
@@ -211,8 +213,10 @@ class SongModeFollowsSwitchesTest(unittest.TestCase):
             dict(base, instruments=['drums', 'bass', 'keys', 'lead']), # space: lead fill
             dict(base, enabled=['drums', 'bass'], instruments=['drums', 'bass']),  # user switched keys off
         ])
-        self.assertEqual([p.task_type for p in requests], ['text2music', 'repaint'])
-        self.assertNotIn('electric piano', requests[1].prompt.lower())
+        # text2music, the block-2 prefetch, then the re-render for the toggle (no render for
+        # the dynamics swaps in between)
+        self.assertEqual([p.task_type for p in requests], ['text2music', 'repaint', 'repaint'])
+        self.assertNotIn('electric piano', requests[2].prompt.lower())
 
     def test_relative_key_flip_is_ignored_key_change_re_segments_big_tempo_jump_restarts(self):
         base = dict(bpm=100, key='A minor', genre='lofi', instruments=['drums', 'bass'])
@@ -222,8 +226,8 @@ class SongModeFollowsSwitchesTest(unittest.TestCase):
             dict(base, key='G major'),            # real key change: repaint from here in G
             dict(base, key='G major', bpm=125),   # 25% jump: fresh song
         ])
-        self.assertEqual([p.task_type for p in requests], ['text2music', 'repaint', 'text2music'])
-        self.assertEqual(requests[1].key_scale, 'G major')
+        self.assertEqual([p.task_type for p in requests], ['text2music', 'repaint', 'repaint', 'text2music'])
+        self.assertEqual(requests[2].key_scale, 'G major')
         self.assertTrue(server.same_scale('A minor', 'C major'))
         self.assertTrue(server.same_scale('F# minor', 'A major'))
         self.assertFalse(server.same_scale('A minor', 'A major'))
@@ -282,3 +286,34 @@ class ControlsReachAceTest(unittest.TestCase):
         self.assertEqual(server.creativity_to_cover_strength(0.0), server.COVER_STRENGTH_TIGHT)
         self.assertEqual(server.creativity_to_cover_strength(1.0), server.COVER_STRENGTH_LOOSE)
         self.assertGreater(server.creativity_to_cover_strength(0.3), server.creativity_to_cover_strength(0.8))
+
+
+class PrefetchTest(unittest.TestCase):
+    def test_boundary_uses_the_prefetched_segment_without_a_render_on_the_request_path(self):
+        renders, dones = [], []
+
+        class Model:
+            def generate(self, params):
+                renders.append(params.task_type)
+                return np.zeros((round(params.audio_duration * server.TARGET_SR), 2), dtype=np.float32)
+
+        async def nothing(*_):
+            pass
+
+        async def send_json(m):
+            dones.append(m)
+
+        async def run():
+            session = server.Session(Model())
+            m = dict(bpm=120, bars=2, key='C major', instruments=['drums', 'bass'])
+            for seq in range(1, 6):   # 8 bars at 120 = 4 blocks; block 5 is the boundary
+                await session.handle_block(dict(seq=seq, **m), nothing, send_json)
+            return session
+
+        with patch.object(server, 'SONG_MODE', True), patch.object(server, 'BLOCK_V2', True), \
+             patch.object(server, 'pace_sleep', nothing), \
+             patch.object(server, '_write_temp_wav', return_value='/tmp/backline-test-source.wav'), \
+             patch.object(server.os, 'unlink'):
+            asyncio.run(run())
+        self.assertEqual(renders, ['text2music', 'repaint'])
+        self.assertEqual(dones[4]['ms'], 0.0)   # boundary block cost nothing on the request path

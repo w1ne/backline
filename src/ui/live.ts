@@ -210,8 +210,6 @@ function skeleton(): string {
               </button>
             </div>`,
         ).join('')}
-      </div>
-      <div class="inst" id="sample-tile">
         <div class="pad">
           <button type="button" class="pad-btn sample" id="sample-btn"
                   aria-label="Found Sound: hold to record any sound as an instrument, tap to play it back">
@@ -642,12 +640,14 @@ export function accompPresetMuted(preset: AccompPreset, enabled: Record<Instrume
 }
 
 function updateAccompTiles(screen: HTMLElement, s: AppState): void {
-  const row = screen.querySelector<HTMLElement>('#accomp-tiles')!;
   // AMT plays these as GM presets, ACE-Step renders them into the arrangement; Patterns has
-  // no place for them.
-  row.hidden = s.engine !== 'amt' && s.engine !== 'acestep';
+  // no place for them. Found Sound shares this row's layout but isn't an accompaniment preset
+  // and works under every engine, so only the preset pads (not the whole row) hide here.
+  const showPresets = s.engine === 'amt' || s.engine === 'acestep';
 
   screen.querySelectorAll<HTMLButtonElement>('#accomp-tiles button[data-preset]').forEach(btn => {
+    const pad = btn.closest<HTMLElement>('.pad');
+    if (pad) pad.hidden = !showPresets;
     const preset = btn.dataset.preset as AccompPreset;
     const on = s.accompPresets.includes(preset);
     // only AMT routes a preset through a band role that can be switched off
