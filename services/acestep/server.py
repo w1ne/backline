@@ -102,6 +102,25 @@ COVER_STRENGTH_TIGHT = 0.75
 COVER_STRENGTH_LOOSE = 0.45
 
 
+_PC = {"c": 0, "c#": 1, "db": 1, "d": 2, "d#": 3, "eb": 3, "e": 4, "f": 5, "f#": 6, "gb": 6,
+       "g": 7, "g#": 8, "ab": 8, "a": 9, "a#": 10, "bb": 10, "b": 11}
+
+
+def key_pitch_classes(key: str) -> frozenset:
+    """The scale a key name like 'A minor' / 'C major' spans. Relative keys map to the same
+    set: a singer's key estimate flips between them constantly and the band should not
+    restart for that."""
+    parts = key.strip().lower().replace("maj", "major").replace("min", "minor").split()
+    root = _PC.get(parts[0] if parts else "", 0)
+    minor = len(parts) > 1 and parts[1].startswith("minor")
+    steps = (0, 2, 3, 5, 7, 8, 10) if minor else (0, 2, 4, 5, 7, 9, 11)
+    return frozenset((root + st) % 12 for st in steps)
+
+
+def same_scale(a: Optional[str], b: Optional[str]) -> bool:
+    return a is not None and b is not None and key_pitch_classes(a) == key_pitch_classes(b)
+
+
 def creativity_to_cover_strength(creativity: float) -> float:
     c = max(0.0, min(1.0, creativity))
     return round(COVER_STRENGTH_TIGHT - c * (COVER_STRENGTH_TIGHT - COVER_STRENGTH_LOOSE), 3)
@@ -516,7 +535,9 @@ class Session:
         needs_restart = bpm != self.last_bpm or key != self.last_key or self.prev_audio is None
         if SONG_MODE:
             drift = abs(bpm - (self.last_bpm or bpm)) / max(1, self.last_bpm or bpm)
-            song_restart = key != self.last_key or self.prev_audio is None or drift > SONG_BPM_RESTART_FRACTION
+            # a fresh song only on a big tempo jump or nothing heard yet; a real key change is a
+            # re-segment with context (below), a relative-key flip is nothing at all
+            song_restart = self.prev_audio is None or drift > SONG_BPM_RESTART_FRACTION
             await self._run_song_block(msg, seq, bpm, key, duration, song_restart, send_binary, send_json)
             return
         # `complete` adds tracks over source audio. Feeding its mix back repeatedly layers
@@ -632,6 +653,9 @@ async def _run_song_block(self: "Session", msg: dict, seq: int, bpm: int, key: s
     instruments = msg.get("enabled") or msg.get("instruments", ["drums", "bass"])
     extras = [str(e) for e in (msg.get("extras") or [])]
     prompt_key = (msg.get("genre", "lofi"), tuple(sorted(instruments)), tuple(sorted(extras)), msg.get("player_instrument"))
+    if self.song is not None and self.last_key is not None and not same_scale(key, self.last_key):
+        # key change: continue from what was heard, in the new key, at the next block
+        self.song = None
     if self.song is not None and self.song_prompt_key is not None and prompt_key != self.song_prompt_key:
         # style or instrument switch: drop the rest of this segment and re-render from here,
         # continuing from what was already heard

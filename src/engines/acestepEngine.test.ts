@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AceStepEngine, selectBlockInstruments, encodeMicFrame, MIC_FRAME_MAGIC, MIC_STREAM_RATE } from './acestepEngine';
+import { AceStepEngine, selectBlockInstruments, encodeMicFrame, sameScale, MIC_FRAME_MAGIC, MIC_STREAM_RATE } from './acestepEngine';
 import type { Instrument } from '../types';
 
 const allOn: Record<Instrument, boolean> = { drums: true, bass: true, keys: true, lead: true };
@@ -313,5 +313,15 @@ describe('encodeMicFrame', () => {
     for (const v of pcm) peak = Math.max(peak, Math.abs(v));
     expect(peak).toBeGreaterThan(30000);
     expect(peak).toBeLessThanOrEqual(32768);
+  });
+});
+
+
+describe('sameScale', () => {
+  it('treats relative keys as the same scale and parallel keys as different', () => {
+    expect(sameScale({ root: 9, mode: 'minor' }, { root: 0, mode: 'major' })).toBe(true);
+    expect(sameScale({ root: 6, mode: 'minor' }, { root: 9, mode: 'major' })).toBe(true);
+    expect(sameScale({ root: 9, mode: 'minor' }, { root: 9, mode: 'major' })).toBe(false);
+    expect(sameScale({ root: 0, mode: 'major' }, { root: 7, mode: 'major' })).toBe(false);
   });
 });

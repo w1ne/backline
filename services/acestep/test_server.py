@@ -214,10 +214,19 @@ class SongModeFollowsSwitchesTest(unittest.TestCase):
         self.assertEqual([p.task_type for p in requests], ['text2music', 'repaint'])
         self.assertNotIn('electric piano', requests[1].prompt.lower())
 
-    def test_key_change_or_large_tempo_change_starts_a_fresh_song(self):
+    def test_relative_key_flip_is_ignored_key_change_re_segments_big_tempo_jump_restarts(self):
         base = dict(bpm=100, key='A minor', genre='lofi', instruments=['drums', 'bass'])
-        requests, _ = self.drive([base, dict(base, key='C major'), dict(base, key='C major', bpm=125)])
-        self.assertEqual([p.task_type for p in requests], ['text2music', 'text2music', 'text2music'])
+        requests, _ = self.drive([
+            base,
+            dict(base, key='C major'),            # relative key: same scale, nothing happens
+            dict(base, key='G major'),            # real key change: repaint from here in G
+            dict(base, key='G major', bpm=125),   # 25% jump: fresh song
+        ])
+        self.assertEqual([p.task_type for p in requests], ['text2music', 'repaint', 'text2music'])
+        self.assertEqual(requests[1].key_scale, 'G major')
+        self.assertTrue(server.same_scale('A minor', 'C major'))
+        self.assertTrue(server.same_scale('F# minor', 'A major'))
+        self.assertFalse(server.same_scale('A minor', 'A major'))
 
 
 class VoiceFollowingTest(unittest.TestCase):

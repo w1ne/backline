@@ -89,8 +89,11 @@ export function selectBlockInstruments(
   return { instruments, fill, density };
 }
 
-function sameKey(a: Key, b: Key): boolean {
-  return a.root === b.root && a.mode === b.mode;
+/** Relative keys (A minor / C major) span the same scale; a singer's key estimate flips
+ *  between them constantly and cutting the band for that is the worst thing we can do. */
+export function sameScale(a: Key, b: Key): boolean {
+  const tonicMajor = (k: Key) => (k.mode === 'minor' ? (k.root + 3) % 12 : k.root);
+  return tonicMajor(a) === tonicMajor(b);
 }
 
 interface BlockRequest {
@@ -292,9 +295,11 @@ export class AceStepEngine implements BandEngine {
     // nothing to gain from restarting generation the moment they move.
     if (p.dynamics !== undefined) this.state.dynamics = p.dynamics;
     if (p.genre !== undefined) this.state.genre = p.genre;
-    if (p.key !== undefined && !sameKey(p.key, this.state.key)) {
+    if (p.key !== undefined && !sameScale(p.key, this.state.key)) {
       this.state.key = p.key;
       keyChanged = true;
+    } else if (p.key !== undefined) {
+      this.state.key = p.key; // same scale: remember the spelling, keep playing
     }
     if (p.chord !== undefined) this.pushChord(p.chord);
     if (p.creativity !== undefined) this.state.creativity = p.creativity;
