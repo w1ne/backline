@@ -81,6 +81,8 @@ let band: BandEngine | undefined;
 let monitor: MidiMonitor | undefined;
 const players = new Players();
 const playbackActivity = new PlaybackActivity();
+/** ACE-Step's audible parts (rendered audio has no note events); see wireBand */
+let aceActiveParts: Partial<Record<Instrument, boolean>> = {};
 const accompActivity = new PlaybackActivity<AccompPreset>();
 const midiRecorder = new MidiRecorder();
 /** native tap on Tone's master output so the audio recorder can capture the synth band */
@@ -351,10 +353,14 @@ function wireBand(b: BandEngine): void {
     store.update({ loops: s.loops, loopsUpdatedAt: increased ? Date.now() : store.state.loopsUpdatedAt });
   };
   if (b instanceof AceStepEngine) {
-    // rendered audio has no note events: every enabled part is playing once blocks arrive
+    // rendered audio has no note events: every enabled part is playing once blocks arrive.
+    // The meter tick below reads this instead of playbackActivity for the ACE band.
+    aceActiveParts = {};
     b.onActive = parts => {
-      if (band === b) store.update({ activeParts: parts });
+      if (band === b) aceActiveParts = parts;
     };
+  } else {
+    aceActiveParts = {};
   }
   if (b instanceof AmtEngine) {
     b.onChord = (chord, fromBeat) => {
@@ -946,7 +952,8 @@ setInterval(() => {
   if (!audioReady) return;
   const s = store.state;
   const activeParts = s.power === 'on' && !s.audioSuspended
-    ? playbackActivity.at(Tone.getContext().currentTime) : {};
+    ? (band instanceof AceStepEngine && s.locked && !s.paused ? aceActiveParts : playbackActivity.at(Tone.getContext().currentTime))
+    : {};
   if (JSON.stringify(activeParts) !== JSON.stringify(s.activeParts)) store.update({activeParts});
   const accompActive = s.power === 'on' && !s.audioSuspended
     ? accompActivity.at(Tone.getContext().currentTime) : {};
