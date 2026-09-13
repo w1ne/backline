@@ -499,11 +499,11 @@ function lcdText(s: AppState): string {
     return `LIVE · BAR ${s.bar}${s.input.chord ? ` · ${chordName(s.input.chord)}` : ''}${flags}`;
   }
   const who = `LISTENING · MIC ${mark(s.sources.mic)} ${midiLabel(s)}`;
-  // A singer alone gives the tempo (tap or typed) and gets a count-in; the syllable rate the
-  // onsets suggest is shown only as a hint. See src/band/startPolicy.ts.
+  // A singer alone gives the tempo (tap or typed) and gets a count-in; the tempogram's beat
+  // (or, before it has one, the syllable rate) is shown as the hint. See src/band/startPolicy.ts.
   const micOnly = s.sources.mic === 'on' && s.sources.midi !== 'on';
   if (waitsForGivenTempo({ micOnly, countIn: s.countIn, hasBpmOverride: false })) {
-    const hint = tempoHint(s.input.pendingBpm);
+    const hint = tempoHint(s.input.pendingBpm, s.input.voiceBpm);
     return `${who}${hint ? ` · ${hint}` : ''} · TAP OR SET BPM`;
   }
   // once there is enough to guess with, show the running estimate — it is the

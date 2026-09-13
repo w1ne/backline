@@ -71,6 +71,24 @@ export function bpmFromOnsets(onsets: number[], minOnsets: number, opts: TempoOp
   return { bpm: Math.round(bpm * 10) / 10, downbeat: onsets[0] };
 }
 
+/** Half-width, as a share of the beat, of the window an inter-onset interval must fall in to refine the tempo. */
+const REFINE_WINDOW = 0.04;
+
+/** Mean per-beat length of the inter-onset intervals that sit within REFINE_WINDOW of a whole number of beats at `bpm`. */
+export function refineWithOnsets(bpm: number, onsets: number[]): number {
+  const period = 60 / bpm;
+  let sum = 0, n = 0;
+  for (let i = 1; i < onsets.length; i++) {
+    const d = onsets[i] - onsets[i - 1];
+    const k = Math.round(d / period);
+    if (k < 1) continue;
+    const per = d / k;
+    if (Math.abs(per - period) <= period * REFINE_WINDOW) { sum += per; n++; }
+  }
+  if (n < 3) return bpm;
+  return Math.round((60 / (sum / n)) * 10) / 10;
+}
+
 export class TempoLock {
   private onsets: number[] = [];
   private result: { bpm: number; downbeat: number } | null = null;
@@ -79,17 +97,41 @@ export class TempoLock {
   private provisional = false;
   private voiceOnsets = 0;
 
-  /** `voice`: the onset came from a mic singer rather than an instrument or MIDI. */
+  /**
+   * `voice`: the onset came from a mic singer rather than an instrument or MIDI. While most
+   * onsets are a singer's, they are syllables and do not lock a tempo here: the Listener
+   * locks from the flux tempogram (tempoFromVoice.ts) through lockFromVoice() instead.
+   */
   push(t: number, voice = false) {
     if (this.result && !this.provisional) return;
     this.onsets.push(t);
     if (voice) this.voiceOnsets++;
-    const real = estimateTempo(this.onsets, { voice: this.voiceOnsets * 2 > this.onsets.length });
+    if (this.voiceMajority) return;
+    const real = estimateTempo(this.onsets);
     if (real) {
       this.result = real;
       this.provisional = false;
     }
   }
+
+  /** most onsets so far came from a singer */
+  get voiceMajority(): boolean { return this.voiceOnsets * 2 > this.onsets.length; }
+
+  /**
+   * A real lock from the voice tempogram; the downbeat stays the first onset heard. The
+   * tempogram's period is quantised to its 20 ms hop (about 3% at 90 bpm), so the bpm is
+   * refined from the onsets: every inter-onset interval within 4% of a whole number of beats
+   * votes with its per-beat length. The window is that tight because a singer's syllables are
+   * not on the grid: at 12% the refinement pulled a right 84 to 75 on one real song.
+   */
+  lockFromVoice(bpm: number, downbeat = this.onsets[0] ?? 0) {
+    if (this.result && !this.provisional) return;
+    this.result = { bpm: refineWithOnsets(bpm, this.onsets), downbeat };
+    this.provisional = false;
+  }
+
+  /** when the first onset was heard, or null before any */
+  get firstOnset(): number | null { return this.onsets.length ? this.onsets[0] : null; }
 
   /** Adopts a faster, lower-confidence estimate (e.g. the listener's running pendingBpm)
    * while the full 12-onset lock is still pending — a real lock, once it lands, replaces

@@ -6,9 +6,9 @@
  * nothing to say yet. bench/tempo/run.ts scores them against the backing track's tempo.
  */
 import { bpmFromOnsets } from '../../src/listener/tempoLock';
+import { MIN_BPM, MAX_BPM, VOICE_LO, VOICE_HI, VoiceTempo, foldBpm, autocorrTempogram, logGaussPrior, pickPeaks, harmonicSum, noteDurationResidual, refinePeak, type NoteSeg, type TempoEstimate } from '../../src/listener/tempoFromVoice';
 
 export interface Onset { t: number; strength: number }
-export interface NoteSeg { start: number; end: number; midi: number }
 
 export interface VoiceStreams {
   onsets: Onset[];
@@ -20,18 +20,9 @@ export interface VoiceStreams {
   hopSec: number;
 }
 
-export interface TempoEstimate { bpm: number; confidence: number }
 export type TempoMethod = (s: VoiceStreams, now: number) => TempoEstimate | null;
 
-export const MIN_BPM = 60, MAX_BPM = 180;
-/** a singer's beat lives here; estimates outside are folded in by octave */
-export const VOICE_LO = 70, VOICE_HI = 130;
-
-export function foldBpm(bpm: number, lo = MIN_BPM, hi = MAX_BPM): number {
-  while (bpm > hi) bpm /= 2;
-  while (bpm < lo) bpm *= 2;
-  return bpm;
-}
+export { MIN_BPM, MAX_BPM, VOICE_LO, VOICE_HI, foldBpm, autocorrTempogram, logGaussPrior, pickPeaks, harmonicSum, noteDurationResidual, type NoteSeg, type TempoEstimate };
 
 // ---------------------------------------------------------------- a. IOI histogram (baseline)
 
@@ -72,70 +63,14 @@ export interface TempogramOptions {
    * whose bar-ish double is also periodic beats the syllable level whose double is not
    */
   harmonic?: number;
-  /** which envelope to correlate: the flux, the flux with a unit impulse at every note start, or note impulses alone */
-  envelope?: 'flux' | 'flux+notes' | 'notes';
+  /**
+   * which envelope to correlate: the flux; the flux with a unit impulse at every note start;
+   * note impulses alone; the rms level's positive difference; or impulses at the flux onsets
+   * weighted by their strength (what the Listener receives from the mic today)
+   */
+  envelope?: 'flux' | 'flux+notes' | 'notes' | 'level' | 'onsets';
   /** fold the answer into the singing band before reporting */
   fold?: boolean;
-}
-
-/**
- * Normalised autocorrelation of a (mean-removed, half-wave-rectified) envelope at every lag in
- * [minBpm, maxBpm], as a list of {bpm, r}. Shared by the tempogram method and the truth measure.
- */
-export function autocorrTempogram(env: ArrayLike<number>, hopSec: number, minBpm: number, maxBpm: number): { bpm: number; r: number }[] {
-  const n = env.length;
-  const x = new Float64Array(n);
-  let mean = 0;
-  for (let i = 0; i < n; i++) mean += env[i];
-  mean /= Math.max(1, n);
-  let r0 = 0;
-  for (let i = 0; i < n; i++) { x[i] = Math.max(0, env[i] - mean); r0 += x[i] * x[i]; }
-  const out: { bpm: number; r: number }[] = [];
-  if (r0 <= 0) return out;
-  const minLag = Math.max(1, Math.floor(60 / maxBpm / hopSec));
-  const maxLag = Math.min(n - 1, Math.ceil(60 / minBpm / hopSec));
-  for (let lag = minLag; lag <= maxLag; lag++) {
-    let r = 0;
-    for (let i = lag; i < n; i++) r += x[i] * x[i - lag];
-    out.push({ bpm: 60 / (lag * hopSec), r: (r / r0) * (n / (n - lag)) });
-  }
-  return out;
-}
-
-export function logGaussPrior(bpm: number, centre: number, sigmaOct: number): number {
-  if (sigmaOct <= 0) return 1;
-  const z = Math.log2(bpm / centre) / sigmaOct;
-  return Math.exp(-0.5 * z * z);
-}
-
-/** Picks the local maxima of a tempogram, strongest first. */
-export function pickPeaks(tg: { bpm: number; r: number }[], weight: (bpm: number) => number = () => 1): { bpm: number; r: number }[] {
-  const w = tg.map(p => ({ bpm: p.bpm, r: p.r * weight(p.bpm) }));
-  const peaks: { bpm: number; r: number }[] = [];
-  for (let i = 1; i < w.length - 1; i++) if (w[i].r >= w[i - 1].r && w[i].r > w[i + 1].r && w[i].r > 0) peaks.push(w[i]);
-  return peaks.sort((a, b) => b.r - a.r);
-}
-
-/**
- * How well a beat period explains the sung note durations: duration-weighted mean of the
- * distance (in beats) from each note's length to the nearest positive integer number of beats.
- * 0 = every note is a whole number of beats; 0.25 = no better than chance. Notes shorter than
- * half a beat are skipped (they cannot support this beat).
- */
-export function noteDurationResidual(notes: NoteSeg[], bpm: number): { residual: number; explained: number } {
-  const beat = 60 / bpm;
-  let wsum = 0, rsum = 0, explained = 0;
-  for (const n of notes) {
-    const d = n.end - n.start;
-    const b = d / beat;
-    if (b < 0.5) continue;
-    const k = Math.max(1, Math.round(b));
-    const res = Math.abs(b - k);
-    wsum += d;
-    rsum += d * res;
-    if (res < 0.15) explained += d;
-  }
-  return { residual: wsum ? rsum / wsum : 0.25, explained };
 }
 
 export function tempogramMethod(o: TempogramOptions = {}): TempoMethod {
@@ -162,6 +97,7 @@ export function tempogramMethod(o: TempogramOptions = {}): TempoMethod {
       }
       best = { bpm: pick, r: best.r };
     }
+    best = { bpm: refinePeak(tg, best.bpm), r: best.r };
     const second = peaks.find(p => Math.abs(Math.log2(p.bpm / best.bpm)) > 0.1);
     const confidence = second ? Math.max(0, Math.min(1, 1 - second.r / Math.max(1e-9, peaks[0].r))) : 1;
     const bpm = o.fold ? foldBpm(best.bpm, VOICE_LO, VOICE_HI) : best.bpm;
@@ -191,34 +127,33 @@ export function withStability(method: TempoMethod, lookback = 4, step = 0.5): Te
   };
 }
 
-function envelopeOf(s: VoiceStreams, start: number, end: number, kind: 'flux' | 'flux+notes' | 'notes'): Float32Array {
+export function closedNotes(notes: NoteSeg[], now: number): NoteSeg[] {
+  return notes.filter(n => n.end <= now && n.end > n.start);
+}
+
+function envelopeOf(s: VoiceStreams, start: number, end: number, kind: NonNullable<TempogramOptions['envelope']>): Float32Array {
   const env = new Float32Array(end - start);
-  if (kind !== 'notes') {
+  if (kind === 'flux' || kind === 'flux+notes') {
     let max = 0;
     for (let i = start; i < end; i++) max = Math.max(max, s.flux[i]);
     if (max > 0) for (let i = start; i < end; i++) env[i - start] = s.flux[i] / max;
   }
-  if (kind !== 'flux') {
+  if (kind === 'notes' || kind === 'flux+notes') {
     for (const n of s.notes) {
       const h = Math.round(n.start / s.hopSec) - start;
       if (h >= 0 && h < env.length) env[h] += 1;
     }
   }
+  if (kind === 'level') {
+    for (let i = Math.max(start, 1); i < end; i++) env[i - start] = Math.max(0, s.level[i] - s.level[i - 1]);
+  }
+  if (kind === 'onsets') {
+    for (const o of s.onsets) {
+      const h = Math.round(o.t / s.hopSec) - start;
+      if (h >= 0 && h < env.length) env[h] += o.strength;
+    }
+  }
   return env;
-}
-
-/** r'(lag) = r(lag) + h·r(2·lag): a lag is supported when its double is periodic too. */
-export function harmonicSum(tg: { bpm: number; r: number }[], h: number): { bpm: number; r: number }[] {
-  const byBpm = (bpm: number) => {
-    let best = tg[0], d = Infinity;
-    for (const p of tg) { const dd = Math.abs(Math.log2(p.bpm / bpm)); if (dd < d) { d = dd; best = p; } }
-    return d < 0.02 ? best.r : 0;
-  };
-  return tg.map(p => ({ bpm: p.bpm, r: p.r + h * byBpm(p.bpm / 2) }));
-}
-
-export function closedNotes(notes: NoteSeg[], now: number): NoteSeg[] {
-  return notes.filter(n => n.end <= now && n.end > n.start);
 }
 
 // ---------------------------------------------------------------- d. note-duration clustering
@@ -291,3 +226,14 @@ export function combine(parts: { method: TempoMethod; weight: number }[]): Tempo
     return { bpm: Math.round(best.bpm * 10) / 10, confidence: best.w / total };
   };
 }
+
+// ---------------------------------------------------------------- shipped estimator
+
+/** The estimator the app runs (src/listener/tempoFromVoice.ts), fed from the cached streams. */
+export const shippedVoiceTempo: TempoMethod = (s, now) => {
+  const v = new VoiceTempo({ hopSec: s.hopSec });
+  const end = Math.min(s.flux.length, Math.floor(now / s.hopSec));
+  for (let i = 0; i < end; i++) v.pushFlux(s.flux[i], i * s.hopSec);
+  for (const n of s.notes) if (n.end <= now) { v.noteOn(n.midi, n.start); v.noteOff(n.end); }
+  return v.estimate(now);
+};

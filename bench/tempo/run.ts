@@ -24,7 +24,7 @@ import { median } from '../voice/metrics';
 import { KNOWN_BPM, listSongs, loadStitched } from './songs';
 import { backingTempo, type TruthEstimate } from './truth';
 import { extractStreams } from './streams';
-import { VOICE_HI, VOICE_LO, combine, durationCluster, foldBpm, ioiFluxOnsets, ioiNoteOnsets, tempogramMethod, withStability, type TempoEstimate, type TempoMethod, type TempogramOptions, type VoiceStreams } from './methods';
+import { VOICE_HI, VOICE_LO, combine, durationCluster, foldBpm, ioiFluxOnsets, ioiNoteOnsets, shippedVoiceTempo, tempogramMethod, withStability, type TempoEstimate, type TempoMethod, type TempogramOptions, type VoiceStreams } from './methods';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = join(__dirname, 'out');
@@ -51,7 +51,8 @@ export const METHODS: MethodSpec[] = [
   { name: 'd. note-duration clustering', method: durationCluster(), threshold: 0.3 },
   { name: 'e1. c3 + d + b vote', method: combine([{ method: tempogramMethod(BEST_TEMPOGRAM), weight: 1 }, { method: durationCluster(), weight: 0.5 }, { method: ioiNoteOnsets, weight: 0.3 }]), threshold: 0.6 },
   { name: 'e2. c3 + a vote', method: combine([{ method: tempogramMethod(BEST_TEMPOGRAM), weight: 1 }, { method: ioiFluxOnsets, weight: 0.5 }]), threshold: 0.6 },
-  { name: 'e3. c3 with stability confidence (best)', method: withStability(tempogramMethod(BEST_TEMPOGRAM)), threshold: 0.6 },
+  { name: 'e3. c3 with stability confidence', method: withStability(tempogramMethod(BEST_TEMPOGRAM)), threshold: 0.6 },
+  { name: 'f. shipped VoiceTempo (src/listener/tempoFromVoice.ts): c3 with prior 100/0.5, stability confidence', method: shippedVoiceTempo, threshold: 0.6 },
 ];
 
 export interface Decision { bpm: number | null; confidence: number; at: number | null }
@@ -157,6 +158,19 @@ export function run(opts: { fast?: boolean; limit?: number } = {}): { rows: Song
   return { rows, scores, libScores, md };
 }
 
+/** Written by hand from the run of 2026-09-13 (87 confirmed songs); the tables above are regenerated on every run. */
+const CONCLUSIONS: string[] = [
+  'The earlier conclusion ("the first five seconds of a solo voice do not contain the beat", bench/realvoice/RESULTS.md) was half right. Five seconds of syllables do not: the inter-onset histogram the app used (method a) is within 8% of the backing track on 28% of songs and lands 1.5-2x too fast on most of the rest, because a singer\'s onsets are syllables and most syllables sit on half beats. Eight to twelve seconds of a solo voice do contain the beat level: the autocorrelation of the spectral-flux envelope has a peak at the beat or one of its octaves on about 70% of songs (methods c1-c3, f: 69-70% within 8% of the truth or its exact half/double), and with a prior on singing tempos, the double-period support and the sung note lengths choosing the octave, the exact tempo is within 8% on 62% (method f, the shipped estimator). The remaining 30% are songs where the voice\'s strongest periodicity is a dotted or triplet relation of the beat (ratios of 1.33 and 1.5 dominate the error distribution, not 2.0), which no octave rule can fix.',
+  '',
+  'Decision time: the tempogram needs 8 s of singing before it says anything, and its answer keeps moving until about 10 s; the IOI histogram speaks at 5-6 s but is wrong twice as often. The stability confidence (how many of the last four half-second windows agree) clears 0.6 on 74% of songs at a median 8.5 s; the rest are decided at the 12 s deadline. Confidence does not separate right from wrong answers: a syllable-rate peak is as steady as a beat peak, so in every confidence band about two thirds of the estimates are right. That is why the app shows the estimate as the suggestion and still asks a solo singer to tap or confirm when the count-in is on, rather than counting in from it.',
+  '',
+  'Note onsets from the pitch tracker (method b) are worse than flux onsets as a beat source (a note change is cleaner than a syllable but rarer and mostly off the beat), and clustering sung note durations to a beat (method d) is poor on its own: real sung durations are not integer beats. Note durations do help choose the octave once the tempogram has the level (c1 to c2/c3). Voting the tempogram with the histogram (e2) adds speed but not accuracy; voting it with b and d (e1) hurts.',
+  '',
+  'Reference libraries on the same 12 s of solo voice: madmom\'s TempoEstimationProcessor (RNN onset activation + comb filter) gets the beat or an octave of it on 76% of songs but the exact octave on only 40%; librosa beat_track 44% / 63%; Essentia RhythmExtractor2013 39% / 64%; BeatNet 31% / 62%. None beats the shipped tempogram on the exact tempo (62%), and madmom\'s 76% within an octave against our 70% is six songs. On the full backing tracks the same libraries are at 83-94% within 8% and 99-100% within an octave, so the gap is the signal, not the tools: a solo voice holds the beat level most of the time and the octave about 60% of the time, for any method. Running madmom in the browser would mean porting a bidirectional LSTM (about 1 MB of weights) to ONNX/WASM for a 1.4 s decision on 12 s of audio, or calling it through the AMT service with a round trip; neither is worth it for no gain over the 2 ms autocorrelation that ships.',
+  '',
+  'Truth: the backing track\'s tempo from the left channel (autocorrelation tempogram, 40-240 bpm, prior toward 110 bpm) matches the four hand-established songs (86/87, 117/117, 149/148, 83/84) and madmom on the same backing on 87 of 110 songs; the other 23 are scored in the all-songs table only.',
+];
+
 function errorSummary(errors: number[]): string {
   if (!errors.length) return '—';
   const s = [...errors].sort((a, b) => a - b);
@@ -183,6 +197,7 @@ function report(rows: SongRow[], scores: Score[], allScores: Score[], libScores:
   } else {
     L.push('## Reference libraries', '', 'Not run: `bench/tempo/out/libs.json` is missing. Run `bench/tempo/.venv/bin/python bench/tempo/libs.py` after this bench has written `out/wav/`, then rerun with `--fast`.', '');
   }
+  L.push('## What a solo voice does and does not contain', '', ...CONCLUSIONS, '');
   L.push('## Per song', '', `| song | s | clips | truth bpm | known | truth peaks | ambiguity | confirmed | onsets ≤12 s | notes ≤12 s | ${METHODS.map(m => m.name.split(',')[0].split(' (')[0]).join(' | ')} |`, `|${'---|'.repeat(11 + METHODS.length)}`);
   for (const r of rows) L.push(`| ${r.name} | ${fmt(r.dur)} | ${r.clips} | ${fmt(r.truth, 0)} | ${r.known ?? '—'} | ${r.peaks.join(', ')} | ${fmt(r.ambiguity, 2)} | ${r.confirmed ? 'yes' : 'no'} | ${r.onsets} | ${r.notes} | ${METHODS.map(m => { const d = r.decisions[m.name]; return d.bpm === null ? '—' : `${fmt(d.bpm, 0)}${within8(d.bpm, r.truth) ? ' ✓' : withinOctave(d.bpm, r.truth) ? ' ~' : ''} (${fmt(d.confidence, 2)}${d.at !== null ? ` @${fmt(d.at, 1)}s` : ''})`; }).join(' | ')} |`);
   L.push('', '✓ within 8% of the truth, ~ within 8% of its exact half or double. Confidence in parentheses, with the decision time when the threshold was cleared before 12 s.', '');

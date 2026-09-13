@@ -36,6 +36,7 @@ export class MicSource implements Source {
   private cbs?: {
     onNote: (m: number, v: number, t: number) => void;
     onLevel: (l: number) => void;
+    onFlux?: (flux: number, t: number) => void;
     onPitch?: (p: StablePitch | null, timeSec?: number) => void;
   };
 
@@ -54,7 +55,7 @@ export class MicSource implements Source {
     const cbs = this.cbs;
     if (!cbs) return;
     this.stop();
-    await this.start(cbs.onNote, cbs.onLevel, cbs.onPitch);
+    await this.start(cbs.onNote, cbs.onLevel, cbs.onPitch, cbs.onFlux);
   }
 
   /**
@@ -71,7 +72,7 @@ export class MicSource implements Source {
       return true;
     }
     if (!this.cbs || this.stream) return false;
-    await this.start(this.cbs.onNote, this.cbs.onLevel, this.cbs.onPitch);
+    await this.start(this.cbs.onNote, this.cbs.onLevel, this.cbs.onPitch, this.cbs.onFlux);
     return true;
   }
 
@@ -106,11 +107,12 @@ export class MicSource implements Source {
     onNote: (m: number, v: number, t: number) => void,
     onLevel: (l: number) => void,
     onPitch?: (p: StablePitch | null, timeSec?: number) => void,
+    onFlux?: (flux: number, t: number) => void,
   ) {
     this.pitchFailures = 0;
     this.pitchError = null;
     const generation = ++this.generation;
-    this.cbs = { onNote, onLevel, onPitch };
+    this.cbs = { onNote, onLevel, onPitch, onFlux };
     const ctx = Tone.getContext().rawContext as AudioContext;
     const stream = await navigator.mediaDevices.getUserMedia({ audio: micConstraints(this.deviceId) });
     if (generation !== this.generation) { stream.getTracks().forEach(t => t.stop()); return; }
@@ -131,6 +133,11 @@ export class MicSource implements Source {
     const fire = (t: number) => {
       if (this.muted) return;
       onNote(-1, Math.min(1, this.lastRms * 8), t + performance.now() / 1000 - ctx.currentTime);
+    };
+    // every hop's flux, on the same clock as the onsets, feeds the voice tempogram
+    const flux = (f: number, t: number) => {
+      if (this.muted) return;
+      onFlux?.(f, t + performance.now() / 1000 - ctx.currentTime);
     };
 
     this.pitchTimer = window.setInterval(() => {
@@ -168,10 +175,11 @@ export class MicSource implements Source {
       src.connect(node);
       let n = 0;
       node.port.onmessage = e => {
-        const { flux, rms, t } = e.data as { flux: number; rms: number; t: number };
+        const { flux: f, rms, t } = e.data as { flux: number; rms: number; t: number };
         this.lastRms = rms;
         if (!this.muted && n++ % LEVEL_EVERY === 0) onLevel(Math.min(1, rms * 20));
-        const at = onset.pushFlux(flux, t);
+        flux(f, t);
+        const at = onset.pushFlux(f, t);
         if (at !== null) fire(at);
       };
       return;
@@ -179,7 +187,7 @@ export class MicSource implements Source {
       // No AudioWorklet (or the module failed to load): poll the analyser instead.
       // Frames then overlap unevenly, which costs some timing precision, but the
       // flux detector itself works the same.
-      if (generation === this.generation) this.pollAnalyser(ctx, an, onset, onLevel, fire);
+      if (generation === this.generation) this.pollAnalyser(ctx, an, onset, onLevel, fire, flux);
     }
   }
 
@@ -190,6 +198,7 @@ export class MicSource implements Source {
     onset: OnsetDetector,
     onLevel: (l: number) => void,
     fire: (t: number) => void,
+    flux: (f: number, t: number) => void,
   ) {
     const tail = new Float32Array(an.fftSize);
     let lastHash = NaN;
@@ -207,7 +216,9 @@ export class MicSource implements Source {
       if (!this.muted && n++ % LEVEL_EVERY === 0) onLevel(Math.min(1, rms * 20));
       const t = ctx.currentTime - FFT_SIZE / 2 / ctx.sampleRate;
       const frame = tail.slice(tail.length - FFT_SIZE);
-      const at = onset.pushFlux(onset.flux(magnitudeSpectrum(frame)), t);
+      const f = onset.flux(magnitudeSpectrum(frame));
+      flux(f, t);
+      const at = onset.pushFlux(f, t);
       if (at !== null) fire(at);
     }, 10);
   }

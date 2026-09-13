@@ -24,8 +24,10 @@ describe('how a session gets its first tempo', () => {
     expect(waitsForGivenTempo({ micOnly: false, countIn: false, hasBpmOverride: false })).toBe(false);
   });
 
-  it('shows the syllable rate as a hint, not a tempo', () => {
+  it('shows the syllable rate as a hint, not a tempo, until the tempogram has a beat', () => {
     expect(tempoHint(140.4)).toBe('~140 spoken');
     expect(tempoHint(null)).toBe('');
+    expect(tempoHint(140.4, 96.2)).toBe('~96');
+    expect(tempoHint(null, 96.2)).toBe('~96');
   });
 });

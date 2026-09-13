@@ -12,6 +12,14 @@ class Fake implements Source {
   stop() {}
 }
 
+class FluxFake extends Fake {
+  flux?: (f: number, t: number) => void;
+  async start(onNote: Fake['note'], onLevel: (l: number) => void, onPitch?: Fake['pitch'], onFlux?: FluxFake['flux']) {
+    await super.start(onNote, onLevel, onPitch);
+    this.flux = onFlux;
+  }
+}
+
 class MutableFake extends Fake {
   muted = false;
   setMuted(m: boolean) { this.muted = m; }
@@ -91,13 +99,33 @@ describe('Listener voice tempo', () => {
     for (let i = 0; i < beatsN; i++) { out.push(1 + i * p); if (i % 2 === 1) out.push(1 + i * p + p / 2); }
     return out;
   };
-  it('folds a singer\'s syllable rate to the beat, but not a MIDI player\'s', async () => {
-    const mic = new Fake(); const lm = new Listener([mic], ['mic']); await lm.start();
+  it('a singer\'s syllables are only a hint; a MIDI player\'s onsets still lock', async () => {
+    const mic = new FluxFake(); const lm = new Listener([mic], ['mic']); await lm.start();
     syllables(87, 20).forEach(t => mic.note(-1, 0.8, t));
-    expect(Math.abs(lm.input.bpm! - 87)).toBeLessThan(2);
+    expect(lm.input.bpm).toBeNull();
+    expect(lm.input.pendingBpm).not.toBeNull();
+    expect(lm.input.voiceBpm).toBeNull();
     const midi = new Fake(); const lk = new Listener([midi], ['midi']); await lk.start();
     syllables(87, 20).forEach(t => midi.note(60, 0.8, t));
     expect(Math.abs(lk.input.bpm! - 174)).toBeLessThan(3);
+  });
+  it('locks a singer\'s tempo from the flux tempogram after 8 s of singing', async () => {
+    const mic = new FluxFake(); const lm = new Listener([mic], ['mic']); await lm.start();
+    const beat = 60 / 96;
+    // syllables on every beat and every other half beat, flux bursts at each of them
+    const times: number[] = [];
+    for (let i = 0; i * beat < 14; i++) { times.push(1 + i * beat); if (i % 2) times.push(1 + i * beat + beat / 2); }
+    let next = 0;
+    for (let h = 0; h * 0.01 < 15; h++) {
+      const t = h * 0.01;
+      const burst = times.some(s => t >= s && t < s + 0.03);
+      mic.flux!(burst ? 1 : 0.02, t);
+      while (next < times.length && times[next] <= t) mic.note(-1, 0.8, times[next++]);
+      if (t < 7.9) expect(lm.input.bpm).toBeNull();
+    }
+    expect(lm.input.voiceBpm).not.toBeNull();
+    expect(Math.abs(lm.input.voiceBpm! - 96)).toBeLessThan(3);
+    expect(lm.input.bpm).toBeCloseTo(96, 0); // the lock is refined from the onsets
   });
   it('a held sung note weighs in the key by how long it is held', async () => {
     const a = new Fake(); let now = 0; const l = new Listener([a], ['mic'], () => now); await l.start();

@@ -588,7 +588,7 @@ function powerOff() {
     loops: 0,
     loopsUpdatedAt: undefined,
     effectiveIntensity: 0,
-    input: { bpm: null, key: null, chord: null, notesNow: [], pitch: null, inputLevel: 0, onsets: 0, pendingBpm: null, dynamics: { ...IDLE_DYNAMICS } },
+    input: { bpm: null, key: null, chord: null, notesNow: [], pitch: null, inputLevel: 0, onsets: 0, pendingBpm: null, voiceBpm: null, dynamics: { ...IDLE_DYNAMICS } },
     toast: null,
   });
 }
@@ -894,7 +894,7 @@ if (demo) {
     locked: true,
     bar: 9,
     enabled: { drums: true, bass: true, keys: false, lead: true },
-    input: { bpm: 96, key: { root: 9, mode: 'minor' }, chord: { root: 9, quality: 'min' }, notesNow: [57, 60, 64], pitch: { midi: 64, cents: 3, stable: true }, inputLevel: 0.72, onsets: 12, pendingBpm: null, dynamics: { intensity: 0.62, space: false, fillDue: false, silenceBeats: 0.25 } },
+    input: { bpm: 96, key: { root: 9, mode: 'minor' }, chord: { root: 9, quality: 'min' }, notesNow: [57, 60, 64], pitch: { midi: 64, cents: 3, stable: true }, inputLevel: 0.72, onsets: 12, pendingBpm: null, voiceBpm: null, dynamics: { intensity: 0.62, space: false, fillDue: false, silenceBeats: 0.25 } },
   });
   runVizDemo(96, 9);
 }

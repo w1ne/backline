@@ -3,6 +3,7 @@ import type { BandInput, Chord, Dynamics, Key } from '../types';
 import { ActivityTracker } from './activity';
 import { TempoLock, bpmFromOnsets } from './tempoLock';
 import { TempoFollower } from './tempoFollower';
+import { VoiceTempo } from './tempoFromVoice';
 import { KeyDetector } from './keyDetector';
 import { ChordDetector } from './chordDetector';
 import type { StablePitch } from './pitchTracker';
@@ -13,6 +14,8 @@ export interface Source {
     onNote: (midi: number, velocity: number, timeSec: number) => void,
     onLevel: (level: number) => void,
     onPitch?: (p: StablePitch | null, timeSec?: number) => void,
+    /** spectral flux of every analysis hop (mic only): the voice tempogram's envelope */
+    onFlux?: (flux: number, timeSec: number) => void,
   ): Promise<void>;
   onPerformance?(cb: (e: PerformanceEvent) => void): () => void;
   stop(): void;
@@ -29,6 +32,12 @@ export type SourceStatus = { mic: SourceState; midi: SourceState };
 const PENDING_MIN_ONSETS = 6;
 /** seconds of onsets, with no lock yet, before a provisional tempo is adopted from pendingBpm */
 const PROVISIONAL_WAIT_SEC = 8;
+/** the voice tempogram is re-read at most this often (it costs a few autocorrelations) */
+const VOICE_TEMPO_INTERVAL_SEC = 0.5;
+/** a singer's tempo is locked once the tempogram's estimate has held this steadily... */
+const VOICE_LOCK_CONFIDENCE = 0.6;
+/** ...or, failing that, this long after the first syllable (bench/tempo/run.ts scores the same rule) */
+const VOICE_LOCK_DEADLINE_SEC = 12;
 /** longest gap between two stable pitch frames still counted as the note being held */
 const MAX_PITCH_FRAME_SEC = 0.1;
 /** Level samples arrive at ~31 Hz; the display needs no more than 10 Hz of them, and every
@@ -50,6 +59,10 @@ export class Listener {
     if (e) this.emitPerformance({ ...e, type: 'note_off', timeSec, durationSec: Math.max(0, timeSec - e.timeSec) });
   }
   private tempo = new TempoLock();
+  /** tempo of a singer from the flux envelope and sung note lengths (see tempoFromVoice.ts) */
+  private voiceTempo = new VoiceTempo();
+  private voiceBpm: number | null = null;
+  private lastVoiceTempoAt = -Infinity;
   private activity = new ActivityTracker();
   private keyDet: KeyDetector;
   private chordDet: ChordDetector;
@@ -128,11 +141,13 @@ export class Listener {
       if (this.onsetTimes.length > 24) { this.onsetTimes.shift(); if (this.voiceOnsets > this.onsetTimes.length) this.voiceOnsets = this.onsetTimes.length; }
       const pending = bpmFromOnsets(this.onsetTimes, PENDING_MIN_ONSETS, this.tempoOpts);
       this.pendingBpm = pending?.bpm ?? null;
-      // A singer with a fast tempo shouldn't wait the full 12 onsets for the band to start:
+      this.readVoiceTempo(t);
+      // A player with a fast tempo shouldn't wait the full 12 onsets for the band to start:
       // once there's been 6+ onsets' worth of signal for 8s with still no real lock, adopt
       // the running estimate as a provisional one — the TempoLock's own 12-onset estimate
       // still runs every push and will replace it with the real lock as soon as it's ready.
-      if (!this.tempo.locked && pending && t - this.onsetTimes[0] >= PROVISIONAL_WAIT_SEC)
+      // A singer's onsets are syllables, so for a voice majority the tempogram decides instead.
+      if (!this.tempo.locked && pending && !this.tempo.voiceMajority && t - this.onsetTimes[0] >= PROVISIONAL_WAIT_SEC)
         this.tempo.adoptProvisional(pending.bpm, pending.downbeat);
       if (n >= 0) {
         this.lastMidiNoteAt = t;
@@ -152,6 +167,10 @@ export class Listener {
       this.lastLevelEmitAt = now;
       this.emit();
     };
+    const onFlux = (flux: number, t: number) => {
+      this.voiceTempo.pushFlux(flux, t);
+      if (this.readVoiceTempo(t)) this.emit();
+    };
     const onPitch = (p: StablePitch | null, timeSec = p?.timeSec ?? this.now()) => {
       this.pitch = p;
       const now = timeSec;
@@ -169,6 +188,7 @@ export class Listener {
         const midi = p.midi;
         if (midi !== this.lastStableMidi) {
           this.closeMic(now);
+          this.voiceTempo.noteOn(midi, now);
           this.micHeld = { type: 'note_on', id: performanceNoteId('mic'), source: 'mic',
             midi, velocity: 0.8, confidence: p.confidence ?? 1, timeSec: now };
           this.emitPerformance(this.micHeld);
@@ -179,6 +199,7 @@ export class Listener {
         }
       } else {
         this.closeMic(now);
+        this.voiceTempo.noteOff(now);
         this.lastStableMidi = null;
         this.lastSungMidi = null;
         this.lastPitchAt = null;
@@ -192,7 +213,7 @@ export class Listener {
         const kind = this.kinds[i];
         try {
           if (source.onPerformance) this.sourceDetaches.push(source.onPerformance(e => this.emitPerformance(e)));
-          await source.start((n, v, t) => onNote(n, v, t, kind), onLevel, onPitch);
+          await source.start((n, v, t) => onNote(n, v, t, kind), onLevel, onPitch, kind === 'mic' ? onFlux : undefined);
           const getStatus = (source as { getStatus?(): SourceState }).getStatus;
           this.status = { ...this.status, [kind]: getStatus ? getStatus.call(source) : 'on' };
         } catch {
@@ -260,6 +281,7 @@ export class Listener {
       inputLevel: this.level,
       onsets: this.onsetCount,
       pendingBpm: this.pendingBpm,
+      voiceBpm: this.voiceBpm,
       dynamics: this.activity.dynamics,
     };
   }
@@ -293,6 +315,28 @@ export class Listener {
   get downbeat() { return this.tempo.locked?.downbeat ?? null; }
 
   private get tempoOpts() { return { voice: this.voiceOnsets * 2 > this.onsetTimes.length }; }
+
+  /**
+   * Re-reads the voice tempogram (at most every half second) and, while a singer is the main
+   * source, locks the tempo from it once the estimate has been steady (confidence 0.6) or 12 s
+   * after the first syllable: 8-12 s of singing give a beat that is within 8% of the song's
+   * tempo on 62% of real songs and within 8% of it or an exact octave on 70%, against 28% / 43%
+   * for the syllable-rate histogram (bench/tempo/RESULTS.md). Returns true when the estimate
+   * changed.
+   */
+  private readVoiceTempo(t: number): boolean {
+    if (t - this.lastVoiceTempoAt < VOICE_TEMPO_INTERVAL_SEC) return false;
+    this.lastVoiceTempoAt = t;
+    const e = this.voiceTempo.estimate(t);
+    const bpm = e?.bpm ?? null;
+    const changed = bpm !== this.voiceBpm;
+    this.voiceBpm = bpm;
+    if (e && this.tempo.voiceMajority && (!this.tempo.locked || this.tempo.isProvisional)) {
+      const first = this.tempo.firstOnset;
+      if (e.confidence >= VOICE_LOCK_CONFIDENCE || (first !== null && t - first >= VOICE_LOCK_DEADLINE_SEC)) this.tempo.lockFromVoice(e.bpm);
+    }
+    return changed;
+  }
 
   private emit() { const i = this.input; this.cbs.forEach(c => c(i)); }
 
