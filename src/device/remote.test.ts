@@ -66,8 +66,8 @@ it('keeps quick selections of different presets as independent remote commands',
   try {
     await vi.advanceTimersByTimeAsync(0);
     root.querySelector<HTMLButtonElement>('[data-preset="sax"]')!.click();
-    root.querySelector<HTMLButtonElement>('[data-preset="ambient"]')!.click();
+    root.querySelector<HTMLButtonElement>('[data-preset="orchestral"]')!.click();
     await vi.advanceTimersByTimeAsync(75);
-    expect(commands).toEqual([{type:'accompPreset',preset:'sax',on:true},{type:'accompPreset',preset:'ambient',on:true}]);
+    expect(commands).toEqual([{type:'accompPreset',preset:'sax',on:true},{type:'accompPreset',preset:'orchestral',on:true}]);
   } finally {stop();vi.unstubAllGlobals();vi.useRealTimers();}
 });
