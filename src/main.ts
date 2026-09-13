@@ -11,7 +11,7 @@ import { Listener } from './listener/listener';
 import { MidiSource } from './listener/midiSource';
 import { TapTempo } from './listener/tapTempo';
 import { countInClicks } from './band/countIn';
-import { SongForm, type Section } from './band/form';
+import { SECTION_LABEL, type FormResult, type Section } from './band/form';
 import { PlanFreshness, chooseChord, chooseSection } from './band/planOverride';
 import { outputLatencyMs } from './audio/outputLatency';
 import { Drone } from './players/drone';
@@ -101,25 +101,12 @@ let beatTimers: ReturnType<typeof setTimeout>[] = [];
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 let countInSynth: Tone.Synth | undefined;
 let countInTimers: ReturnType<typeof setTimeout>[] = [];
-/** Mirrors the Bandleader's own SongForm one-for-one, driven by the same per-bar dynamics,
- *  purely so the app can show the section name and know when to stop and re-arm the band —
- *  see src/band/form.ts for why running a second instance in lockstep is safe. */
-const songForm = new SongForm();
 /** How recently the AMT service's own plan supplied a chord/section — see
- *  src/band/planOverride.ts. While it's fresh, the local songForm/chord tick above still run
- *  (so the fallback path stays warm) but their results are not applied. */
+ *  src/band/planOverride.ts. While it's fresh, the engine's own form and the local chord tick
+ *  still run (so the fallback path stays warm) but their results are not applied. */
 const planFreshness = new PlanFreshness();
 let planChord: Chord | null = null;
 let planSection: Section | null = null;
-
-const SECTION_LABEL: Record<Section, string> = {
-  intro: 'Intro',
-  groove: 'Groove',
-  lift: 'Lift',
-  breakdown: 'Breakdown',
-  ending: 'Ending',
-  ended: 'Ended · sing to start again',
-};
 
 /** Shows a self-dismissing notice in the LCD-styled toast. A later call replaces whatever
  *  is currently showing and restarts the dismiss clock, rather than stacking messages. */
@@ -150,18 +137,20 @@ function tickBeat(beat: number): void {
   // don't and shouldn't know about them -- they simply ignore the extra properties.
   band?.set({ dynamics: eff, source: micIsOnlySource() ? 'mic' : 'midi', sungPitchClass } as Parameters<NonNullable<typeof band>['set']>[0]);
   store.update({ effectiveIntensity: eff.intensity });
-  // The form only moves on bar boundaries; tickBeat also runs on beats 1-3 off timers.
-  if (beat % BEATS_PER_BAR !== 0) return;
-  const bar = beat / BEATS_PER_BAR;
-  const result = songForm.tick({ bar, dynamics: eff, silenceBeats: eff.silenceBeats, playerStopped: false });
+}
+
+/** The engine's song form has decided this bar's section (it ticks right after tickBeat handed
+ *  it the bar's dynamics, see Bandleader.onBar). Shows the section and, on the ending bar,
+ *  stops the band: the Bandleader has already scheduled the ending hit and stops its own clock,
+ *  the engine as a whole stops here, and the app goes quiet until the singer's next onset
+ *  re-arms it through the first-lock path (the `!store.state.locked` branch in
+ *  listener.onChange below). */
+function onForm(bar: number, form: FormResult): void {
   // Kept running even under AMT (see planFreshness), purely so the fallback stays warm; its
   // result is only applied when the service hasn't sent a fresher section itself.
-  const section = chooseSection(store.state.engine, planFreshness.sectionFresh(bar), planSection, result.section);
-  if (!planFreshness.sectionFresh(bar) && result.shouldStop) {
-    // The Bandleader has already scheduled and will stop itself after the ending bar; every
-    // engine (including the ones with no form of their own) stops here regardless, and the
-    // app goes quiet until the singer's next onset re-arms it through the existing
-    // first-lock path (see the `!store.state.locked` branch in listener.onChange below).
+  const fresh = planFreshness.sectionFresh(bar);
+  const section = chooseSection(store.state.engine, fresh, planSection, form.section);
+  if (!fresh && form.shouldStop) {
     band?.stop();
     store.update({ locked: false, accompanimentStatus: SECTION_LABEL.ended });
   } else {
@@ -329,6 +318,7 @@ function wireBand(b: BandEngine): void {
       for (let b = 1; b < BEATS_PER_BAR; b++)
         beatTimers.push(setTimeout(() => tickBeat(beat + b), (b * 60000) / bpm));
   };
+  b.onForm = onForm;
   b.onError = msg => store.update({ error: msg, accompanimentStatus: 'Reconnecting' });
   b.onStatus = (message, latencyMs) => {
     if (band !== b) return;
@@ -355,7 +345,7 @@ function wireBand(b: BandEngine): void {
       planSection = section;
       planFreshness.noteSection(store.state.bar);
       if (section === 'ending') {
-        // Same stop the local SongForm drives on its own 'ending' tick (see tickBeat).
+        // Same stop the engine's own form drives on its 'ending' bar (see onForm).
         band?.stop();
         store.update({ locked: false, accompanimentStatus: SECTION_LABEL.ending });
         return;
@@ -433,7 +423,6 @@ fetch(RELAY_URL + '/health')
 
 async function power() {
   store.update({ error: null });
-  songForm.reset();
   planFreshness.reset();
   planChord = null;
   planSection = null;
@@ -527,8 +516,7 @@ async function power() {
         first += 2 * barLen;
         scheduleCountIn(input.bpm, first);
       }
-      songForm.reset(); // this onset may be the singer re-starting the band after an ending
-      store.update({ locked: true });
+      store.update({ locked: true }); // this onset may be the singer re-starting the band after an ending
       lastFollowedBpm = input.bpm;
       disarmFallback?.();
       disarmFallback = armFallback(store.state.engine, band!);
@@ -569,7 +557,6 @@ function powerOff() {
   clearBeatTimers();
   clearCountIn();
   band?.stop();
-  songForm.reset();
   playbackActivity.clear();
   accompActivity.clear();
   // Remove the monitor's owned edge before the listener disconnects the shared
