@@ -113,7 +113,7 @@ const defaults: AppState = {
   enabled: { drums: true, bass: true, keys: true, lead: false },
   input: { bpm: null, key: null, chord: null, notesNow: [], pitch: null, inputLevel: 0, onsets: 0, pendingBpm: null, voiceBpm: null, dynamics: IDLE_DYNAMICS },
   locked: false,
-  tempoMode: 'locked',
+  tempoMode: 'follow',
   countIn: true,
   countInBeat: null,
   outputLatencyMs: null,

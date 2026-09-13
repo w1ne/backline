@@ -20,3 +20,25 @@ describe('forwardBpm', () => {
     expect(forwardBpm(100, 99, 2)).toBe(false);
   });
 });
+
+import { SustainedBpmFollower } from './bpmForward';
+
+describe('SustainedBpmFollower', () => {
+  it('follows the first tempo at once, then only a change that holds for the sustain window', () => {
+    const f = new SustainedBpmFollower(4, 8000, 3);
+    expect(f.observe(undefined, 100, 0)).toBe(100);
+    expect(f.observe(100, 101, 1000)).toBeUndefined();          // jitter under step
+    expect(f.observe(100, 112, 2000)).toBeUndefined();          // new tempo appears
+    expect(f.observe(100, 113, 6000)).toBeUndefined();          // still within tolerance, not long enough
+    expect(f.observe(100, 112, 10500)).toBe(112);               // held 8.5 s: follow
+  });
+
+  it('a wandering estimate never counts as sustained', () => {
+    const f = new SustainedBpmFollower(4, 8000, 3);
+    expect(f.observe(100, 112, 0)).toBeUndefined();
+    expect(f.observe(100, 120, 3000)).toBeUndefined();          // jumped: restart the clock
+    expect(f.observe(100, 121, 9000)).toBeUndefined();          // only 6 s since the jump
+    expect(f.observe(100, 100, 9500)).toBeUndefined();          // back home: candidate dropped
+    expect(f.observe(100, 121, 12000)).toBeUndefined();
+  });
+});

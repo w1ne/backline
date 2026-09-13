@@ -37,7 +37,7 @@ import { PatternEngine } from './engines/patternEngine';
 import { LyriaEngine } from './engines/lyriaEngine';
 import { AceStepEngine } from './engines/acestepEngine';
 import { AmtEngine } from './engines/amtEngine';
-import { forwardBpm } from './band/bpmForward';
+import { SUSTAIN_MS, SustainedBpmFollower } from './band/bpmForward';
 import { MidiRecorder } from './export/midiRecorder';
 import { downloadBlob, downloadMidi } from './export/download';
 import { audioRecorder } from './export/audioRecorder';
@@ -81,6 +81,7 @@ let band: BandEngine | undefined;
 let monitor: MidiMonitor | undefined;
 const players = new Players();
 const playbackActivity = new PlaybackActivity();
+let tempoFollower: SustainedBpmFollower | undefined;
 /** ACE-Step's audible parts (rendered audio has no note events); see wireBand */
 let aceActiveParts: Partial<Record<Instrument, boolean>> = {};
 const accompActivity = new PlaybackActivity<AccompPreset>();
@@ -580,15 +581,19 @@ async function power() {
       startBand(band!, input.bpm, first).catch(err => {
         store.update({ error: `${store.state.engine}: ${err instanceof Error ? err.message : String(err)}` });
       });
-    } else if (
-      store.state.locked &&
-      store.state.tempoMode === 'follow' &&
-      !listener!.hasBpmOverride &&
-      input.bpm &&
-      forwardBpm(lastFollowedBpm, input.bpm, band!.bpmStep)
-    ) {
-      lastFollowedBpm = input.bpm;
-      setBandBpm(band!, input.bpm);
+    } else if (store.state.locked && store.state.tempoMode === 'follow' && input.bpm) {
+      // Follow a change of pace, not a rushed phrase: the estimate has to move by the engine's
+      // step and hold there for SUSTAIN_MS before the band moves. A tapped tempo is a strong
+      // prior, so it takes twice the hold to overrule it.
+      const holdMs = listener!.hasBpmOverride ? 2 * SUSTAIN_MS : SUSTAIN_MS;
+      if (!tempoFollower || tempoFollower.step !== band!.bpmStep || tempoFollower.sustainMs !== holdMs) {
+        tempoFollower = new SustainedBpmFollower(band!.bpmStep, holdMs);
+      }
+      const next = tempoFollower.observe(lastFollowedBpm, input.bpm, performance.now());
+      if (next !== undefined && next !== lastFollowedBpm) {
+        lastFollowedBpm = next;
+        setBandBpm(band!, next);
+      }
     }
   });
 

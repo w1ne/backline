@@ -46,6 +46,16 @@ acestep_ok="false"
 echo "$health_json" | grep -q '"amt":true' && amt_ok="true"
 echo "$health_json" | grep -q '"acestep":true' && acestep_ok="true"
 
+# Reap orphaned service processes on every run, healthy or not: a `python server.py` whose
+# parent is init (its tmux/bash is gone) is a leak from an interrupted deploy or benchmark,
+# each one holding ~1 GB of GPU. Match the exact venv interpreters and nothing else -- a broad
+# `pgrep -f server.py` once matched the tmux server itself and took prod down.
+reaped="$(ssh_pod 'for p in $(pgrep -f "^/opt/(ace-step/\.venv|amt-venv)/bin/python .*server\.py"); do
+  if [ "$(ps -o ppid= -p "$p" | tr -d " ")" = "1" ]; then kill "$p" && echo "$p"; fi; done' 2>/dev/null || true)"
+if [ -n "$reaped" ]; then
+  log "reaped orphan service processes: $(echo "$reaped" | tr '\n' ' ')"
+fi
+
 if [ "$amt_ok" = "true" ] && [ "$acestep_ok" = "true" ]; then
   exit 0
 fi
