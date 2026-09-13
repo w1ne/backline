@@ -11,7 +11,7 @@ describe('Store', () => {
 
   it('defaults to note-following cloud accompaniment', () => {
     const s = new Store();
-    expect(s.state.engine).toBe('amt');
+    expect(s.state.engine).toBe('acestep');
   });
 
   it('notifies subscribers with merged state', () => {
