@@ -2,29 +2,7 @@
 
 A band in the browser that plays along with you. Hum, sing, play into the mic or a MIDI keyboard; after four bars it locks onto your tempo and key and plays drums, bass, keys and lead. Toggle instruments, switch genre, turn the Creativity knob.
 
-[![deploy](https://github.com/w1ne/duet.ai/actions/workflows/deploy.yml/badge.svg)](https://github.com/w1ne/duet.ai/actions/workflows/deploy.yml)
-
-## Hackathon
-
-Built for the Music & AI Hackathon 2026 (Uttendorf/Rudolfshütte, 12–13 Sep 2026),
-Challenge 2: AI Instruments & Beyond Music.
-
-Team: [Andrii Shylenko](https://github.com/w1ne), [Fabian Schuller](https://github.com/fabsch225),
-[Nafisa A](https://github.com/naf-athiya), Liz Shch, [Weronika Z](https://github.com/werka-z),
-[Aboutsue](https://github.com/Aboutsue).
-
-Live app: https://www.duetai.art
-Demo video: https://github.com/w1ne/duet.ai/releases/download/hackathon-2026-demo/duetai-demo.mp4
-Submission text: [docs/hackathon-submission.md](docs/hackathon-submission.md)
-
-![duet.ai screenshot](docs/media/screenshot.jpg)
-
-## Two editions
-
-- **Browser app.** Runs anywhere, uses the laptop's mic/MIDI and speakers. See below.
-- **LYDIA pedal.** A standalone build for a Raspberry Pi built into a Roland/Neutone LYDIA
-  pedal, using the pedal's own audio I/O, knobs, footswitches and LCD. It auto-updates from
-  the rolling `pi-latest` GitHub release every 2 minutes. See [services/pi/README.md](services/pi/README.md).
+Live: https://www.duetai.art
 
 ## Run locally
 
@@ -40,34 +18,9 @@ Patterns works offline. `--relay` reads `GEMINI_API_KEY` from the environment or
 
 ## How it works
 
-```mermaid
-flowchart TB
-    subgraph Input
-        Mic[Mic: voice or instrument]
-        MIDI[MIDI keyboard]
-    end
-    subgraph Browser or LYDIA pedal
-        L[Listener<br/>onset, pitch, tempo, key, chord]
-        B[BandEngine<br/>one interface, four engines]
-        P[Patterns<br/>Tone.js, local, offline]
-        Out[Speakers / LYDIA morph out]
-    end
-    subgraph Cloud
-        R[Relay<br/>Cloudflare Worker: key, origin gate, rate limit]
-        Gem[Lyria RealTime<br/>Gemini API]
-        G[GPU pod<br/>ACE-Step + AMT brain: chord, form, dynamics]
-    end
-    Mic --> L
-    MIDI --> L
-    L -->|bpm, key, chord, notes| B
-    B --> P --> Out
-    B <-->|WebSocket| R
-    R <--> Gem
-    R <--> G
-    B --> Out
 ```
-
-The same code runs in the browser and on the LYDIA pedal (Raspberry Pi, ALSA audio, LCD, knobs, footswitches).
+mic / MIDI  →  Listener  →  { bpm, key, chord, notes }  →  BandEngine  →  audio
+```
 
 - **Listener** (`src/listener/`): onset detection, pitch tracking, tempo lock, key and chord detection.
 - **Engines** (`src/engines/`): one interface, four implementations, switchable on the panel.

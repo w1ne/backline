@@ -496,6 +496,8 @@ class Session:
         # what the current segment was rendered with; a change re-renders at the next block
         self.song_prompt_key: Optional[tuple] = None
         self.song_task: Optional[str] = None
+        self.prefetch: Optional[asyncio.Task] = None
+        self.prefetch_plan: Optional[dict] = None
         # the player's voice, 16 kHz mono float32, most recent HUM_MAX_SECONDS
         self.hum = np.zeros(0, dtype=np.float32)
 
@@ -511,6 +513,12 @@ class Session:
     def cancel_inflight(self) -> None:
         if self._task and not self._task.done():
             self._task.cancel()
+
+    def close(self) -> None:
+        """Client gone: drop the in-flight block and any background segment render."""
+        self.cancel_inflight()
+        if getattr(self, "prefetch", None) is not None and not self.prefetch.done():
+            self.prefetch.cancel()
 
     async def handle_block(self, msg: dict, send_binary, send_json) -> None:
         seq = msg["seq"]
@@ -644,6 +652,93 @@ async def pace_sleep(seconds: float) -> None:
         await asyncio.sleep(seconds)
 
 
+def _segment_plan(self: "Session", msg: dict, bpm: int, key: str, needs_restart: bool):
+    """Everything a segment render needs, decided now so a prefetch can run later unchanged."""
+    instruments = msg.get("enabled") or msg.get("instruments", ["drums", "bass"])
+    extras = [str(e) for e in (msg.get("extras") or [])]
+    prompt_key = (msg.get("genre", "lofi"), tuple(sorted(instruments)), tuple(sorted(extras)), msg.get("player_instrument"))
+    if self.seed is None or needs_restart:
+        self.seed = creativity_to_seed(float(msg.get("creativity", 0.5)), 0)
+    prompt = build_prompt(
+        msg.get("genre", "lofi"), instruments, exclude=msg.get("player_instrument"),
+        chords=[str(c) for c in (msg.get("chords") or [])],
+        intensity=float(msg.get("intensity", 0.5)), space=True,
+        density=float(msg.get("density", msg.get("intensity", 0.5))), fill=False,
+        extras=extras,
+    )
+    return dict(bpm=bpm, key=key, prompt=prompt, prompt_key=prompt_key,
+                creativity=float(msg.get("creativity", 0.5)))
+
+
+async def _render_segment(self: "Session", plan: dict, context_audio: Optional[np.ndarray]):
+    """Renders one segment: a cover of the last segment of singing when enough was heard,
+    else a repaint continuing `context_audio`, else a fresh text2music. Returns (audio, task)."""
+    bpm, key = plan["bpm"], plan["key"]
+    segment = SONG_SEGMENT_BARS * 240.0 / bpm
+    context_samples = 0
+    source_path = None
+    hum_needed = int(segment * HUM_SR)
+    cover = SONG_COVER and len(self.hum) >= hum_needed
+    if cover:
+        # re-voice the last segment of singing as the band; no repaint context (cover takes
+        # the whole canvas), continuity comes from the fixed seed + the voice itself
+        source_path = _write_temp_wav(self.hum[-hum_needed:].reshape(-1, 1), HUM_SR)
+    elif context_audio is not None and len(context_audio):
+        context = context_audio[-round(CONTEXT_MAX_SECONDS * TARGET_SR):]
+        context_samples = len(context)
+        source_path = _write_temp_wav(np.concatenate([
+            context, np.zeros((round(segment * TARGET_SR), 2), dtype=np.float32),
+        ]))
+    context_duration = context_samples / TARGET_SR
+    task = "cover" if cover else ("text2music" if source_path is None else "repaint")
+    params = GenParams(
+        task_type=task,
+        prompt=plan["prompt"], bpm=bpm, key_scale=key,
+        audio_duration=context_duration + segment,
+        inference_steps=INFERENCE_STEPS,
+        guidance=density_to_guidance(plan["creativity"], 0.5),
+        seed=self.seed, src_audio_path=source_path,
+        repainting_start=context_duration if task == "repaint" else None,
+        repainting_end=context_duration + segment if task == "repaint" else None,
+        lyrics="[Instrumental]",
+        audio_cover_strength=creativity_to_cover_strength(plan["creativity"]) if cover else None,
+    )
+    loop = asyncio.get_running_loop()
+
+    def generate():
+        try:
+            return self.model.generate(params)
+        finally:
+            if source_path:
+                try:
+                    os.unlink(source_path)
+                except FileNotFoundError:
+                    pass
+
+    t0 = time.monotonic()
+    audio = await loop.run_in_executor(None, generate)
+    audio = audio[context_samples:context_samples + round(segment * TARGET_SR)]
+    log.info("song segment: task=%s bars=%d bpm=%d key=%s hum=%.0fs render=%.0fms",
+             task, SONG_SEGMENT_BARS, bpm, key, len(self.hum) / HUM_SR, (time.monotonic() - t0) * 1000.0)
+    return audio, task
+
+
+def _install_segment(self: "Session", audio: np.ndarray, task: str, prompt_key: tuple) -> None:
+    self.song = audio
+    self.song_prompt_key = prompt_key
+    self.song_task = task
+    self.song_pos = 0
+    self.song_t0 = time.monotonic()
+    self.song_blocks_served = 0
+
+
+def _cancel_prefetch(self: "Session") -> None:
+    if self.prefetch is not None and not self.prefetch.done():
+        self.prefetch.cancel()
+    self.prefetch = None
+    self.prefetch_plan = None
+
+
 async def _run_song_block(self: "Session", msg: dict, seq: int, bpm: int, key: str, duration: float,
                           needs_restart: bool, send_binary, send_json) -> None:
     target_samples = round(duration * TARGET_SR)
@@ -652,12 +747,9 @@ async def _run_song_block(self: "Session", msg: dict, seq: int, bpm: int, key: s
     if needs_restart:
         self.song = None
         self.prev_audio = None
-    # Song mode arranges for everything the user switched on ("enabled"); the per-block
-    # dynamics-thinned "instruments" list would otherwise re-render the song every time the
-    # player got busy or left space.
-    instruments = msg.get("enabled") or msg.get("instruments", ["drums", "bass"])
-    extras = [str(e) for e in (msg.get("extras") or [])]
-    prompt_key = (msg.get("genre", "lofi"), tuple(sorted(instruments)), tuple(sorted(extras)), msg.get("player_instrument"))
+        self._cancel_prefetch()
+    plan = self._segment_plan(msg, bpm, key, needs_restart)
+    prompt_key = plan["prompt_key"]
     if self.song is not None and self.last_key is not None and not same_scale(key, self.last_key):
         # key change: continue from what was heard, in the new key, at the next block
         self.song = None
@@ -665,74 +757,28 @@ async def _run_song_block(self: "Session", msg: dict, seq: int, bpm: int, key: s
         # style or instrument switch: drop the rest of this segment and re-render from here,
         # continuing from what was already heard
         self.song = None
+    # a prefetched segment only counts if nothing it was rendered with has changed since
+    if self.prefetch_plan is not None and (
+        self.prefetch_plan["prompt_key"] != prompt_key or not same_scale(self.prefetch_plan["key"], key)
+        or abs(self.prefetch_plan["bpm"] - bpm) / max(1, bpm) > SONG_BPM_RESTART_FRACTION
+    ):
+        self._cancel_prefetch()
+
     if self.song is None or self.song_pos + target_samples > len(self.song):
-        # render the next segment: text2music on a fresh start, otherwise a repaint that
-        # continues the last CONTEXT_MAX_SECONDS of what the player already heard.
-        segment = SONG_SEGMENT_BARS * 240.0 / bpm
-        context_samples = 0
-        source_path = None
-        hum_needed = int(segment * HUM_SR)
-        cover = SONG_COVER and len(self.hum) >= hum_needed
-        if cover:
-            # re-voice the last segment of singing as the band; no repaint context (cover
-            # takes the whole canvas), continuity comes from the fixed seed + the voice itself
-            source_path = _write_temp_wav(self.hum[-hum_needed:].reshape(-1, 1), HUM_SR)
-        elif self.prev_audio is not None:
-            context = self.prev_audio[-round(CONTEXT_MAX_SECONDS * TARGET_SR):]
-            context_samples = len(context)
-            source_path = _write_temp_wav(np.concatenate([
-                context, np.zeros((round(segment * TARGET_SR), 2), dtype=np.float32),
-            ]))
-        context_duration = context_samples / TARGET_SR
-        if self.seed is None or needs_restart:
-            self.seed = creativity_to_seed(float(msg.get("creativity", 0.5)), 0)
-        prompt = build_prompt(
-            msg.get("genre", "lofi"), instruments, exclude=msg.get("player_instrument"),
-            chords=[str(c) for c in (msg.get("chords") or [])],
-            intensity=float(msg.get("intensity", 0.5)), space=True,
-            density=float(msg.get("density", msg.get("intensity", 0.5))), fill=False,
-            extras=extras,
-        )
-        task = "cover" if cover else ("text2music" if source_path is None else "repaint")
-        params = GenParams(
-            task_type=task,
-            prompt=prompt, bpm=bpm, key_scale=key,
-            audio_duration=context_duration + segment,
-            inference_steps=INFERENCE_STEPS,
-            guidance=density_to_guidance(float(msg.get("creativity", 0.5)), 0.5),
-            seed=self.seed, src_audio_path=source_path,
-            repainting_start=context_duration if task == "repaint" else None,
-            repainting_end=context_duration + segment if task == "repaint" else None,
-            lyrics="[Instrumental]",
-            audio_cover_strength=creativity_to_cover_strength(float(msg.get("creativity", 0.5))) if cover else None,
-        )
-        loop = asyncio.get_running_loop()
-
-        def generate():
-            try:
-                return self.model.generate(params)
-            finally:
-                if source_path:
-                    try:
-                        os.unlink(source_path)
-                    except FileNotFoundError:
-                        pass
-
-        audio = await loop.run_in_executor(None, generate)
-        audio = audio[context_samples:context_samples + round(segment * TARGET_SR)]
+        if self.song is not None and self.prefetch is not None and not self.prefetch.cancelled():
+            # the segment boundary: the continuation was rendered while this one played
+            audio, task = await self.prefetch
+            self.prefetch = None
+            self.prefetch_plan = None
+        else:
+            self._cancel_prefetch()
+            audio, task = await self._render_segment(plan, self.prev_audio)
+            elapsed_ms = (time.monotonic() - t0) * 1000.0
         if len(audio) < target_samples:
             raise RuntimeError("ACE returned a shorter segment than requested")
         if seq != self._latest_seq:
             return
-        log.info("song segment: task=%s bars=%d bpm=%d key=%s hum=%.0fs render=%.0fms",
-                 task, SONG_SEGMENT_BARS, bpm, key, len(self.hum) / HUM_SR, (time.monotonic() - t0) * 1000.0)
-        self.song = audio
-        self.song_prompt_key = prompt_key
-        self.song_task = task
-        self.song_pos = 0
-        self.song_t0 = time.monotonic()
-        self.song_blocks_served = 0
-        elapsed_ms = (time.monotonic() - t0) * 1000.0
+        self._install_segment(audio, task, prompt_key)
     else:
         # pacing: block k of the segment is due k*duration after the segment's first block
         due = self.song_t0 + self.song_blocks_served * duration - SONG_PACE_LEAD_SECONDS
@@ -747,6 +793,15 @@ async def _run_song_block(self: "Session", msg: dict, seq: int, bpm: int, key: s
     self.last_key = key
     keep = round(CONTEXT_MAX_SECONDS * TARGET_SR)
     self.prev_audio = block.copy() if self.prev_audio is None else np.concatenate([self.prev_audio, block])[-keep:]
+
+    # Continuity: once half the segment has been served, render the next one in the
+    # background with the freshest voice, using the rest of this segment as context, so
+    # the boundary is an instant slice instead of a 2-3 s hole.
+    if self.prefetch is None and self.song_pos >= len(self.song) // 2:
+        context = np.concatenate([self.prev_audio, self.song[self.song_pos:]])
+        self.prefetch_plan = plan
+        self.prefetch = asyncio.ensure_future(self._render_segment(plan, context))
+
     header = struct.pack("<I", seq)
     await send_binary(header + float_to_pcm16(block))
     await send_json({
@@ -759,6 +814,10 @@ async def _run_song_block(self: "Session", msg: dict, seq: int, bpm: int, key: s
     })
 
 
+Session._segment_plan = _segment_plan
+Session._render_segment = _render_segment
+Session._install_segment = _install_segment
+Session._cancel_prefetch = _cancel_prefetch
 Session._run_song_block = _run_song_block
 
 
@@ -811,7 +870,7 @@ def create_app(model: AceStepModel):
                 else:
                     log.warning("unknown message type: %s", mtype)
         except WebSocketDisconnect:
-            session.cancel_inflight()
+            session.close()
 
     return app
 
