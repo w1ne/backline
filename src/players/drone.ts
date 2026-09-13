@@ -15,8 +15,11 @@ export class Drone {
   private level = 0;
   private enabled = true;
   private root = 0;
-  private octave = 0;
-  private frequency() { return 440 * 2 ** ((36 + 12 * this.octave + this.root - 69) / 12); }
+  /** Continuous octaves above/below the drone's base register (clamped to ±2) -- fractional,
+   *  not stepped, so dragging the control glides the pitch smoothly instead of jumping between
+   *  whole octaves. */
+  private register = 0;
+  private frequency() { return 440 * 2 ** ((36 + 12 * this.register + this.root - 69) / 12); }
 
   constructor() {
     this.gain = new Tone.Gain(0).toDestination();
@@ -44,12 +47,14 @@ export class Drone {
     this.root = root;
     this.oscillator?.frequency.rampTo(this.frequency(), .3);
   }
-  /** Shifts the drone's whole register up or down, in octaves (clamped to ±2). */
-  setOctave(octave: number) {
-    const clamped = Number.isFinite(octave) ? Math.min(2, Math.max(-2, Math.round(octave))) : 0;
-    if (clamped === this.octave) return;
-    this.octave = clamped;
-    this.oscillator?.frequency.rampTo(this.frequency(), .3);
+  /** Shifts the drone's register up or down, in fractional octaves (clamped to ±2). A short
+   *  ramp on each call, rather than a step change, is what makes dragging the control glide
+   *  continuously instead of zippering between values. */
+  setRegister(register: number) {
+    const clamped = Number.isFinite(register) ? Math.min(2, Math.max(-2, register)) : 0;
+    if (clamped === this.register) return;
+    this.register = clamped;
+    this.oscillator?.frequency.rampTo(this.frequency(), .05);
   }
   setLevel(value: number) {
     this.level = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;

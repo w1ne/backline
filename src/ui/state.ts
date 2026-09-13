@@ -24,8 +24,10 @@ export interface AppState {
   sound: MonitorSound;
   noiseVolume: number;
   droneVolume: number;
-  /** octaves to shift the drone's register, -2..2 */
-  droneOctave: number;
+  /** fractional octaves to shift the drone's register, -2..2 */
+  droneRegister: number;
+  /** fractional octaves to shift the white noise's filtered register, -2..2 */
+  noiseRegister: number;
   creativity: number;
   /** manual INTENSITY knob, 0..1: how much the band adds, folded into the auto activity intensity */
   intensity: number;
@@ -103,7 +105,8 @@ const defaults: AppState = {
   sound: 'grand',
   noiseVolume: 0,
   droneVolume: 0,
-  droneOctave: 0,
+  droneRegister: 0,
+  noiseRegister: 0,
   creativity: 0.6,
   intensity: 0.5,
   effectiveIntensity: 0,
