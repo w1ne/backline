@@ -100,6 +100,45 @@ function skeleton(): string {
     <div class="screen" data-live>
       <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
       <div class="bar">
+        <div class="mascot" id="mascot" aria-hidden="true">
+          <svg viewBox="0 0 140 130" width="100%" height="100%" stroke-linejoin="round" stroke-linecap="round">
+            <g class="m-body">
+              <ellipse cx="72" cy="126" rx="40" ry="4" fill="#000" opacity=".4"/>
+              <!-- back wing -->
+              <g class="m-wing m-wing-b"><path d="M70 60 q-6 -34 -48 -30 q22 4 20 16 q-16 -4 -24 8 q18 -2 22 10 q-10 2 -12 10 q22 -8 42 -14z" fill="#f3ecd2" stroke="#2b2018" stroke-width="2.5"/></g>
+              <!-- sampler -->
+              <g class="m-box"><path d="M12 92 h48 l6 6 v22 h-48 l-6 -6z" fill="#e2453c" stroke="#2b2018" stroke-width="2.5"/>
+                <rect class="m-pad" style="--s:0" x="20" y="96" width="9" height="7" rx="1.5" fill="#f3ecd2" stroke="#2b2018" stroke-width="1"/><rect class="m-pad" style="--s:1" x="31" y="96" width="9" height="7" rx="1.5" fill="#f3ecd2" stroke="#2b2018" stroke-width="1"/><rect class="m-pad" style="--s:2" x="42" y="96" width="9" height="7" rx="1.5" fill="#f3ecd2" stroke="#2b2018" stroke-width="1"/><rect class="m-pad" style="--s:3" x="20" y="105" width="9" height="7" rx="1.5" fill="#f3ecd2" stroke="#2b2018" stroke-width="1"/><rect class="m-pad" style="--s:4" x="31" y="105" width="9" height="7" rx="1.5" fill="#f3ecd2" stroke="#2b2018" stroke-width="1"/><rect class="m-pad" style="--s:5" x="42" y="105" width="9" height="7" rx="1.5" fill="#f3ecd2" stroke="#2b2018" stroke-width="1"/>
+                <circle cx="56" cy="99" r="2.5" fill="#2aff95"/><circle cx="56" cy="107" r="2.5" fill="#f3ecd2"/>
+                <text x="16" y="118" font-family="var(--display)" font-size="6" fill="#2aff95" stroke="none">HACKATHON</text></g>
+              <!-- body -->
+              <path d="M52 64 q28 -22 60 -6 q20 12 12 40 q-4 14 -22 14 h-30 q-8 -4 -14 -18 q-8 -18 -6 -30z" fill="#d9b06a" stroke="#2b2018" stroke-width="2.5"/>
+              <path d="M78 74 q6 -2 8 4 M96 70 q6 0 6 6 M86 88 q6 -2 8 4 M108 92 q4 -2 8 2" stroke="#f3ecd2" stroke-width="2.5" stroke-dasharray="3 3" fill="none"/>
+              <!-- hind + front legs -->
+              <g class="m-leg m-leg-r"><path d="M108 100 q6 10 2 22 h-8 l4 -18z" fill="#d9b06a" stroke="#2b2018" stroke-width="2.5"/></g>
+              <g class="m-leg m-leg-l"><path d="M84 104 q2 10 -2 18 h-8 l4 -16z" fill="#d9b06a" stroke="#2b2018" stroke-width="2.5"/></g>
+              <g class="m-arm"><path d="M52 84 q-14 4 -18 14" stroke="#d9b06a" stroke-width="9" fill="none"/><path d="M52 84 q-14 4 -18 14" stroke="#2b2018" stroke-width="12" fill="none" opacity="0"/><path d="M34 98 q-2 4 2 6" stroke="#2b2018" stroke-width="2.5" fill="none"/></g>
+              <!-- front wing -->
+              <g class="m-wing m-wing-f"><path d="M76 56 q10 -40 62 -30 q-26 6 -22 20 q20 -6 30 8 q-22 -2 -26 12 q12 2 14 12 q-30 -10 -58 -12z" fill="#f3ecd2" stroke="#2b2018" stroke-width="2.5"/>
+                <path d="M92 36 q8 6 6 14 M106 40 q6 6 4 12 M118 50 q6 4 4 10" stroke="#2b2018" stroke-width="1.5" fill="none" opacity=".6"/></g>
+              <!-- head -->
+              <g class="m-head">
+                <path d="M40 40 l-8 -26 M50 38 l-2 -26" stroke="#2b2018" stroke-width="7" fill="none"/>
+                <path d="M40 40 l-8 -26 M50 38 l-2 -26" stroke="#a67c3c" stroke-width="4" fill="none"/>
+                <path d="M36 26 h6 M44 24 h6 M34 20 h6" stroke="#2b2018" stroke-width="1.5"/>
+                <path d="M62 40 l14 -14 l-2 18z" fill="#d9b06a" stroke="#2b2018" stroke-width="2.5"/>
+                <path d="M66 40 l8 -8 l-1 10z" fill="#e8b3b8"/>
+                <path d="M30 44 q14 -16 40 -6 q10 8 6 22 q-6 12 -22 10 l-16 -4 q-10 -6 -8 -22z" fill="#d9b06a" stroke="#2b2018" stroke-width="2.5"/>
+                <path d="M44 46 q6 -2 8 2 M38 54 q4 -2 6 2 M52 62 q4 0 6 2" stroke="#f3ecd2" stroke-width="2" stroke-dasharray="2 3" fill="none"/>
+                <g class="m-eyes"><ellipse cx="52" cy="54" rx="6" ry="4.5" fill="#fff" stroke="#2b2018" stroke-width="2"/><circle cx="52" cy="54" r="3" fill="#2aff95"/><circle cx="52" cy="54" r="1.4" fill="#2b2018"/></g>
+                <circle cx="31" cy="62" r="3" fill="#2b2018"/>
+                <g class="m-flower"><circle cx="30" cy="36" r="5" fill="#f6d5dc" stroke="#2b2018" stroke-width="1.5"/><circle cx="30" cy="36" r="1.5" fill="#e2453c"/></g>
+              </g>
+              <g class="m-flower m-flower-2"><circle cx="128" cy="86" r="5" fill="#f6d5dc" stroke="#2b2018" stroke-width="1.5"/><circle cx="128" cy="86" r="1.5" fill="#e2453c"/></g>
+              <g class="m-note"><path d="M112 26 v-13 l9 -3 v13" stroke="#ffd400" stroke-width="3" fill="none"/><circle cx="109" cy="26" r="4" fill="#ffd400"/><circle cx="118" cy="23" r="4" fill="#ffd400"/></g>
+            </g>
+          </svg>
+        </div>
         <div class="bar-top">
           <h1 class="logo">duet<i>.ai</i></h1>
           <span class="pill" id="live-pill"></span>
@@ -668,16 +707,18 @@ const lastBar = new WeakMap<HTMLElement, number>();
 function updateBeats(screen: HTMLElement, s: AppState): void {
   const beats = screen.querySelector<HTMLElement>('#beats')!;
   const tiles = screen.querySelector<HTMLElement>('#inst-tiles')!;
+  const bar = screen.querySelector<HTMLElement>('.bar')!;
   if (!s.locked || !s.input.bpm) {
     beats.classList.remove('run');
     tiles.classList.remove('run');
+    bar.classList.remove('run');
     lastBar.delete(screen);
     return;
   }
   screen.style.setProperty('--beat', `${60 / s.input.bpm}s`);
   if (lastBar.get(screen) === s.bar && beats.classList.contains('run')) return;
   lastBar.set(screen, s.bar);
-  for (const el of [beats, tiles]) {
+  for (const el of [beats, tiles, bar]) {
     el.classList.remove('run');
     void el.offsetWidth; // reflow so the animation restarts on the downbeat
     el.classList.add('run');
