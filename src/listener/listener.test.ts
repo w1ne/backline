@@ -476,3 +476,25 @@ it('hands held MIDI notes to new subscribers and forgets released or stopped not
   listener.onPerformance(e => stopped.push(e));
   expect(stopped).toEqual([]);
 });
+
+it('keeps sustained microphone input active through count-in and listening, then measures silence from release', async () => {
+  let now = 0;
+  const mic = new Fake();
+  const listener = new Listener([mic], ['mic'], () => now);
+  await listener.start();
+  mic.note(-1, .8, 0);
+  mic.pitch?.({ midi: 69, cents: 0, stable: true });
+  for (let beat = 0; beat <= 40; beat++) {
+    now = beat * .5;
+    const dynamics = listener.tickBeat(beat, now);
+    expect(dynamics.silenceBeats).toBe(0);
+    expect(dynamics.space).toBe(false);
+  }
+  expect(listener.input.onsets).toBe(1);
+  mic.pitch?.(null);
+  now += .5;
+  expect(listener.tickBeat(41, now).silenceBeats).toBeCloseTo(1);
+  now += .5;
+  expect(listener.tickBeat(42, now).space).toBe(true);
+  listener.stop();
+});

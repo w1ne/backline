@@ -1188,6 +1188,15 @@ describe('AmtEngine held input handoff', () => {
     expect(ws.sent.filter((m: any) => m.type === 'notes' || m.type === 'note_updates')).toEqual([]);
     s.engine.stop();
   });
+  it('measures a held duration on the continuous beat grid across a tempo change', async () => {
+    const s = setup(); await s.engine.start(120, 0);
+    const ws = startedSocket(); ws.open(); ws.receiveJson({ type: 'ready', performanceEvents: true, setBpm: true });
+    s.fire(s.onset);
+    s.setNow(2); s.engine.setBpm(60); s.clock.tick(1, 2);
+    s.setNow(3); s.fire({ ...s.onset, type: 'note_off', timeSec: 3, durationSec: 3 });
+    expect(ws.sent).toContainEqual({ type: 'note_updates', notes: [{ id: 'held', dur: 5, captureTimeSec: 3 }] });
+    s.engine.stop();
+  });
   it('replays a still held note at the current beat when a connection resumes', async () => {
     const s = setup(); await s.engine.start(120, 0);
     const ws = startedSocket(); ws.open(); s.fire(s.onset);

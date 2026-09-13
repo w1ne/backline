@@ -177,7 +177,7 @@ export class AmtEngine implements BandEngine {
   private inputSession = 0;
   private phraseController = new AbortController();
   private heldNotes = new Set<string>();
-  private heldInput = new Map<string, { event: PerformanceEvent; audioTime: number; sentAt?: number }>();
+  private heldInput = new Map<string, { event: PerformanceEvent; audioTime: number; sentBeat?: number }>();
   private legacyOnsetAt = -Infinity;
   private latestOnsetCapture = -Infinity;
 
@@ -287,9 +287,9 @@ export class AmtEngine implements BandEngine {
         this.heldNotes.delete(e.id);
         const held = this.heldInput.get(e.id);
         this.heldInput.delete(e.id);
-        if (held?.sentAt !== undefined && e.durationSec !== undefined) {
-          const duration = Math.max(0, e.timeSec + inputOffset - held.sentAt);
-          this.releaseBuf.push({ id: e.id, dur: duration * this.bpm / 60, captureTimeSec: e.timeSec });
+        if (held?.sentBeat !== undefined && e.durationSec !== undefined) {
+          const releaseBeat = (e.timeSec + inputOffset - this.firstBarAt) * this.bpm / 60;
+          this.releaseBuf.push({ id: e.id, dur: Math.max(0, releaseBeat - held.sentBeat), captureTimeSec: e.timeSec });
           this.flushNotes();
         }
         return;
@@ -380,7 +380,7 @@ export class AmtEngine implements BandEngine {
         this.releaseBuf = this.releaseBuf.filter(n => !this.heldInput.has(n.id));
         for (const held of this.heldInput.values()) {
           held.audioTime = Math.max(this.now(), this.firstBarAt);
-          held.sentAt = undefined;
+          held.sentBeat = undefined;
         }
         this.flushNotes();
         this.onStatus?.('Listening');
@@ -597,10 +597,10 @@ export class AmtEngine implements BandEngine {
     // Transport callbacks run ahead of audible time; wait for the actual count-in end.
     if (this.now() < this.firstBarAt) return;
     for (const held of this.heldInput.values()) {
-      if (held.sentAt !== undefined) continue;
+      if (held.sentBeat !== undefined) continue;
       const e = held.event;
-      held.sentAt = Math.max(held.audioTime, this.firstBarAt);
-      const beat = (held.sentAt - this.firstBarAt) * this.bpm / 60;
+      const beat = (Math.max(held.audioTime, this.firstBarAt) - this.firstBarAt) * this.bpm / 60;
+      held.sentBeat = beat;
       this.noteBuf.push({ id: e.id, beat, pitch: e.midi, dur: DEFAULT_NOTE_DUR_BEATS,
         vel: e.velocity, source: e.source, confidence: e.confidence, captureTimeSec: e.timeSec, held: true });
     }

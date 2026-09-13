@@ -57,6 +57,7 @@ export class Listener {
   private emitPerformance(e: PerformanceEvent): void {
     if (e.type === 'note_on') this.heldPerformance.set(e.id, e);
     else this.heldPerformance.delete(e.id);
+    this.activity.setHeld(this.heldPerformance.size > 0, e.timeSec);
     this.performanceCbs.forEach(cb => cb(e));
   }
   private closeMic(timeSec: number): void {
@@ -245,6 +246,7 @@ export class Listener {
     this.lastStableMidi = null;
     this.sourceDetaches.splice(0).forEach(detach => detach());
     this.heldPerformance.clear();
+    this.activity.setHeld(false, this.now());
   }
 
   /** Records a source that came up (or failed) after start(), e.g. a mic retried on the first tap. */
