@@ -72,7 +72,6 @@ const YOU_NOTE_SEC = 0.25;
 const root = document.getElementById('app')!;
 const store = new Store();
 const performanceGuard = new PerformanceGuard();
-let liveActions: LiveActions;
 const demo = new URLSearchParams(location.search).has('demo');
 let listener: Listener | undefined;
 let band: BandEngine | undefined;
@@ -601,215 +600,214 @@ function powerOff() {
   });
 }
 
-store.subscribe(s => {
-  liveActions = {
-    toggleRecord: () => {
-      if (!store.state.recording) {
-        midiRecorder.reset();
-        const ctx = Tone.getContext().rawContext as AudioContext;
-        // the synth band plays through Tone's destination; generated audio and the mic
-        // register themselves with the recorder when they are created
-        if (!masterTap) {
-          masterTap = ctx.createGain();
-          Tone.getDestination().connect(masterTap);
-          audioRecorder.addSource(masterTap);
-        }
-        const audioOk = audioRecorder.start(ctx);
-        store.update({ recording: true, error: audioOk ? null : 'This browser cannot record audio; only MIDI will be saved' });
-        return;
+/** Every control the panel can drive. Built once: the store emits on every listener update
+ *  (level, pitch, onset), and each entry reads live state when it runs, not a snapshot. */
+const liveActions: LiveActions = {
+  toggleRecord: () => {
+    if (!store.state.recording) {
+      midiRecorder.reset();
+      const ctx = Tone.getContext().rawContext as AudioContext;
+      // the synth band plays through Tone's destination; generated audio and the mic
+      // register themselves with the recorder when they are created
+      if (!masterTap) {
+        masterTap = ctx.createGain();
+        Tone.getDestination().connect(masterTap);
+        audioRecorder.addSource(masterTap);
       }
-      store.update({ recording: false });
-      const name = `duetai-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}`;
-      const hadAudio = audioRecorder.recording;
-      void audioRecorder.stop().then(audio => {
-        if (audio && audio.blob.size) downloadBlob(audio.blob, `${name}.${audio.ext}`);
-      });
-      if (midiRecorder.empty) {
-        store.update({ error: hadAudio ? 'Audio saved. No notes for MIDI: the band was not playing and no sung note was heard' : 'Nothing was recorded: no audio support and no notes heard' });
-        return;
-      }
-      const bpm = lastFollowedBpm ?? store.state.input.bpm ?? undefined;
-      downloadMidi(midiRecorder.toMidi(bpm), `${name}.mid`);
-    },
-    togglePause: () => {
-      if (!band) return;
-      if (!store.state.paused) {
-        if (halfBarTimer !== undefined) clearTimeout(halfBarTimer);
-        halfBarTimer = undefined;
-        clearBeatTimers();
-        band.stop();
-        playbackActivity.clear();
-        // The band alone isn't the whole mix: the ambient drone/noise beds run independently
-        // of the transport, so pause has to silence those too or it isn't actually silent.
-        drone.setEnabled(false);
-        whiteNoise.setEnabled(false);
-        store.update({ paused: true, activeParts: {}, accompanimentStatus: 'Paused' });
-        showToast('Paused — mic & MIDI input is not being taken');
-        return;
-      }
-      if (toastTimer !== undefined) clearTimeout(toastTimer);
-      toastTimer = undefined;
-      drone.setEnabled(true);
-      whiteNoise.setEnabled(true);
-      store.update({ paused: false, accompanimentStatus: 'Listening', toast: null });
-      const bpm = lastFollowedBpm ?? store.state.input.bpm;
-      if (bpm && store.state.locked) {
-        startBand(band, bpm, Tone.now() + 0.1).catch(err => {
-          store.update({ error: `${store.state.engine}: ${err instanceof Error ? err.message : String(err)}` });
-        });
-      } else store.update({ accompanimentStatus: 'Listening' });
-    },
-    wake: () => {
-      if (store.state.audioSuspended) {
-        Tone.start()
-          .then(() => store.update({ audioSuspended: false }))
-          .catch(() => undefined);
-      }
-      // The boot-time getUserMedia had no user activation; this tap does.
-      if (store.state.sources.mic !== 'on' && mic && listener) {
-        const l = listener;
-        mic
-          .retry()
-          .then(started => {
-            if (started) l.setSourceState('mic', 'on');
-          })
-          .catch(() => l.setSourceState('mic', 'denied'));
-      }
-    },
-    toggle: i => {
-      // Read live state, not the `s` snapshot from this subscribe callback,
-      // which would freeze `enabled` at whatever it was on the render that
-      // created this closure.
-      const on = !store.state.enabled[i];
-      band?.setEnabled(i, on);
-      store.update({ enabled: { ...store.state.enabled, [i]: on } });
-      recordToggle(i, on, store.state.enabled);
-    },
-    setGenre: g => {
-      players.setGenre(g);
-      band?.set({ genre: g });
-      store.update({ genre: g });
-    },
-    playbackTarget: PI_EDITION ? 'Pi' : 'This browser',
-    soundIds: PI_EDITION ? LOCAL_SOUNDS : undefined,
-    setEngine: e => {
-      const prevEngine = store.state.engine;
-      // A fresh pick clears any stale "<ENGINE> OFFLINE" fallback note.
-      store.update({ engine: e, error: null });
-      if (store.state.power !== 'on' || !band || e === prevEngine) return;
-      // Power-cycle the band engine in place, at the same bpm/key, instead of
-      // making the user power off first.
-      const bpm = lastFollowedBpm ?? store.state.input.bpm ?? undefined;
-      const key = store.state.input.key ?? undefined;
-      disarmFallback?.();
-      disarmFallback = undefined;
+      const audioOk = audioRecorder.start(ctx);
+      store.update({ recording: true, error: audioOk ? null : 'This browser cannot record audio; only MIDI will be saved' });
+      return;
+    }
+    store.update({ recording: false });
+    const name = `duetai-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}`;
+    const hadAudio = audioRecorder.recording;
+    void audioRecorder.stop().then(audio => {
+      if (audio && audio.blob.size) downloadBlob(audio.blob, `${name}.${audio.ext}`);
+    });
+    if (midiRecorder.empty) {
+      store.update({ error: hadAudio ? 'Audio saved. No notes for MIDI: the band was not playing and no sung note was heard' : 'Nothing was recorded: no audio support and no notes heard' });
+      return;
+    }
+    const bpm = lastFollowedBpm ?? store.state.input.bpm ?? undefined;
+    downloadMidi(midiRecorder.toMidi(bpm), `${name}.mid`);
+  },
+  togglePause: () => {
+    if (!band) return;
+    if (!store.state.paused) {
+      if (halfBarTimer !== undefined) clearTimeout(halfBarTimer);
+      halfBarTimer = undefined;
+      clearBeatTimers();
       band.stop();
-      planFreshness.reset();
-      planChord = null;
-      planSection = null;
-      band = makeBand(e);
-      band.set({ genre: store.state.genre, creativity: store.state.creativity, key: key ?? undefined });
-      wireBand(band);
-      if (bpm) {
-        disarmFallback = armFallback(e, band);
-        startBand(band, bpm, Tone.now() + 0.1).catch(err => {
-          store.update({ error: `${e}: ${err instanceof Error ? err.message : String(err)}` });
-        });
+      playbackActivity.clear();
+      // The band alone isn't the whole mix: the ambient drone/noise beds run independently
+      // of the transport, so pause has to silence those too or it isn't actually silent.
+      drone.setEnabled(false);
+      whiteNoise.setEnabled(false);
+      store.update({ paused: true, activeParts: {}, accompanimentStatus: 'Paused' });
+      showToast('Paused — mic & MIDI input is not being taken');
+      return;
+    }
+    if (toastTimer !== undefined) clearTimeout(toastTimer);
+    toastTimer = undefined;
+    drone.setEnabled(true);
+    whiteNoise.setEnabled(true);
+    store.update({ paused: false, accompanimentStatus: 'Listening', toast: null });
+    const bpm = lastFollowedBpm ?? store.state.input.bpm;
+    if (bpm && store.state.locked) {
+      startBand(band, bpm, Tone.now() + 0.1).catch(err => {
+        store.update({ error: `${store.state.engine}: ${err instanceof Error ? err.message : String(err)}` });
+      });
+    } else store.update({ accompanimentStatus: 'Listening' });
+  },
+  wake: () => {
+    if (store.state.audioSuspended) {
+      Tone.start()
+        .then(() => store.update({ audioSuspended: false }))
+        .catch(() => undefined);
+    }
+    // The boot-time getUserMedia had no user activation; this tap does.
+    if (store.state.sources.mic !== 'on' && mic && listener) {
+      const l = listener;
+      mic
+        .retry()
+        .then(started => {
+          if (started) l.setSourceState('mic', 'on');
+        })
+        .catch(() => l.setSourceState('mic', 'denied'));
+    }
+  },
+  toggle: i => {
+    const on = !store.state.enabled[i];
+    band?.setEnabled(i, on);
+    store.update({ enabled: { ...store.state.enabled, [i]: on } });
+    recordToggle(i, on, store.state.enabled);
+  },
+  setGenre: g => {
+    players.setGenre(g);
+    band?.set({ genre: g });
+    store.update({ genre: g });
+  },
+  playbackTarget: PI_EDITION ? 'Pi' : 'This browser',
+  soundIds: PI_EDITION ? LOCAL_SOUNDS : undefined,
+  setEngine: e => {
+    const prevEngine = store.state.engine;
+    // A fresh pick clears any stale "<ENGINE> OFFLINE" fallback note.
+    store.update({ engine: e, error: null });
+    if (store.state.power !== 'on' || !band || e === prevEngine) return;
+    // Power-cycle the band engine in place, at the same bpm/key, instead of
+    // making the user power off first.
+    const bpm = lastFollowedBpm ?? store.state.input.bpm ?? undefined;
+    const key = store.state.input.key ?? undefined;
+    disarmFallback?.();
+    disarmFallback = undefined;
+    band.stop();
+    planFreshness.reset();
+    planChord = null;
+    planSection = null;
+    band = makeBand(e);
+    band.set({ genre: store.state.genre, creativity: store.state.creativity, key: key ?? undefined });
+    wireBand(band);
+    if (bpm) {
+      disarmFallback = armFallback(e, band);
+      startBand(band, bpm, Tone.now() + 0.1).catch(err => {
+        store.update({ error: `${e}: ${err instanceof Error ? err.message : String(err)}` });
+      });
+    }
+  },
+  setCreativity: c => {
+    band?.set({ creativity: c });
+    store.update({ creativity: c });
+  },
+  toggleAccompPreset: (preset: AccompPreset, on: boolean) => {
+    const presets = on
+      ? [...store.state.accompPresets, preset]
+      : store.state.accompPresets.filter(p => p !== preset);
+    band?.setAccompaniment?.(presets, ACCOMP_BIAS);
+    store.update({ accompPresets: presets });
+  },
+  setIntensity: i => {
+    const amount = Math.min(1, Math.max(0, i));
+    band?.setAmount?.(amount);
+    store.update({ intensity: amount });
+  },
+  setBpmOverride: bpm => {
+    const clamped = bpm === undefined ? undefined : Math.min(240, Math.max(40, bpm));
+    listener?.setOverride({ bpm: clamped });
+    if (clamped !== undefined) {
+      lastFollowedBpm = clamped;
+      if (band) setBandBpm(band, clamped);
+    } else {
+      // Override cleared: setOverride() above emits synchronously, so
+      // listener's input already reflects the recovered detected tempo.
+      const recovered = listener?.input.bpm;
+      if (recovered) {
+        lastFollowedBpm = recovered;
+        if (band) setBandBpm(band, recovered);
       }
-    },
-    setCreativity: c => {
-      band?.set({ creativity: c });
-      store.update({ creativity: c });
-    },
-    toggleAccompPreset: (preset: AccompPreset, on: boolean) => {
-      const presets = on
-        ? [...store.state.accompPresets, preset]
-        : store.state.accompPresets.filter(p => p !== preset);
-      band?.setAccompaniment?.(presets, ACCOMP_BIAS);
-      store.update({ accompPresets: presets });
-    },
-    setIntensity: i => {
-      const amount = Math.min(1, Math.max(0, i));
-      band?.setAmount?.(amount);
-      store.update({ intensity: amount });
-    },
-    setBpmOverride: bpm => {
-      const clamped = bpm === undefined ? undefined : Math.min(240, Math.max(40, bpm));
-      listener?.setOverride({ bpm: clamped });
-      if (clamped !== undefined) {
-        lastFollowedBpm = clamped;
-        if (band) setBandBpm(band, clamped);
-      } else {
-        // Override cleared: setOverride() above emits synchronously, so
-        // listener's input already reflects the recovered detected tempo.
-        const recovered = listener?.input.bpm;
-        if (recovered) {
-          lastFollowedBpm = recovered;
-          if (band) setBandBpm(band, recovered);
-        }
-      }
-    },
-    setKeyOverride: key => {
-      listener?.setOverride({ key });
-    },
-    tap: () => {
-      const t = Tone.now();
-      tapCount++;
-      const r = tapTempo.push(t);
-      if (!r || tapCount < 4) return null;
-      // Same path a typed bpm takes: the listener's override wins over any detected tempo.
-      listener?.setOverride({ bpm: r.bpm });
-      lastFollowedBpm = r.bpm;
-      if (band) {
-        disarmFallback?.();
-        disarmFallback = armFallback(store.state.engine, band);
-        store.update({ locked: true });
-        // r.downbeat is the audio-clock time of the tap that just completed the estimate:
-        // restart the band's clock right there so the next bar starts on the beat the
-        // singer just tapped, not on whatever bar the band happened to be in.
-        startBand(band, r.bpm, r.downbeat).catch(err => {
-          store.update({ error: err instanceof Error ? err.message : String(err) });
-        });
-      }
-      return r;
-    },
-    setCountIn: on => {
-      saveBool(COUNT_IN_DISABLED_KEY, !on);
-      store.update({ countIn: on });
-    },
-    setMicMuted: muted => {
-      saveBool(MIC_MUTE_KEY, muted);
-      store.update({ micMuted: muted });
-      listener?.setMicMuted(muted);
-      applyVoiceMonitor();
-    },
-    setVoiceMonitor: enabled => {
-      saveBool(VOICE_MONITOR_KEY, enabled);
-      store.update({ voiceMonitor: enabled });
-      applyVoiceMonitor();
-    },
-    setDroneVolume: value => {
-      const droneVolume = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
-      drone.setEnabled(store.state.power === 'on' && !store.state.paused);
-      drone.setLevel(droneVolume);
-      store.update({ droneVolume });
-    },
-    setNoiseVolume: value => {
-      const noiseVolume = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
-      whiteNoise.setEnabled(store.state.power === 'on' && !store.state.paused);
-      whiteNoise.setLevel(noiseVolume);
-      store.update({ noiseVolume });
-    },
-    setSound: sound => {
-      if (sound === store.state.sound) return;
-      monitor?.setSound(sound).catch(error => store.update({error: `Keyboard sound: ${String(error)}`}));
-      store.update({ sound });
-    },
-    changeLatencyMs: band?.changeLatencyMs,
-  };
-  renderLive(root, store, liveActions);
-  void s;
-});
+    }
+  },
+  setKeyOverride: key => {
+    listener?.setOverride({ key });
+  },
+  tap: () => {
+    const t = Tone.now();
+    tapCount++;
+    const r = tapTempo.push(t);
+    if (!r || tapCount < 4) return null;
+    // Same path a typed bpm takes: the listener's override wins over any detected tempo.
+    listener?.setOverride({ bpm: r.bpm });
+    lastFollowedBpm = r.bpm;
+    if (band) {
+      disarmFallback?.();
+      disarmFallback = armFallback(store.state.engine, band);
+      store.update({ locked: true });
+      // r.downbeat is the audio-clock time of the tap that just completed the estimate:
+      // restart the band's clock right there so the next bar starts on the beat the
+      // singer just tapped, not on whatever bar the band happened to be in.
+      startBand(band, r.bpm, r.downbeat).catch(err => {
+        store.update({ error: err instanceof Error ? err.message : String(err) });
+      });
+    }
+    return r;
+  },
+  setCountIn: on => {
+    saveBool(COUNT_IN_DISABLED_KEY, !on);
+    store.update({ countIn: on });
+  },
+  setMicMuted: muted => {
+    saveBool(MIC_MUTE_KEY, muted);
+    store.update({ micMuted: muted });
+    listener?.setMicMuted(muted);
+    applyVoiceMonitor();
+  },
+  setVoiceMonitor: enabled => {
+    saveBool(VOICE_MONITOR_KEY, enabled);
+    store.update({ voiceMonitor: enabled });
+    applyVoiceMonitor();
+  },
+  setDroneVolume: value => {
+    const droneVolume = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
+    drone.setEnabled(store.state.power === 'on' && !store.state.paused);
+    drone.setLevel(droneVolume);
+    store.update({ droneVolume });
+  },
+  setNoiseVolume: value => {
+    const noiseVolume = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
+    whiteNoise.setEnabled(store.state.power === 'on' && !store.state.paused);
+    whiteNoise.setLevel(noiseVolume);
+    store.update({ noiseVolume });
+  },
+  setSound: sound => {
+    if (sound === store.state.sound) return;
+    monitor?.setSound(sound).catch(error => store.update({error: `Keyboard sound: ${String(error)}`}));
+    store.update({ sound });
+  },
+  get changeLatencyMs() {
+    return band?.changeLatencyMs;
+  },
+};
+
+store.subscribe(() => renderLive(root, store, liveActions));
 
 /** ?debug=1 only: the last few bars of scheduled notes, so chord following can be checked
  *  against what the band actually played rather than against the readout. */
