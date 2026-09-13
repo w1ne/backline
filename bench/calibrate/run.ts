@@ -12,12 +12,18 @@
  * The signal-processing half of every clip (FFT flux, McLeod) is computed once; a candidate
  * only re-runs the trackers and the Listener, so an evaluation is well under a second.
  *
+ * Stage 3 grids the onset detector's mult/delta/quantile against note-onset precision/recall
+ * on the synthetic melodies, keeping TempoLock's lock time on them from getting worse. Stage 4
+ * grids the melody-chord-harmonizer constants against the arpeggio clip's chord accuracy and
+ * the four real-voice songs' keys dissonance. Stage 5 is a report-only experiment on a
+ * per-singer intonation correction for the key detector.
+ *
  * Run with: npm run bench:calibrate
  */
 import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { DEFAULT_TUNING, type KeyTuning, type ListenerTuning } from '../../src/listener/tuning';
+import { DEFAULT_TUNING, type ChordTuning, type KeyTuning, type ListenerTuning } from '../../src/listener/tuning';
 import { KeyDetector } from '../../src/listener/keyDetector';
 import { keyName } from '../../src/music/scales';
 import type { Key } from '../../src/types';
@@ -25,8 +31,11 @@ import { analyse, runClip, type Analysis, type RunResult } from '../voice/driver
 import { median, noteSegmentation } from '../voice/metrics';
 import { buildClipAudio, buildClips, buildSpokenClip, type ClipSpec } from '../voice/synth';
 import type { Note } from '../voice/synth';
-import { CLIPS, datasetPresent, labelNotes, labelPitchClassWeights, loadClip, singerOf } from '../realvoice/dataset';
+import { CLIPS, datasetPresent, labelNotes, labelPitchClassWeights, loadClip, loadSong, singerOf, SONGS, type PitchLabel } from '../realvoice/dataset';
 import { KEY_PLAUSIBLE_COVERAGE, bestCoveringKey, scaleCoverage } from '../realvoice/metrics';
+import { onsetPR, runOnset } from './onset';
+import { arpeggioAccuracy, prepareSong, songDissonantKeys, type SongPre } from './chord';
+import { keyWithOffset, tuningOffsetCents } from './singerOffset';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -79,7 +88,7 @@ function withKey(base: ListenerTuning, p: KeyParams): ListenerTuning {
   return { ...base, key: { ...base.key, ...p } };
 }
 
-interface RealClipData { name: string; audio: Float32Array; pre: Analysis; truth: Note[]; weights: number[]; labelKey: Key }
+interface RealClipData { name: string; audio: Float32Array; pre: Analysis; truth: Note[]; weights: number[]; labelKey: Key; labels: PitchLabel[] }
 interface SynthClipData { spec: ClipSpec; pre: Analysis; audio: Float32Array }
 
 interface NoteScore { f1: number; p: number; r: number; latencyMs: number | null; run: RunResult }
@@ -174,7 +183,7 @@ function main() {
   const load = (name: string): RealClipData => {
     const c = loadClip(name);
     const weights = labelPitchClassWeights(c.labels);
-    return { name, audio: c.audio, pre: analyse(c.audio), truth: labelNotes(c.labels), weights, labelKey: bestCoveringKey(weights).key };
+    return { name, audio: c.audio, pre: analyse(c.audio), truth: labelNotes(c.labels), weights, labelKey: bestCoveringKey(weights).key, labels: c.labels };
   };
   const cal = CALIBRATION_CLIPS.map(load);
   const held = HELD_OUT_CLIPS.map(load);
@@ -357,6 +366,152 @@ function main() {
   L.push(`Verdict: ${adopted ? `adopt "${adopted.row.name}"` : 'keep the defaults'}.`);
   L.push('');
   L.push('Correct = the detected key is the major/minor scale that covers the most of the labelled pitch classes; plausible = that scale covers at least 85% of them. The defaults adopt only when the held-out set gains at least 0.02 note F1 or two key locks and nothing regresses there (F1, P, R, locks, plausible, correct, synthetic melody F1 and key count not lower; latency and false notes not higher).');
+
+  // ---------------- stage 3: onset detector ----------------
+  log('stage 3: onset detector (mult/delta/quantile) on synthetic melodies');
+  const ONSET_GRID = {
+    quantile: [0.6, 0.65, 0.7, 0.75, 0.8, 0.85],
+    mult: [2.0, 2.25, 2.5, 2.75, 3.0],
+    delta: [0.06, 0.09, 0.12, 0.15, 0.18],
+  };
+  interface OnsetParams { mult: number; delta: number; quantile: number }
+  interface Eval3 { params: OnsetParams; f1: number; lockMedianS: number | null; locked: number }
+  const onsetClips = synthMelody.map(c => ({ pre: c.pre, truth: c.spec.truth.notes }));
+  const cache3 = new Map<string, Eval3>();
+  const eval3 = (params: OnsetParams): Eval3 => {
+    const k = JSON.stringify(params);
+    const hit = cache3.get(k);
+    if (hit) return hit;
+    const runs = onsetClips.map(m => runOnset(m.pre, params));
+    const prs = onsetClips.map((m, i) => onsetPR(runs[i].onsets, m.truth));
+    const locks = runs.map(r => r.tempoLockT).filter((x): x is number => x !== null);
+    const e: Eval3 = { params, f1: mean(prs.map(p => p.f1)), lockMedianS: median(locks), locked: locks.length };
+    cache3.set(k, e);
+    return e;
+  };
+  const def3 = eval3({ mult: DEFAULT_TUNING.onset.mult, delta: DEFAULT_TUNING.onset.delta, quantile: DEFAULT_TUNING.onset.quantile });
+  // the tempo-lock count and median lock time on the synthetic melodies may not get worse
+  const lockOk3 = (e: Eval3) => e.locked >= def3.locked && (e.lockMedianS ?? Infinity) <= (def3.lockMedianS ?? Infinity) + 1e-9;
+  log(`stage 3 default: onset F1 ${fmt(def3.f1)}, tempo locked ${def3.locked}/${onsetClips.length} (median ${fmt(def3.lockMedianS, 1)} s)`);
+  let best3 = def3;
+  let evals3 = 1;
+  const order3: (keyof OnsetParams)[] = ['quantile', 'mult', 'delta'];
+  for (let pass = 1; pass <= 3; pass++) {
+    const before = best3;
+    for (const name of order3) {
+      for (const v of ONSET_GRID[name]) {
+        const e = eval3({ ...best3.params, [name]: v });
+        evals3++;
+        if (lockOk3(e) && e.f1 > best3.f1) best3 = e;
+      }
+    }
+    log(`stage 3 pass ${pass}: best onset F1 ${fmt(best3.f1)} ${JSON.stringify(best3.params)} (${evals3} evals)`);
+    if (best3 === before) break;
+  }
+  const onsetGain = best3.f1 - def3.f1;
+  const onsetAdopt = best3 !== def3 && onsetGain >= 0.02 - 1e-9;
+  L.push('');
+  L.push('## Stage 3: onset detector (bench/voice synthetic melodies)');
+  L.push('');
+  L.push(`${evals3} evaluations by coordinate descent over quantile ${ONSET_GRID.quantile.join('/')}, mult ${ONSET_GRID.mult.join('/')}, delta ${ONSET_GRID.delta.join('/')}, maximizing mean onset precision/recall F1 (100 ms tolerance) against the note starts of the synthetic melody clips, keeping TempoLock's lock count and median lock time on them from getting worse.`);
+  L.push('');
+  L.push('| onset tuning | mult | delta | quantile | onset F1 | tempo locked | lock median s |');
+  L.push('|---|---|---|---|---|---|---|');
+  L.push(`| default | ${def3.params.mult} | ${def3.params.delta} | ${def3.params.quantile} | ${fmt(def3.f1)} | ${def3.locked}/${onsetClips.length} | ${fmt(def3.lockMedianS, 1)} |`);
+  L.push(`| best | ${best3.params.mult} | ${best3.params.delta} | ${best3.params.quantile} | ${fmt(best3.f1)} | ${best3.locked}/${onsetClips.length} | ${fmt(best3.lockMedianS, 1)} |`);
+  L.push('');
+  L.push(`Verdict: ${onsetAdopt ? `adopt the best onset tuning as default (onset F1 +${fmt(onsetGain)}, tempo lock not worse).` : best3 === def3 ? 'keep the default onset tuning (grid found nothing feasible that beat it).' : `keep the default onset tuning (best gain +${fmt(onsetGain)} is below the 0.02 adoption bar).`}`);
+
+  // ---------------- stage 4: chord tuning (melody harmonizer) ----------------
+  log('stage 4: chord tuning (melody harmonizer) on the arpeggio clip and the real-voice songs');
+  const CHORD_GRID = {
+    melodyMinCoverage: [0.4, 0.5, 0.6, 0.7],
+    melodySwitchMargin: [0.05, 0.1, 0.15, 0.2, 0.25],
+    melodyWindowMul: [1, 1.25, 1.5, 1.75, 2],
+  };
+  type ChordParams = Pick<ChordTuning, 'melodyMinCoverage' | 'melodySwitchMargin' | 'melodyWindowMul'>;
+  const withChord = (base: ListenerTuning, p: ChordParams): ListenerTuning => ({ ...base, chord: { ...base.chord, ...p } });
+  const arpSpec = synthAll.find(c => c.spec.truth.name === 'arpeggio-Am-progression')!;
+  const songsPre: SongPre[] = SONGS.map(s => prepareSong(loadSong(s)));
+  interface Eval4 { params: ChordParams; arpAcc: number; dissMean: number }
+  const cache4 = new Map<string, Eval4>();
+  const eval4 = (params: ChordParams): Eval4 => {
+    const k = JSON.stringify(params);
+    const hit = cache4.get(k);
+    if (hit) return hit;
+    const tuning = withChord(DEFAULT_TUNING, params);
+    const arpAcc = arpeggioAccuracy(arpSpec.spec, arpSpec.audio, arpSpec.pre, tuning);
+    const dissMean = mean(songsPre.map(sp => songDissonantKeys(sp, tuning)));
+    const e: Eval4 = { params, arpAcc, dissMean };
+    cache4.set(k, e);
+    return e;
+  };
+  const def4 = eval4({ melodyMinCoverage: DEFAULT_TUNING.chord.melodyMinCoverage, melodySwitchMargin: DEFAULT_TUNING.chord.melodySwitchMargin, melodyWindowMul: DEFAULT_TUNING.chord.melodyWindowMul });
+  // neither the arpeggio accuracy nor the songs' keys dissonance may regress
+  const ok4 = (e: Eval4) => e.arpAcc >= def4.arpAcc - 1e-9 && e.dissMean <= def4.dissMean + 1e-9;
+  const score4 = (e: Eval4) => e.arpAcc - e.dissMean;
+  log(`stage 4 default: arpeggio accuracy ${fmt(def4.arpAcc)}, mean keys dissonance ${fmt(def4.dissMean)}`);
+  let best4 = def4;
+  let evals4 = 1;
+  const order4: (keyof ChordParams)[] = ['melodyMinCoverage', 'melodySwitchMargin', 'melodyWindowMul'];
+  for (let pass = 1; pass <= 3; pass++) {
+    const before = best4;
+    for (const name of order4) {
+      for (const v of CHORD_GRID[name]) {
+        const e = eval4({ ...best4.params, [name]: v });
+        evals4++;
+        if (ok4(e) && score4(e) > score4(best4) + 1e-9) best4 = e;
+      }
+    }
+    log(`stage 4 pass ${pass}: best arpeggio accuracy ${fmt(best4.arpAcc)} dissonance ${fmt(best4.dissMean)} ${JSON.stringify(best4.params)} (${evals4} evals)`);
+    if (best4 === before) break;
+  }
+  const chordGain = score4(best4) - score4(def4);
+  const chordAdopt = best4 !== def4 && chordGain >= 0.02 - 1e-9;
+  L.push('');
+  L.push('## Stage 4: chord tuning (melody harmonizer)');
+  L.push('');
+  L.push(`${evals4} evaluations by coordinate descent over melodyMinCoverage ${CHORD_GRID.melodyMinCoverage.join('/')}, melodySwitchMargin ${CHORD_GRID.melodySwitchMargin.join('/')}, melodyWindowMul ${CHORD_GRID.melodyWindowMul.join('/')}, scored by chord-in-force accuracy at bar starts on the arpeggio clip's known progression (bench/voice/output.ts style) and mean keys dissonance on the four real-voice songs (bench/realvoice/fit.ts's \`dissonantKeys\`); neither may regress.`);
+  L.push('');
+  L.push('| chord tuning | melodyMinCoverage | melodySwitchMargin | melodyWindowMul | arpeggio chord accuracy | mean keys dissonance |');
+  L.push('|---|---|---|---|---|---|');
+  L.push(`| default | ${def4.params.melodyMinCoverage} | ${def4.params.melodySwitchMargin} | ${def4.params.melodyWindowMul} | ${fmt(def4.arpAcc)} | ${fmt(def4.dissMean)} |`);
+  L.push(`| best | ${best4.params.melodyMinCoverage} | ${best4.params.melodySwitchMargin} | ${best4.params.melodyWindowMul} | ${fmt(best4.arpAcc)} | ${fmt(best4.dissMean)} |`);
+  L.push('');
+  L.push(`Per-song keys dissonance, default -> best: ${SONGS.map((s, i) => `${s.name} ${fmt(songDissonantKeys(songsPre[i], DEFAULT_TUNING))} -> ${fmt(songDissonantKeys(songsPre[i], withChord(DEFAULT_TUNING, best4.params)))}`).join(', ')}.`);
+  L.push('');
+  L.push(`Verdict: ${chordAdopt ? `adopt the best chord tuning as default (score +${fmt(chordGain)}, neither metric regressed).` : best4 === def4 ? 'keep the default chord tuning (grid found nothing feasible that beat it).' : `keep the default chord tuning (best gain +${fmt(chordGain)} is below the 0.02 adoption bar, or a regression was found).`}`);
+
+  // ---------------- stage 5: singer tuning-offset experiment (report only) ----------------
+  log('stage 5: singer tuning-offset experiment for key detection');
+  const offsetClips = cal.concat(held);
+  interface OffsetRow { name: string; offsetCents: number; base: ReturnType<typeof keyWithOffset>; corrected: ReturnType<typeof keyWithOffset> }
+  const offsetRows: OffsetRow[] = offsetClips.map(c => {
+    const offsetCents = tuningOffsetCents(c.labels);
+    return { name: c.name, offsetCents, base: keyWithOffset(c.labels, 0, c.labelKey, c.weights), corrected: keyWithOffset(c.labels, offsetCents, c.labelKey, c.weights) };
+  });
+  const count = (rows: OffsetRow[], pick: (r: OffsetRow) => typeof rows[0]['base'], test: (x: ReturnType<typeof keyWithOffset>) => boolean) => rows.filter(r => test(pick(r))).length;
+  const baseLocked = count(offsetRows, r => r.base, x => x.key !== null);
+  const corrLocked = count(offsetRows, r => r.corrected, x => x.key !== null);
+  const basePlaus = count(offsetRows, r => r.base, x => x.plausible);
+  const corrPlaus = count(offsetRows, r => r.corrected, x => x.plausible);
+  const baseCorrect = count(offsetRows, r => r.base, x => x.correct);
+  const corrCorrect = count(offsetRows, r => r.corrected, x => x.correct);
+  const offsetWins = corrPlaus > basePlaus && corrCorrect >= baseCorrect;
+  L.push('');
+  L.push('## Stage 5: singer tuning-offset experiment (key detector, report only)');
+  L.push('');
+  L.push("Estimates each clip's global intonation offset from the first 3 s of voiced labels (median cents from the nearest semitone), then replays the labels into a fresh KeyDetector twice per clip -- once rounding as today, once after subtracting that offset -- to isolate what the correction alone would change. Not wired into the app: doing so needs pitchTracker.ts/keyDetector.ts changes, out of scope for this pass.");
+  L.push('');
+  L.push('| | locked | plausible | correct |');
+  L.push('|---|---|---|---|');
+  L.push(`| today (offset 0) | ${baseLocked}/${offsetClips.length} | ${basePlaus} | ${baseCorrect} |`);
+  L.push(`| offset-corrected | ${corrLocked}/${offsetClips.length} | ${corrPlaus} | ${corrCorrect} |`);
+  L.push('');
+  L.push(`Median |offset|: ${fmt(median(offsetRows.map(r => Math.abs(r.offsetCents))), 0)} cents. Per-clip: ${offsetRows.map(r => `${r.name} ${fmt(r.offsetCents, 0)}c`).join(', ')}.`);
+  L.push('');
+  L.push(`Verdict: ${offsetWins ? 'the correction gains plausible keys without losing correct ones -- worth wiring in, but that needs pitchTracker.ts/keyDetector.ts changes out of this pass\'s scope, so it is reported, not applied.' : `no clear win (plausible ${basePlaus} -> ${corrPlaus}, correct ${baseCorrect} -> ${corrCorrect}) -- not applied.`}`);
+
   const md = L.join('\n');
   console.log(md);
   writeFileSync(join(__dirname, 'CALIBRATION.md'), md + '\n');
