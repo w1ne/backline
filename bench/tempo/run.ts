@@ -24,7 +24,7 @@ import { median } from '../voice/metrics';
 import { KNOWN_BPM, listSongs, loadStitched } from './songs';
 import { backingTempo, type TruthEstimate } from './truth';
 import { extractStreams } from './streams';
-import { combine, durationCluster, ioiFluxOnsets, ioiNoteOnsets, tempogramMethod, type TempoEstimate, type TempoMethod, type VoiceStreams } from './methods';
+import { VOICE_HI, VOICE_LO, combine, durationCluster, foldBpm, ioiFluxOnsets, ioiNoteOnsets, tempogramMethod, withStability, type TempoEstimate, type TempoMethod, type TempogramOptions, type VoiceStreams } from './methods';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = join(__dirname, 'out');
@@ -39,13 +39,19 @@ const FIRST_SEC = 3;
 
 export interface MethodSpec { name: string; method: TempoMethod; threshold: number }
 
+/** the tempogram configuration that scored best in bench/tempo/explore.ts (see RESULTS.md) */
+export const BEST_TEMPOGRAM: TempogramOptions = { envelope: 'flux', harmonic: 0.5, windowSec: 8, minWindowSec: 8, priorBpm: 90, priorOctaves: 0.6, noteOctave: true, fold: true };
+
 export const METHODS: MethodSpec[] = [
-  { name: 'a. IOI histogram, flux onsets (current)', method: ioiFluxOnsets, threshold: 0 },
+  { name: 'a. IOI histogram, flux onsets (current TempoLock)', method: ioiFluxOnsets, threshold: 0 },
   { name: 'b. IOI histogram, note onsets', method: ioiNoteOnsets, threshold: 0 },
-  { name: 'c. tempogram, prior only', method: tempogramMethod({ noteOctave: false }), threshold: 0.3 },
-  { name: 'c. tempogram + note-octave', method: tempogramMethod({ noteOctave: true }), threshold: 0.3 },
+  { name: 'c1. tempogram, prior 100/0.5 oct', method: tempogramMethod({}), threshold: 0.3 },
+  { name: 'c2. tempogram + note-duration octave', method: tempogramMethod({ noteOctave: true }), threshold: 0.3 },
+  { name: 'c3. tempogram + harmonic sum + note octave, prior 90/0.6, folded 70..130', method: tempogramMethod(BEST_TEMPOGRAM), threshold: 0.3 },
   { name: 'd. note-duration clustering', method: durationCluster(), threshold: 0.3 },
-  { name: 'e. combined (c+d+b)', method: combine([{ method: tempogramMethod({ noteOctave: true }), weight: 1 }, { method: durationCluster(), weight: 1 }, { method: ioiNoteOnsets, weight: 0.5 }]), threshold: 0.6 },
+  { name: 'e1. c3 + d + b vote', method: combine([{ method: tempogramMethod(BEST_TEMPOGRAM), weight: 1 }, { method: durationCluster(), weight: 0.5 }, { method: ioiNoteOnsets, weight: 0.3 }]), threshold: 0.6 },
+  { name: 'e2. c3 + a vote', method: combine([{ method: tempogramMethod(BEST_TEMPOGRAM), weight: 1 }, { method: ioiFluxOnsets, weight: 0.5 }]), threshold: 0.6 },
+  { name: 'e3. c3 with stability confidence (best)', method: withStability(tempogramMethod(BEST_TEMPOGRAM)), threshold: 0.6 },
 ];
 
 export interface Decision { bpm: number | null; confidence: number; at: number | null }
@@ -64,8 +70,10 @@ export function decide(method: TempoMethod, s: VoiceStreams, threshold: number, 
 
 export const within8 = (bpm: number, truth: number) => Math.abs(bpm / truth - 1) < 0.08;
 export const withinOctave = (bpm: number, truth: number) => within8(bpm, truth) || within8(bpm, truth * 2) || within8(bpm, truth / 2);
+/** the shipping bar: both folded into the singing band 70..130, then within 8% */
+export const withinFolded = (bpm: number, truth: number) => within8(foldBpm(bpm, VOICE_LO, VOICE_HI), foldBpm(truth, VOICE_LO, VOICE_HI));
 
-export interface Score { name: string; n: number; within8: number; octave: number; decided: number; medianAt: number | null; errors: number[] }
+export interface Score { name: string; n: number; within8: number; octave: number; folded: number; decided: number; medianAt: number | null; errors: number[] }
 
 export function score(name: string, rows: { truth: number; d: Decision }[]): Score {
   const n = rows.length;
@@ -74,6 +82,7 @@ export function score(name: string, rows: { truth: number; d: Decision }[]): Sco
     name, n,
     within8: got.filter(r => within8(r.d.bpm!, r.truth)).length / n,
     octave: got.filter(r => withinOctave(r.d.bpm!, r.truth)).length / n,
+    folded: got.filter(r => withinFolded(r.d.bpm!, r.truth)).length / n,
     decided: rows.filter(r => r.d.at !== null).length / n,
     medianAt: median(rows.map(r => r.d.at).filter((x): x is number => x !== null)),
     errors: got.map(r => Math.log2(r.d.bpm! / r.truth)),
@@ -157,8 +166,8 @@ function errorSummary(errors: number[]): string {
 }
 
 function scoreTable(scores: Score[]): string[] {
-  const L = ['| method | songs | within 8% | within 8% or exact half/double | decided by 12 s | median s to decision | log2(bpm/truth) distribution |', '|---|---|---|---|---|---|---|'];
-  for (const s of scores) L.push(`| ${s.name} | ${s.n} | ${pct(s.within8)} | ${pct(s.octave)} | ${pct(s.decided)} | ${fmt(s.medianAt)} | ${errorSummary(s.errors)} |`);
+  const L = ['| method | songs | within 8% | within 8% or exact half/double | folded into 70..130, within 8% | decided by 12 s | median s to decision | log2(bpm/truth) distribution |', '|---|---|---|---|---|---|---|---|'];
+  for (const s of scores) L.push(`| ${s.name} | ${s.n} | ${pct(s.within8)} | ${pct(s.octave)} | ${pct(s.folded)} | ${pct(s.decided)} | ${fmt(s.medianAt)} | ${errorSummary(s.errors)} |`);
   return L;
 }
 

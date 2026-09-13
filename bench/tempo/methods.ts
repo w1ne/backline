@@ -67,6 +67,15 @@ export interface TempogramOptions {
   priorOctaves?: number;
   /** when true the octave is chosen by note-duration support rather than by the prior alone */
   noteOctave?: boolean;
+  /**
+   * metrical-level support: a lag's score is r(lag) + harmonic * r(2·lag), so the beat level
+   * whose bar-ish double is also periodic beats the syllable level whose double is not
+   */
+  harmonic?: number;
+  /** which envelope to correlate: the flux, the flux with a unit impulse at every note start, or note impulses alone */
+  envelope?: 'flux' | 'flux+notes' | 'notes';
+  /** fold the answer into the singing band before reporting */
+  fold?: boolean;
 }
 
 /**
@@ -137,7 +146,9 @@ export function tempogramMethod(o: TempogramOptions = {}): TempoMethod {
     const end = Math.min(s.flux.length, Math.floor(now / s.hopSec));
     const start = Math.max(0, end - Math.floor(windowSec / s.hopSec));
     if (end - start < minWindowSec / s.hopSec - 1) return null;
-    const tg = autocorrTempogram(s.flux.subarray(start, end), s.hopSec, MIN_BPM / 2, MAX_BPM * 2);
+    const env = envelopeOf(s, start, end, o.envelope ?? 'flux');
+    let tg = autocorrTempogram(env, s.hopSec, MIN_BPM / 2, MAX_BPM * 2);
+    if (o.harmonic) tg = harmonicSum(tg, o.harmonic);
     const peaks = pickPeaks(tg, b => logGaussPrior(b, priorBpm, priorOct)).filter(p => p.bpm >= MIN_BPM && p.bpm <= MAX_BPM);
     if (!peaks.length) return null;
     let best = peaks[0];
@@ -153,8 +164,57 @@ export function tempogramMethod(o: TempogramOptions = {}): TempoMethod {
     }
     const second = peaks.find(p => Math.abs(Math.log2(p.bpm / best.bpm)) > 0.1);
     const confidence = second ? Math.max(0, Math.min(1, 1 - second.r / Math.max(1e-9, peaks[0].r))) : 1;
-    return { bpm: Math.round(best.bpm * 10) / 10, confidence };
+    const bpm = o.fold ? foldBpm(best.bpm, VOICE_LO, VOICE_HI) : best.bpm;
+    return { bpm: Math.round(bpm * 10) / 10, confidence };
   };
+}
+
+/**
+ * Wraps a method with a stability confidence: the estimate is re-run at `now - k·step` for
+ * k = 1..lookback and confidence becomes the share of those that agree (within 8%, octaves
+ * folded) with the current one, times the method's own confidence blended in at half weight.
+ * A peak that only exists in this window is not a tempo.
+ */
+export function withStability(method: TempoMethod, lookback = 4, step = 0.5): TempoMethod {
+  return (s, now) => {
+    const e = method(s, now);
+    if (!e) return null;
+    let agree = 0, asked = 0;
+    for (let k = 1; k <= lookback; k++) {
+      const p = method(s, now - k * step);
+      if (!p) continue;
+      asked++;
+      if (Math.abs(foldBpm(p.bpm, VOICE_LO, VOICE_HI) / foldBpm(e.bpm, VOICE_LO, VOICE_HI) - 1) < 0.08) agree++;
+    }
+    const stability = asked ? agree / asked : 0;
+    return { bpm: e.bpm, confidence: stability * (0.5 + 0.5 * e.confidence) };
+  };
+}
+
+function envelopeOf(s: VoiceStreams, start: number, end: number, kind: 'flux' | 'flux+notes' | 'notes'): Float32Array {
+  const env = new Float32Array(end - start);
+  if (kind !== 'notes') {
+    let max = 0;
+    for (let i = start; i < end; i++) max = Math.max(max, s.flux[i]);
+    if (max > 0) for (let i = start; i < end; i++) env[i - start] = s.flux[i] / max;
+  }
+  if (kind !== 'flux') {
+    for (const n of s.notes) {
+      const h = Math.round(n.start / s.hopSec) - start;
+      if (h >= 0 && h < env.length) env[h] += 1;
+    }
+  }
+  return env;
+}
+
+/** r'(lag) = r(lag) + h·r(2·lag): a lag is supported when its double is periodic too. */
+export function harmonicSum(tg: { bpm: number; r: number }[], h: number): { bpm: number; r: number }[] {
+  const byBpm = (bpm: number) => {
+    let best = tg[0], d = Infinity;
+    for (const p of tg) { const dd = Math.abs(Math.log2(p.bpm / bpm)); if (dd < d) { d = dd; best = p; } }
+    return d < 0.02 ? best.r : 0;
+  };
+  return tg.map(p => ({ bpm: p.bpm, r: p.r + h * byBpm(p.bpm / 2) }));
 }
 
 export function closedNotes(notes: NoteSeg[], now: number): NoteSeg[] {
@@ -214,8 +274,10 @@ export function durationCluster(o: DurationClusterOptions = {}): TempoMethod {
 export function combine(parts: { method: TempoMethod; weight: number }[]): TempoMethod {
   return (s, now) => {
     const votes: { bpm: number; w: number }[] = [];
-    for (const p of parts) {
+    for (const [i, p] of parts.entries()) {
       const e = p.method(s, now);
+      // the first part is the primary: until it has an estimate the faster parts do not get to decide alone
+      if (!e && i === 0) return null;
       if (e) votes.push({ bpm: foldBpm(e.bpm, VOICE_LO, VOICE_HI), w: p.weight * (0.2 + 0.8 * e.confidence) });
     }
     if (!votes.length) return null;

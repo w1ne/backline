@@ -89,12 +89,43 @@ def essentia_methods(y, sr):
         return {"essentia.RhythmExtractor2013": {"error": str(e)[:200]}}
 
 
+_beatnet = None
+
+
+def beatnet_methods(y, sr, tmp_path):
+    """BeatNet (CRNN + particle filtering / DBN), offline mode on the clip. Needs torch; skipped if absent."""
+    global _beatnet
+    try:
+        import types
+        sys.modules.setdefault("pyaudio", types.ModuleType("pyaudio"))  # BeatNet imports it for its live mode only
+        from BeatNet.BeatNet import BeatNet
+    except Exception as e:  # noqa: BLE001
+        return {"BeatNet": {"error": str(e)[:200]}}
+    try:
+        if _beatnet is None:
+            _beatnet = BeatNet(1, mode="offline", inference_model="DBN", plot=[], thread=False)
+        sf.write(tmp_path, y, sr)
+        t = time.time()
+        beats = _beatnet.process(tmp_path)
+        times = np.asarray(beats)[:, 0] if len(beats) else np.array([])
+        if len(times) >= 3:
+            return {"BeatNet": {"bpm": float(60.0 / np.median(np.diff(times))), "ms": (time.time() - t) * 1000}}
+        return {"BeatNet": {"error": "fewer than 3 beats"}}
+    except Exception as e:  # noqa: BLE001
+        return {"BeatNet": {"error": str(e)[:200]}}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seconds", type=float, default=12.0, help="voice decision window")
+    ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--no-beatnet", action="store_true")
     args = ap.parse_args()
     names = sorted({f[:-10] for f in os.listdir(WAV_DIR) if f.endswith(".voice.wav")})
+    if args.limit:
+        names = names[: args.limit]
     results = {}
+    tmp_path = os.path.join(HERE, "out", "_beatnet_tmp.wav")
     for i, name in enumerate(names):
         row = {}
         for which, seconds in (("voice", args.seconds), ("backing", None)):
@@ -104,6 +135,8 @@ def main():
             r.update(librosa_methods(y, sr))
             r.update(madmom_methods(path, seconds))
             r.update(essentia_methods(y, sr))
+            if not args.no_beatnet:
+                r.update(beatnet_methods(y, sr, tmp_path))
             row[which] = r
         results[name] = row
         print(f"{i + 1}/{len(names)} {name}", {k: round(v.get('bpm', 0)) for k, v in row['voice'].items()}, file=sys.stderr)
