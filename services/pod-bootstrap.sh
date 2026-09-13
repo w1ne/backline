@@ -100,6 +100,11 @@ PYEOF
   nginx -t && nginx -s reload
 fi
 
+log "fetch ACE-Step XL-turbo DiT as bf16 (HF repo is 20 GB fp32; converted shard-by-shard via /dev/shm)"
+if [ ! -f "$ACE_REPO_DIR/checkpoints/acestep-v15-xl-turbo/model-00004-of-00004.safetensors" ]; then
+  ( cd "$ACE_REPO_DIR" && .venv/bin/python "$BACKLINE_DIR/services/acestep/xl_bf16.py" )
+fi
+
 log "purge pip/uv caches (40GB container disk fills fast with ACE checkpoints + 2 venvs)"
 rm -rf /root/.cache/pip /root/.cache/uv
 pip cache purge >/dev/null 2>&1 || true
@@ -112,13 +117,18 @@ log "start ACE-Step service (tmux: ace, port 8080)"
 tmux new-session -d -s ace "cd $BACKLINE_DIR/services/acestep && \
   ACESTEP_CHECKPOINTS_DIR=$ACE_REPO_DIR/checkpoints \
   ACE_REPO_DIR=$ACE_REPO_DIR \
-  PORT=8080 \
+  ACE_SONG_MODE=1 PORT=8080 \
   $ACE_REPO_DIR/.venv/bin/python server.py 2>&1 | tee $LOG_DIR/ace.log"
 
 log "start AMT service (tmux: amt, internal port 18081, public via nginx 8081)"
+# Append to the log (a restart used to truncate it and lose every committed= line);
+# rotate once it passes 50 MB.
+if [ -f "$LOG_DIR/amt.log" ] && [ "$(stat -c%s "$LOG_DIR/amt.log")" -gt 52428800 ]; then
+  mv -f "$LOG_DIR/amt.log" "$LOG_DIR/amt.log.1"
+fi
 tmux new-session -d -s amt "cd $BACKLINE_DIR/services/amt && \
   PORT=18081 \
-  $AMT_VENV/bin/python server.py 2>&1 | tee $LOG_DIR/amt.log"
+  $AMT_VENV/bin/python server.py 2>&1 | tee -a $LOG_DIR/amt.log"
 
 log "waiting for services to come up..."
 for i in $(seq 1 60); do

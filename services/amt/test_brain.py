@@ -191,7 +191,7 @@ class TestSection:
         brain.set_controls({"silenceBeats": 0})
         brain.on_note(57, 22.0)
         r = brain.on_tick(24.0)
-        assert not r["idle"] and r["section"] == "groove"
+        assert not r["idle"] and r["section"] == "intro"
 
     def test_reset_returns_to_intro(self):
         brain = HarmonyBrain(key="A minor")

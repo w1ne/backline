@@ -45,6 +45,8 @@ export interface BandInput {
   onsets: number;
   /** read-only running estimate from the onsets so far, shown while still listening */
   pendingBpm: number | null;
+  /** a singer's beat from the flux tempogram (mic only), available after ~8 s of singing */
+  voiceBpm: number | null;
   /** the player's activity, updated on every beat */
   dynamics: Dynamics;
 }

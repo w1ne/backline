@@ -129,3 +129,31 @@ class SongFormTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_steady_playing_has_recurring_contrast_without_new_form_clock():
+    form = SongForm()
+    sections = [form.tick(bar, .5, 0)['section'] for bar in range(34)]
+    assert sections[2:10] == ['groove'] * 8
+    assert sections[10:18] == ['lift'] * 8
+    assert sections[18:26] == ['breakdown'] * 8
+    assert sections[26:34] == ['groove'] * 8
+
+
+def test_repeated_bar_does_not_advance_hysteresis_or_end_twice():
+    form = SongForm()
+    for _ in range(10):
+        assert form.tick(2, .9, 0)['section'] == 'groove'
+    ending = form.tick(3, .5, 16)
+    assert ending['section'] == 'ending'
+    assert form.tick(3, .5, 16) == ending
+    assert form.tick(4, .5, 16)['section'] == 'ended'
+
+
+def test_restart_uses_new_song_origin_without_resetting_transport():
+    form = SongForm()
+    form.reset(start_bar=20)
+    assert form.tick(20, .5, 0)['section'] == 'intro'
+    assert form.tick(21, .5, 0)['section'] == 'intro'
+    assert form.tick(22, .5, 0)['section'] == 'groove'
+    assert form.tick(30, .5, 0)['section'] == 'lift'

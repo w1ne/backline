@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { bpmFromOnsets, estimateTempo, TempoLock } from './tempoLock';
+import { bpmFromOnsets, estimateTempo, refineWithOnsets, TempoLock } from './tempoLock';
 
 function beats(bpm: number, n: number, jitter = 0, start = 1) {
   const p = 60 / bpm;
@@ -87,9 +87,32 @@ describe('voice tempo fold', () => {
     const r = bpmFromOnsets(syllables(66, 20), 12, { voice: true })!;
     expect(Math.abs(r.bpm - 132)).toBeLessThan(3);
   });
-  it('TempoLock folds when the onsets come from a voice', () => {
+  it('TempoLock does not lock from a voice majority; the tempogram locks it through lockFromVoice', () => {
     const l = new TempoLock();
     syllables(87, 20).forEach(t => l.push(t, true));
-    expect(Math.abs(l.locked!.bpm - 87)).toBeLessThan(2);
+    expect(l.voiceMajority).toBe(true);
+    expect(l.locked).toBeNull();
+    l.lockFromVoice(87.4);
+    expect(l.locked!.downbeat).toBe(1);
+    expect(l.locked!.bpm).toBeCloseTo(87, 0); // refined from the clean 87 bpm syllables
+    expect(l.isProvisional).toBe(false);
+    l.lockFromVoice(120); // a real lock is not replaced
+    expect(l.locked!.bpm).toBeCloseTo(87, 0);
+  });
+  it('lockFromVoice refines the tempogram bpm from the onsets when they agree', () => {
+    const l = new TempoLock();
+    for (let i = 0; i < 16; i++) l.push(1 + i * 0.6, true); // 100 bpm, quantised tempogram said 98.4
+    l.lockFromVoice(98.4);
+    expect(l.locked!.bpm).toBeCloseTo(100, 0);
+    expect(refineWithOnsets(98.4, [1, 1.6])).toBe(98.4); // too few intervals to say
+    expect(refineWithOnsets(100, [1, 1.61, 2.2, 3.4, 4.6])).toBeCloseTo(100, 0); // 2-beat gaps vote too
+    expect(refineWithOnsets(84, [1, 1.62, 2.24, 2.86, 3.48, 4.1])).toBe(84); // syllables 13% off the beat do not move it
+  });
+  it('lockFromVoice replaces a provisional lock', () => {
+    const l = new TempoLock();
+    l.push(1, true);
+    l.adoptProvisional(140, 1);
+    l.lockFromVoice(92);
+    expect(l.locked).toEqual({ bpm: 92, downbeat: 1 });
   });
 });

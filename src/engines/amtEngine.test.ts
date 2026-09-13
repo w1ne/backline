@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { AmtEngine } from './amtEngine';
 import type { ClockLike } from '../band/clockTypes';
 import type { Instrument, NoteEvent } from '../types';
@@ -15,14 +15,21 @@ class FakeClock implements ClockLike {
   stop() {
     this.stopped = true;
   }
+  halfCb?: (bar: number, t: number) => void;
   onBar(cb: (bar: number, t: number) => void) {
     this.cb = cb;
+  }
+  onHalfBar(cb: (bar: number, t: number) => void) {
+    this.halfCb = cb;
   }
   setBpm(bpm: number) {
     this.bpm = bpm;
   }
   tick(bar: number, t: number) {
     this.cb?.(bar, t);
+  }
+  halfTick(bar: number, t: number) {
+    this.halfCb?.(bar, t);
   }
 }
 
@@ -139,6 +146,50 @@ describe('AmtEngine', () => {
     engine.stop();
   });
 
+  it('runs local drums through a Bandleader: form, humanize and the amount all apply', async () => {
+    const { engine, clock, players } = mk();
+    const sections: { bar: number; section: string; shouldStop: boolean }[] = [];
+    engine.onForm = (bar, form) => sections.push({ bar, section: form.section, shouldStop: form.shouldStop });
+    engine.setEnabled('drums', true);
+    engine.setAmount(0.5);
+    await engine.start(120, 0);
+    clock.tick(0, 1); clock.tick(1, 3); clock.tick(2, 5);
+    expect(sections).toEqual([
+      { bar: 0, section: 'intro', shouldStop: false },
+      { bar: 1, section: 'intro', shouldStop: false },
+      { bar: 2, section: 'groove', shouldStop: false },
+    ]);
+    const drums = players.calls.filter(c => c.i === 'drums');
+    expect(drums.map(c => c.barStart)).toEqual([1, 3, 5]);
+    const events = drums.flatMap(c => c.events);
+    // humanized: not every hit sits exactly on the sixteenth grid
+    expect(events.some(e => Math.abs(e.time - Math.round(e.time * 4) / 4) > 1e-9)).toBe(true);
+    // the manual amount still scales what reaches the players (FakePlayers has no bus)
+    expect(Math.max(...events.map(e => e.velocity))).toBeLessThanOrEqual(0.5 * 1.1);
+    engine.setAmount(0);
+    clock.tick(3, 7);
+    expect(players.calls.filter(c => c.i === 'drums')).toHaveLength(3);
+    engine.stop();
+  });
+
+  it('local drums play the ending bar and report shouldStop after four silent bars', async () => {
+    const { engine, clock } = mk();
+    const seen: string[] = [];
+    engine.onForm = (_bar, form) => seen.push(form.shouldStop ? 'stop' : form.section);
+    engine.setEnabled('drums', true);
+    await engine.start(120, 0);
+    clock.tick(0, 1); clock.tick(1, 3);
+    engine.set({ dynamics: { intensity: 0, space: true, fillDue: false, silenceBeats: 16 } });
+    clock.tick(2, 5);
+    expect(seen).toEqual(['intro', 'intro', 'stop']);
+    // a restart begins a new song
+    engine.stop();
+    await engine.start(120, 10);
+    clock.tick(0, 11);
+    expect(seen[3]).toBe('intro');
+    engine.stop();
+  });
+
   it('sends manual amount to AMT and updates already scheduled audio through the bus', async () => {
     const { engine, players } = mk();
     const setBandAmount = vi.fn();
@@ -194,7 +245,7 @@ describe('AmtEngine', () => {
     engine.stop();vi.useRealTimers();
   });
 
-  it('sends a start message with lookahead/commit/listen beats on open', async () => {
+  it('advertises cancellable phrase responses with timing configuration on open', async () => {
     const { engine } = mk();
     engine.set({ genre: 'jazz', key: { root: 9, mode: 'minor' }, creativity: 0.4 });
     await engine.start(100, 0);
@@ -208,6 +259,7 @@ describe('AmtEngine', () => {
       lookaheadBeats: 2,
       commitBeats: 2,
       listenBeats: 8,
+      phraseResponses: true,
     });
   });
 
@@ -261,15 +313,18 @@ describe('AmtEngine', () => {
       now = 2;
       clock.tick(1, 2);
       expect(cues(ws)).toEqual([{ type: 'tick', beat: 4, cueId: 1 }]);
-      vi.advanceTimersByTime(999);
+      // The half-bar cue comes from the clock's transport, never from a timer: a background
+      // tab clamps timers to a second, the Transport keeps time.
+      vi.advanceTimersByTime(5000);
       expect(cues(ws)).toHaveLength(1);
-      vi.advanceTimersByTime(2);
+      now = 3;
+      clock.halfTick(1, 3);
       expect(cues(ws)).toEqual([{ type: 'tick', beat: 4, cueId: 1 }, { type: 'tick', beat: 6, cueId: 2 }]);
       now = 4;
       clock.tick(2, 4);
       expect(cues(ws).at(-1)).toEqual({ type: 'tick', beat: 8, cueId: 3 });
       engine.stop();
-      vi.advanceTimersByTime(5000);
+      clock.halfTick(2, 5);
       expect(cues(ws)).toHaveLength(3); // no half-bar cue after stop
     } finally {
       vi.useRealTimers();
@@ -304,7 +359,7 @@ describe('AmtEngine', () => {
       now = 2;
       clock.tick(1, 2);
       notes.fire({ midi: 62, velocity: 0.8, timeSec: 2.5 });
-      vi.advanceTimersByTime(1001);
+      clock.halfTick(1, 3);
       expect(ws.sent.slice(-2).map((m: any) => m.type)).toEqual(['notes', 'tick']);
       engine.stop();
     } finally {
@@ -793,4 +848,363 @@ it('requests the model guitar when the visible lead role is enabled with the def
     enabledRoles:expect.objectContaining({lead:true})}));
   engine.stop();
   vi.useRealTimers();
+});
+
+describe('remembered phrase playback', () => {
+  const plan = { type: 'plan', phraseResponse: true, phraseInstrument: 24, notes: [
+    {voice:'lead',gmInstr:24,beat:4,pitch:60,dur:1,vel:.8},
+    {voice:'keys',gmInstr:4,beat:4,pitch:64,dur:1,vel:.5},
+  ] };
+  it.each(['performance', 'legacy'] as const)('invalidates only the response when %s input resumes after lookahead', async mode => {
+    const players = new FakePlayers();
+    const schedule = vi.spyOn(players, 'scheduleAccompaniment');
+    let fire!: (e: any) => void;
+    const notes = { onNote: (cb: typeof fire) => {fire=cb;},
+      ...(mode === 'performance' ? { onPerformance: (cb: typeof fire) => {fire=cb;} } : {}) };
+    const engine = new AmtEngine(players, notes, new FakeClock(), () => 0, () => 0);
+    engine.setEnabled('lead', true); engine.setEnabled('keys', true);
+    await engine.start(120, 0);
+    startedSocket().receiveJson(plan);
+    const phrase = schedule.mock.calls.find(c => c[0] === 24) as unknown as unknown[];
+    const backing = schedule.mock.calls.find(c => c[0] === 4) as unknown as unknown[];
+    const signal = phrase[5] as AbortSignal;
+    expect(signal?.aborted).toBe(false);
+    expect(backing[5]).toBeUndefined();
+    fire({type:'note_on',id:'p',source:'midi',midi:62,velocity:.8,confidence:1,timeSec:.5});
+    expect(signal.aborted).toBe(true);
+    expect(players.accompCalls).toHaveLength(2);
+    engine.stop();
+  });
+
+  it('rejects responses while any performer note remains held, then accepts a fresh gap response', async () => {
+    const players = new FakePlayers();
+    const schedule = vi.spyOn(players, 'scheduleAccompaniment');
+    let fire!: (e: any) => void;
+    let now = 0;
+    const engine = new AmtEngine(players, {onNote:vi.fn(),onPerformance: cb => {fire=cb;}}, new FakeClock(), () => now, () => now);
+    engine.setEnabled('lead', true); engine.setEnabled('keys', true);
+    await engine.start(120, 0);
+    const onset = {type:'note_on',id:'p',source:'midi',midi:62,velocity:.8,confidence:1,timeSec:0};
+    fire(onset);
+    now = .5;
+    startedSocket().receiveJson(plan);
+    expect(players.accompCalls.map(c => c.gmProgram)).toEqual([4]);
+    fire({...onset,type:'note_off',timeSec:.5});
+    startedSocket().receiveJson({...plan,latestCaptureTimeSec:.5,notes:[{...plan.notes[0],beat:6}]});
+    expect(players.accompCalls.map(c => c.gmProgram)).toEqual([4,24]);
+    const signal = (schedule.mock.calls[1] as unknown as unknown[])[5] as AbortSignal;
+    expect(signal.aborted).toBe(false);
+    engine.stop();
+    expect(signal.aborted).toBe(true);
+  });
+});
+
+it('rejects a stale phrase arriving after the resumed note was already released, while preserving backing', async () => {
+  let fire!: (e: import('../listener/performanceEvent').PerformanceEvent) => void;
+  const players = new FakePlayers();
+  const engine = new AmtEngine(players, {onNote:vi.fn(),onPerformance:cb=>{fire=cb;}}, new FakeClock(), () => 1, () => 101);
+  engine.setEnabled('lead', true); engine.setEnabled('keys', true);
+  await engine.start(120, 1);
+  const onset = {type:'note_on' as const,id:'resume',source:'midi' as const,midi:62,velocity:.8,confidence:1,timeSec:101.2};
+  fire(onset); fire({...onset,type:'note_off',timeSec:101.3});
+  startedSocket().receiveJson({type:'plan',phraseResponse:true,phraseInstrument:24,latestCaptureTimeSec:101,notes:[
+    {voice:'lead',gmInstr:24,beat:4,pitch:60,dur:1,vel:.8},
+    {voice:'keys',gmInstr:4,beat:4,pitch:64,dur:1,vel:.5},
+  ]});
+  expect(players.accompCalls.map(c => c.gmProgram)).toEqual([4]);
+  engine.stop();
+});
+
+describe('AmtEngine status numbers', () => {
+  beforeEach(() => { FakeWebSocket.instances = []; });
+
+  it('surfaces the server queue/age latencies and the tooLate count with each status', async () => {
+    const players = new FakePlayers();
+    const engine = new AmtEngine(players, new FakeNoteSource(), new FakeClock(), () => 10, () => 10);
+    const status = vi.fn();
+    engine.onStatus = status;
+    engine.setEnabled('keys', true);
+    await engine.start(120, 0);
+    const ws = startedSocket(); ws.open();
+    // beat 1 at 120 bpm is 0.5 s after firstBarAt=0: already past `now`=10, so it is too late.
+    ws.receiveJson({ type: 'plan', notes: [{ beat: 1, pitch: 60, dur: 1, vel: .5, voice: 'keys' }] });
+    ws.receiveJson({ type: 'status', latencyMs: 120, queueLatencyMs: 5.5, requestAgeMs: 130 });
+    expect(status).toHaveBeenLastCalledWith('', 120, { tooLate: 1, queueLatencyMs: 5.5, requestAgeMs: 130 });
+    engine.stop();
+  });
+});
+
+describe('AmtEngine round-trip estimate', () => {
+  beforeEach(() => { FakeWebSocket.instances = []; });
+
+  it('sends the last measured cue-to-plan hop (minus the server-side age) as rttMs on the next tick', async () => {
+    vi.useFakeTimers();
+    try {
+      const clock = new FakeClock();
+      const engine = new AmtEngine(new FakePlayers(), new FakeNoteSource(), clock, () => 0, () => 0);
+      await engine.start(120, 0);
+      const ws = startedSocket(); ws.open();
+      ws.receiveJson({ type: 'ready', tick: true });
+      clock.tick(1, 2);
+      const first = ws.sent.filter((m: any) => m.type === 'tick').at(-1) as any;
+      expect(first.cueId).toBe(1);
+      expect(first.rttMs).toBeUndefined(); // nothing measured yet
+      vi.advanceTimersByTime(300);
+      ws.receiveJson({ type: 'plan', cueId: 1, notes: [] });
+      ws.receiveJson({ type: 'status', latencyMs: 100, requestAgeMs: 120 });
+      clock.halfTick(1, 3);
+      const second = ws.sent.filter((m: any) => m.type === 'tick').at(-1) as any;
+      expect(second.cueId).toBe(2);
+      expect(second.rttMs).toBe(180);
+      engine.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('AmtEngine reconnect', () => {
+  let now = 0;
+  const nowFn = () => now;
+  beforeEach(() => { FakeWebSocket.instances = []; now = 0; vi.useFakeTimers(); });
+  afterEach(() => vi.useRealTimers());
+
+  function mk() {
+    const players = new FakePlayers();
+    const clock = new FakeClock();
+    const engine = new AmtEngine(players, new FakeNoteSource(), clock, nowFn, nowFn);
+    const error = vi.fn(); engine.onError = error;
+    return { players, clock, engine, error };
+  }
+
+  it('reopens the socket with backoff after a drop, resends start with resume and the last set, and never reports an error', async () => {
+    const { engine, clock, error } = mk();
+    engine.set({ creativity: .9 });
+    engine.setEnabled('keys', true);
+    await engine.start(120, 0);
+    const ws1 = startedSocket(); ws1.open();
+    ws1.receiveJson({ type: 'ready', tick: true, setBpm: true });
+    expect(ws1.sent[0]).toEqual(expect.objectContaining({ type: 'start', bpm: 120 }));
+    expect(ws1.sent[0]).not.toHaveProperty('resume');
+
+    ws1.emit('close', { reason: 'gone' });
+    ws1.emit('error', {});
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    // A cue while the socket is down is dropped, not queued behind the reconnect.
+    clock.tick(1, 2);
+    vi.advanceTimersByTime(499);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    const ws2 = startedSocket();
+    ws2.open();
+    expect(ws2.sent[0]).toEqual(expect.objectContaining({ type: 'start', bpm: 120, resume: true }));
+    expect(ws2.sent).toContainEqual(expect.objectContaining({ type: 'set', creativity: .9 }));
+    expect(ws2.sent.some(m => ['tick', 'bar'].includes((m as { type: string }).type))).toBe(false);
+    ws2.receiveJson({ type: 'ready', tick: true, setBpm: true });
+    clock.tick(2, 4);
+    expect(ws2.sent.at(-1)).toEqual(expect.objectContaining({ type: 'tick', beat: 8 }));
+    ws2.receiveJson({ type: 'plan', notes: [] });
+    vi.advanceTimersByTime(30000);
+    expect(error).not.toHaveBeenCalled();
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    engine.stop();
+  });
+
+  it('gives up and reports the error once the 20 s budget is spent when every attempt fails', async () => {
+    const { engine, error } = mk();
+    await engine.start(120, 0);
+    const ws1 = startedSocket(); ws1.open();
+    ws1.emit('close', { reason: '1006' });
+    let seen = 1;
+    const failNewSockets = () => {
+      while (FakeWebSocket.instances.length > seen) {
+        const ws = FakeWebSocket.instances[seen++];
+        ws.emit('error', {});
+        ws.emit('close', { reason: '' });
+      }
+    };
+    for (let t = 0; t < 10000; t += 100) { vi.advanceTimersByTime(100); failNewSockets(); }
+    expect(error).not.toHaveBeenCalled();
+    for (let t = 10000; t < 20000; t += 100) { vi.advanceTimersByTime(100); failNewSockets(); }
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(error.mock.calls[0][0]).toMatch(/^AMT: (closed|connection error)/);
+    // 0.5 + 1 + 2 + 4 + 8 s: five attempts after the original socket.
+    expect(FakeWebSocket.instances).toHaveLength(6);
+    vi.advanceTimersByTime(60000);
+    expect(FakeWebSocket.instances).toHaveLength(6);
+    expect(error).toHaveBeenCalledTimes(1);
+    engine.stop();
+  });
+
+  it('closes an attempt that never opens and keeps the give-up inside the budget', async () => {
+    const { engine, error } = mk();
+    await engine.start(120, 0);
+    startedSocket().open();
+    startedSocket().emit('close', { reason: '' });
+    vi.advanceTimersByTime(20000);
+    expect(error).toHaveBeenCalledTimes(1);
+    engine.stop();
+  });
+
+  it('reports a socket that fails before it ever opened straight away', async () => {
+    const { engine, error } = mk();
+    await engine.start(120, 0);
+    startedSocket().emit('close', { reason: '' });
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    engine.stop();
+  });
+
+  it('does not reconnect after stop', async () => {
+    const { engine, error } = mk();
+    await engine.start(120, 0);
+    startedSocket().open();
+    engine.stop();
+    vi.advanceTimersByTime(30000);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(error).not.toHaveBeenCalled();
+  });
+});
+
+describe('AmtEngine tempo change', () => {
+  let now = 0;
+  const nowFn = () => now;
+  beforeEach(() => { FakeWebSocket.instances = []; now = 0; });
+
+  function mk() {
+    const players = new FakePlayers();
+    const clock = new FakeClock();
+    const engine = new AmtEngine(players, new FakeNoteSource(), clock, nowFn, nowFn);
+    return { players, clock, engine };
+  }
+  type Sent = { type: string; bpm?: number; beat?: number };
+
+  it('sends set {bpm} at the next downbeat instead of reconnecting when the server can take it', async () => {
+    const { engine, clock, players } = mk();
+    engine.setEnabled('keys', true);
+    await engine.start(120, 0);
+    const ws = startedSocket(); ws.open();
+    ws.receiveJson({ type: 'ready', tick: true, setBpm: true });
+    clock.tick(0, 0);
+    now = 1;
+    engine.setBpm(100);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(clock.bpm).toBe(100);
+    expect(ws.closed).toBe(false);
+    // Not applied until the bar line, like the clock.
+    expect((ws.sent as Sent[]).some(m => m.type === 'set' && m.bpm === 100)).toBe(false);
+    now = 2;
+    clock.tick(1, 2);
+    const setAt = (ws.sent as Sent[]).findIndex(m => m.type === 'set' && m.bpm === 100);
+    const tickAt = (ws.sent as Sent[]).findIndex(m => m.type === 'tick' && m.beat === 4);
+    expect(setAt).toBeGreaterThan(-1);
+    expect(tickAt).toBeGreaterThan(setAt);
+    expect(engine.changeLatencyMs).toBeCloseTo(1200);
+    // The beat grid stays continuous: beat 6 is two beats past the bar-1 downbeat at 100 bpm.
+    ws.receiveJson({ type: 'plan', notes: [{ beat: 6, pitch: 60, dur: 1, vel: .5, voice: 'keys' }] });
+    expect(players.calls[0]).toMatchObject({ barStart: 2, bpm: 100 });
+    expect(players.calls[0].events[0].time).toBeCloseTo(2);
+    engine.stop();
+  });
+
+  it('still reconnects for a tempo change against a server without setBpm', async () => {
+    const { engine } = mk();
+    await engine.start(120, 0);
+    const ws = startedSocket(); ws.open();
+    ws.receiveJson({ type: 'ready', tick: true });
+    engine.setBpm(100);
+    expect(ws.closed).toBe(true);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    startedSocket().open();
+    expect(startedSocket().sent[0]).toEqual(expect.objectContaining({ type: 'start', bpm: 100 }));
+    expect(startedSocket().sent[0]).not.toHaveProperty('resume');
+    engine.stop();
+  });
+});
+
+it.each([false, true])('preserves later same-program backing in a four-beat phrase plan (explicit bounds: %s)', async explicit => {
+  const players = new FakePlayers();
+  const schedule = vi.spyOn(players, 'scheduleAccompaniment');
+  const notes = new FakeNoteSource();
+  const engine = new AmtEngine(players, notes, new FakeClock(), () => 0, () => 0);
+  engine.setEnabled('lead', true);
+  await engine.start(120, 0);
+  startedSocket().receiveJson({type:'plan',fromBeat:4,toBeat:8,phraseResponse:true,phraseInstrument:24,
+    ...(explicit ? {phraseFromBeat:4,phraseToBeat:5} : {}),
+    notes:[
+      {voice:'lead',gmInstr:24,beat:4,pitch:60,dur:1,vel:.8},
+      {voice:'lead',gmInstr:24,beat:explicit ? 5 : 6,pitch:64,dur:1,vel:.5},
+    ],
+  });
+  expect(schedule).toHaveBeenCalledTimes(2);
+  const phrase = schedule.mock.calls[0] as unknown as unknown[];
+  const backing = schedule.mock.calls[1] as unknown as unknown[];
+  expect((phrase[1] as NoteEvent[]).map(n => n.note)).toEqual([60]);
+  expect((backing[1] as NoteEvent[]).map(n => n.note)).toEqual([64]);
+  expect(backing[5]).toBeUndefined();
+  notes.fire({midi:62,velocity:.8,timeSec:.2});
+  expect((phrase[5] as AbortSignal).aborted).toBe(true);
+  engine.stop();
+});
+
+describe('AmtEngine held input handoff', () => {
+  beforeEach(() => { vi.useFakeTimers(); FakeWebSocket.instances = []; });
+  afterEach(() => vi.useRealTimers());
+  function setup(replay = false) {
+    let now = 0;
+    let fire!: (event: import('../listener/performanceEvent').PerformanceEvent) => void;
+    const onset = { type: 'note_on' as const, id: 'held', source: 'mic' as const, midi: 69, velocity: .8, confidence: 1, timeSec: 0 };
+    const clock = new FakeClock();
+    const engine = new AmtEngine(new FakePlayers(), { onNote() {}, onPerformance(cb) { fire = cb; if (replay) cb(onset); } }, clock, () => now, () => now);
+    return { engine, clock, onset, fire: (e: typeof onset | import('../listener/performanceEvent').PerformanceEvent) => fire(e), setNow: (t: number) => { now = t; } };
+  }
+  for (const replay of [false, true]) it(`retains a note held across count-in (replayed=${replay}) and clips its release`, async () => {
+    const s = setup(replay);
+    await s.engine.start(120, 4);
+    const ws = startedSocket(); ws.open(); ws.receiveJson({ type: 'ready', performanceEvents: true });
+    if (!replay) s.fire(s.onset);
+    expect(ws.sent.filter((m: any) => m.type === 'notes')).toEqual([]);
+    s.setNow(4); s.clock.tick(0, 4);
+    expect(ws.sent).toContainEqual({ type: 'notes', notes: [expect.objectContaining({ id: 'held', beat: 0, pitch: 69, held: true })] });
+    s.setNow(5); s.fire({ ...s.onset, type: 'note_off', timeSec: 5, durationSec: 5 });
+    expect(ws.sent).toContainEqual({ type: 'note_updates', notes: [{ id: 'held', dur: 2, captureTimeSec: 5 }] });
+    s.engine.stop();
+  });
+  it('does not transmit notes released during count-in', async () => {
+    const s = setup(); await s.engine.start(120, 4);
+    const ws = startedSocket(); ws.open(); ws.receiveJson({ type: 'ready', performanceEvents: true });
+    s.fire(s.onset); s.setNow(2); s.fire({ ...s.onset, type: 'note_off', timeSec: 2, durationSec: 2 });
+    s.setNow(4); s.clock.tick(0, 4);
+    expect(ws.sent.filter((m: any) => m.type === 'notes' || m.type === 'note_updates')).toEqual([]);
+    s.engine.stop();
+  });
+  it('does not turn a transport lookahead callback into an early held onset', async () => {
+    const s = setup(); await s.engine.start(120, 4);
+    const ws = startedSocket(); ws.open(); ws.receiveJson({ type: 'ready', performanceEvents: true });
+    s.fire(s.onset); s.setNow(3.9); s.clock.tick(0, 4);
+    s.setNow(3.95); s.fire({ ...s.onset, type: 'note_off', timeSec: 3.95, durationSec: 3.95 });
+    s.setNow(4); s.engine.flushNotesForTest();
+    expect(ws.sent.filter((m: any) => m.type === 'notes' || m.type === 'note_updates')).toEqual([]);
+    s.engine.stop();
+  });
+  it('measures a held duration on the continuous beat grid across a tempo change', async () => {
+    const s = setup(); await s.engine.start(120, 0);
+    const ws = startedSocket(); ws.open(); ws.receiveJson({ type: 'ready', performanceEvents: true, setBpm: true });
+    s.fire(s.onset);
+    s.setNow(2); s.engine.setBpm(60); s.clock.tick(1, 2);
+    s.setNow(3); s.fire({ ...s.onset, type: 'note_off', timeSec: 3, durationSec: 3 });
+    expect(ws.sent).toContainEqual({ type: 'note_updates', notes: [{ id: 'held', dur: 5, captureTimeSec: 3 }] });
+    s.engine.stop();
+  });
+  it('replays a still held note at the current beat when a connection resumes', async () => {
+    const s = setup(); await s.engine.start(120, 0);
+    const ws = startedSocket(); ws.open(); s.fire(s.onset);
+    s.setNow(2); ws.close(); await vi.advanceTimersByTimeAsync(500);
+    const resumed = startedSocket(); resumed.open(); resumed.receiveJson({ type: 'ready', performanceEvents: true });
+    expect(resumed.sent).toContainEqual({ type: 'notes', notes: [expect.objectContaining({ id: 'held', beat: 4, pitch: 69, held: true })] });
+    s.setNow(3); s.fire({ ...s.onset, type: 'note_off', timeSec: 3, durationSec: 3 });
+    expect(resumed.sent).toContainEqual({ type: 'note_updates', notes: [{ id: 'held', dur: 2, captureTimeSec: 3 }] });
+    s.engine.stop();
+  });
 });

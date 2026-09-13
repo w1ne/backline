@@ -71,12 +71,26 @@ describe('the listening LCD', () => {
     return root.querySelector<HTMLElement>('#lcd')!.textContent!;
   }
 
+  // A keyboard's onsets are beats: the detected tempo starts the band, and the LCD counts
+  // the onsets towards the lock (unchanged by the mic-only count-in default).
+  const midi = { sources: { mic: 'on' as const, midi: 'on' as const } };
+
   it('counts onsets towards the lock', () => {
-    expect(lcd({ onsets: 3 })).toBe('LISTENING · MIC ✓ MIDI ✗ · 3/12');
+    expect(lcd({ onsets: 3 }, midi)).toBe('LISTENING · MIC ✓ MIDI ✓ · 3/12');
   });
 
   it('shows the running estimate as soon as there is one', () => {
-    expect(lcd({ onsets: 7, pendingBpm: 98.4 })).toBe('LISTENING · MIC ✓ MIDI ✗ · 7/12 · ~98 BPM');
+    expect(lcd({ onsets: 7, pendingBpm: 98.4 }, midi)).toBe('LISTENING · MIC ✓ MIDI ✓ · 7/12 · ~98 BPM');
+  });
+
+  it('invites singing with count-in off too', () => {
+    expect(lcd({ onsets: 7, pendingBpm: 98.4 }, { countIn: false })).toBe('LISTENING · MIC ✓ MIDI ✗ · SING TO START');
+  });
+
+  it('invites a solo singer to start without a tempo setting', () => {
+    expect(lcd({ onsets: 7, pendingBpm: 140.4 })).toBe('LISTENING · MIC ✓ MIDI ✗ · SING TO START');
+    expect(lcd({ onsets: 0 })).toBe('LISTENING · MIC ✓ MIDI ✗ · SING TO START');
+    expect(lcd({ onsets: 20, pendingBpm: 140.4, voiceBpm: 96.2 })).toBe('LISTENING · MIC ✓ MIDI ✗ · SING TO START');
   });
 
   it('drops the estimate once the band is live', () => {
@@ -147,6 +161,22 @@ describe('engine and genre controls while power is off', () => {
     expect(store.state.power).toBe('off');
     root.querySelector<HTMLButtonElement>('#genre-chips .chip[data-genre="funk"]')!.click();
     expect(store.state.genre).toBe('funk');
+  });
+
+  it('does not show a playback pill in the browser', () => {
+    const root = setup();
+    renderLive(root, store, actions);
+    const pill = root.querySelector<HTMLElement>('#playback-target')!;
+    expect(pill.style.display).toBe('none');
+    expect(pill.textContent).toBe('');
+  });
+
+  it('offers every engine as a selectable model', () => {
+    const root = setup();
+    renderLive(root, store, actions);
+    expect(root.querySelector<HTMLButtonElement>('#engine-acestep')!.hidden).toBe(false);
+    expect(root.querySelector<HTMLButtonElement>('#engine-amt')!.hidden).toBe(false);
+    expect(root.querySelector<HTMLButtonElement>('#engine-patterns')!.hidden).toBe(false);
   });
 
   it('flags ACE/AMT as offline in the switch but keeps them clickable', () => {

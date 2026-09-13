@@ -8,6 +8,10 @@ bench:<name>`; it prints a table and writes `RESULTS.md` next to itself.
 - `patterns/` — pattern-bank variety and SongForm transitions.
 - `realvoice/` — MIR-1K amateur singers (needs the dataset, not in git; see
   `realvoice/dataset.ts`).
+- `tempo/` — tempo from a solo voice: every MIR-1K singer/song stitched to ~30 s (110 songs),
+  scored against the backing track's tempo; online methods with a 12 s deadline, plus
+  librosa / madmom / Essentia / BeatNet as the ceiling (`tempo/setup-venv.sh`, then
+  `tempo/.venv/bin/python tempo/libs.py`; rerun with `-- --fast`).
 
 ## Benchmarks and gates
 

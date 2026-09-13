@@ -12,12 +12,12 @@ if available, else CPU).
 
 ## WebSocket contract (`/ws`)
 
-- client -> `{type:'start', bpm, key, genre, lookaheadBeats, commitBeats, listenBeats, accompInstruments?, accompBias?}`
+- client -> `{type:'start', bpm, key, genre, lookaheadBeats, commitBeats, listenBeats, accompInstruments?, accompBias?, resume?}` (`resume: true` from a client reconnecting mid-set: the session is fresh but listens for 2 beats instead of `listenBeats`)
 - client -> `{type:'notes', notes:[{beat, pitch, dur, vel}]}`
 - client -> `{type:'bar', bar}` -- server replies with the plan for `bar+1`
-- client -> `{type:'set', genre?, key?, chord?, creativity?, amount?, space?, intensity?, silenceBeats?, instruments?, accompInstruments?, accompBias?}` (`instruments` accepted, no-op on generation; `intensity`/`silenceBeats` drive the song form)
+- client -> `{type:'set', bpm?, genre?, key?, chord?, creativity?, amount?, space?, intensity?, silenceBeats?, instruments?, accompInstruments?, accompBias?}` (`instruments` accepted, no-op on generation; `intensity`/`silenceBeats` drive the song form; `bpm` rescales the session's seconds in place -- history, horizon and listen state stay in beats -- so a tempo change needs no reconnect)
 - client -> `{type:'ping'}` -> server `{type:'pong'}`
-- server -> `{type:'ready', tick:true}` after `start`; a client cues with `tick` only once it has seen this
+- server -> `{type:'ready', tick:true, performanceEvents:true, setBpm:true}` after `start`; a client cues with `tick` only once it has seen this, and sends `set {bpm}` instead of reconnecting only when `setBpm` is set
 - server -> `{type:'plan', fromBeat, toBeat, chord?, chordFrom?, section, notes:[{beat, pitch, dur, vel, voice:'keys'|'bass'}]}` (`chord`/`chordFrom`/`section` from `brain.py`; see ../README.md)
 - server -> `{type:'status', latencyMs, tokensPerSec}` after each generation
 - server -> `{type:'error', message}`

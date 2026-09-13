@@ -3,14 +3,13 @@ import * as Tone from 'tone';
 import type { AccompPreset, BandState, Chord, Instrument, Key, NoteEvent } from '../types';
 import { IDLE_DYNAMICS } from '../types';
 import { chordName, parseChordName } from '../listener/chordDetector';
-import type { Section } from '../band/form';
-import type { BandEngine } from './engine';
+import type { FormResult, Section } from '../band/form';
+import type { BandEngine, EngineStatusStats } from './engine';
 import { ToneClock } from '../band/clock';
 import type { ClockLike } from '../band/clockTypes';
-import type { PlayersLike } from '../band/bandleader';
+import { Bandleader, type PlayersLike } from '../band/bandleader';
 import { RELAY_URL } from '../config';
 import { PATTERNS } from '../patterns';
-import { mulberry32 } from '../rng';
 
 const KEY_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const BEATS_PER_BAR = 4;
@@ -30,9 +29,28 @@ const MIN_LEAD_SEC = 0.02;
 const DEDUPE_WINDOW_BEATS = 32;
 /** Upper bound on how often a `set` frame goes out, however fast the store churns. */
 const SET_THROTTLE_MS = 250;
+/** Reconnect after a dropped socket: wait these long between attempts (the last one repeats),
+ *  give up once the next attempt would start past the budget. A pod restart or a network blip
+ *  then costs a couple of bars; it used to cost the rest of the set. */
+const RECONNECT_DELAYS_MS = [500, 1000, 2000, 4000, 8000];
+const RECONNECT_BUDGET_MS = 20_000;
+/** A reconnect attempt that has neither opened nor closed by then is abandoned for the next. */
+const CONNECT_ATTEMPT_MS = 5_000;
 
 function keyString(k: Key): string {
   return `${KEY_NAMES[k.root]} ${k.mode === 'major' ? 'major' : 'minor'}`;
+}
+
+/** The clock the local drums' Bandleader subscribes to. It never runs on its own: the engine
+ *  fires it from its own bar handler, so the drums sit on exactly the grid the plan is cued on. */
+class DrivenClock implements ClockLike {
+  private cb?: (bar: number, t: number) => void;
+  bpm = 0;
+  onBar(cb: (bar: number, t: number) => void): void { this.cb = cb; }
+  start(bpm: number): void { this.bpm = bpm; }
+  stop(): void {}
+  setBpm(bpm: number): void { this.bpm = bpm; }
+  fire(bar: number, t: number): void { this.cb?.(bar, t); }
 }
 
 interface PlanNote {
@@ -44,6 +62,7 @@ interface PlanNote {
   /** Preserve the model instrument within any melodic role. */
   gmInstr?: number;
   captureTimeSec?: number;
+  phraseSignal?: AbortSignal;
 }
 
 /** Minimal notifier interface the engine needs from the app's Listener, kept narrow so
@@ -70,7 +89,7 @@ export class AmtEngine implements BandEngine {
   onError?: (msg: string) => void;
   onFirstBlock?: () => void;
   onConnected?: () => void;
-  onStatus?: (message: string, latencyMs?: number) => void;
+  onStatus?: (message: string, latencyMs?: number, stats?: EngineStatusStats) => void;
   onResponseTiming?: (estimatedMs: number | null) => void;
   private lastResponseCapture = -Infinity;
   private lastResponseEstimate = Infinity;
@@ -78,6 +97,8 @@ export class AmtEngine implements BandEngine {
   private timingFlushPending = false;
   onChord?: (chord: Chord, fromBeat: number) => void;
   onSection?: (section: Section) => void;
+  /** The local drums' own song form (see `drums`), bar by bar. */
+  onForm?: (bar: number, form: FormResult) => void;
   private amount = 1;
   private responseTimer?: ReturnType<typeof setTimeout>;
   setAmount(value: number): void {
@@ -86,7 +107,10 @@ export class AmtEngine implements BandEngine {
     this.queueSet();
   }
   private get velocityAmount(): number { return this.players.setBandAmount ? 1 : this.amount; }
-  private rhythmRng = mulberry32(42);
+  /** The model plays keys, bass and lead; the drums are the pattern band's, run through a real
+   *  Bandleader (humanize, fills, arrangement, chord timeline) with only drums enabled. */
+  private drums: Bandleader;
+  private drumClock = new DrivenClock();
 
   private state: BandState = {
     genre: 'lofi',
@@ -109,10 +133,29 @@ export class AmtEngine implements BandEngine {
    *  then (and against an older server, forever) the engine cues with `bar` once a bar. */
   private tickCapable = false;
   private performanceCapable = false;
+  /** Set by `ready {setBpm:true}`: the server rescales its session on `set {bpm}`, so a tempo
+   *  change is a frame, not a reconnect. An older server still gets the reconnect. */
+  private setBpmCapable = false;
+  /** Tempo waiting for the next downbeat, where the clock applies its own (see ToneClock). */
+  private pendingBpm?: number;
+  /** Reconnect bookkeeping: wall time of the drop that started it, attempts made, timers. */
+  private reconnectSince?: number;
+  private reconnectAttempt = 0;
+  private reconnectTimer?: ReturnType<typeof setTimeout>;
+  private attemptTimer?: ReturnType<typeof setTimeout>;
   private cueId = 0;
   private latestCaptureTimeSec?: number;
   private releaseBuf: { id: string; dur: number; captureTimeSec: number }[] = [];
+  /** Timer fallback for the half-bar cue, only for a clock without `onHalfBar`. */
   private halfBarTimer?: ReturnType<typeof setTimeout>;
+  /** Wall-clock send time of each cue still awaiting its plan, by cueId. */
+  private cueSentAt = new Map<number, number>();
+  /** cueId of the last plan received, so the following `status` can be matched to its cue. */
+  private lastPlanCueId?: number;
+  /** Last measured client<->server hop (cue-to-plan minus the server's own request age), ms.
+   *  Sent with every tick so the server can size its generation deadline; undefined until
+   *  the first plan has come back. */
+  private rttMs?: number;
 
   private noteBuf: { beat: number; pitch: number; dur: number; vel: number; id?: string; source?: string; confidence?: number; captureTimeSec?: number; held?: boolean }[] = [];
   private noteFlushTimer?: ReturnType<typeof setInterval>;
@@ -132,6 +175,19 @@ export class AmtEngine implements BandEngine {
   tooLate = 0;
   private detach?: () => void;
   private inputSession = 0;
+  private phraseController = new AbortController();
+  private heldNotes = new Set<string>();
+  private heldInput = new Map<string, { event: PerformanceEvent; audioTime: number; sentBeat?: number }>();
+  private legacyOnsetAt = -Infinity;
+  private latestOnsetCapture = -Infinity;
+
+  /** Each onset invalidates the entire outstanding answer, including sampler loads
+   * and native scheduled starts. Backing batches never receive this signal. */
+  private interruptPhrase(): void {
+    this.phraseController.abort();
+    this.phraseController = new AbortController();
+    this.pending = this.pending.filter(n => !n.phraseSignal);
+  }
 
   constructor(
     private players: PlayersLike,
@@ -145,6 +201,13 @@ export class AmtEngine implements BandEngine {
     private outputDelayMs: () => number = () => 0,
   ) {
     this.clock = clock;
+    this.drums = new Bandleader(this.drumClock, {
+      schedule: (i, events, t, bpm) => {
+        if (!this.amount) return;
+        this.players.schedule(i, events.map(e => ({ ...e, velocity: e.velocity * this.velocityAmount })), t, bpm);
+      },
+    }, PATTERNS, undefined, this.now);
+    this.drums.onFormCb = (bar, form) => this.onForm?.(bar, form);
   }
 
   get changeLatencyMs(): number {
@@ -153,6 +216,11 @@ export class AmtEngine implements BandEngine {
   }
 
   async start(bpm: number, firstBarAt: number): Promise<void> {
+    this.interruptPhrase();
+    this.heldNotes.clear();
+    this.heldInput.clear();
+    this.legacyOnsetAt = -Infinity;
+    this.latestOnsetCapture = -Infinity;
     this.stopping = false;
     this.lastResponseCapture = -Infinity;
     this.lastResponseEstimate = Infinity;
@@ -175,61 +243,38 @@ export class AmtEngine implements BandEngine {
     this.pending = [];
     this.scheduled.clear();
     this.tooLate = 0;
-    // A fresh socket means a fresh server session, so nothing has been told to it yet.
-    this.lastSetPayload = undefined;
-    this.lastSetAt = 0;
-
-    const wsUrl = RELAY_URL.replace(/^http/, 'ws') + '/amt';
-    const ws = this.ws = new WebSocket(wsUrl);
-    ws.addEventListener('open', () => {
-      if (this.ws !== ws || this.stopping) return;
-      this.send({
-        type: 'start',
-        bpm: this.bpm,
-        key: keyString(this.state.key),
-        genre: this.state.genre,
-        lookaheadBeats: LOOKAHEAD_BEATS,
-        commitBeats: COMMIT_BEATS,
-        listenBeats: LISTEN_BEATS,
-        enabledRoles: { keys: this.state.enabled.keys, bass: this.state.enabled.bass, lead: this.state.enabled.lead },
-        accompInstruments: this.effectiveAccompPresets,
-        accompBias: this.accompBias,
-      });
-      this.queueSet();
-      this.flushSet();
-      this.onConnected?.();
-    });
-    ws.addEventListener('message', ev => { if (this.ws === ws && !this.stopping) this.onMessage(ev); });
-    ws.addEventListener('error', () => {
-      if (this.ws !== ws || this.stopping) return;
-      this.onError?.('AMT: connection error');
-    });
-    ws.addEventListener('close', ev => {
-      if (this.ws !== ws || this.stopping) return;
-      this.onError?.(`AMT: closed${ev.reason ? ` (${ev.reason})` : ''}`);
-    });
+    this.cueSentAt.clear();
+    this.lastPlanCueId = undefined;
+    this.rttMs = undefined;
+    this.pendingBpm = undefined;
+    this.clearReconnect();
+    this.connect(false);
 
     this.clock.onBar((bar, time) => {
       if (bar === 0) this.firstBarAt = time;
+      if (this.pendingBpm !== undefined) this.applyBpm(this.pendingBpm, bar, time);
       this.bar = bar;
       this.onBar?.(bar);
       this.cue(bar, bar * BEATS_PER_BAR);
-      // The second half-bar cue: one bar of lead time for the model, a half bar of commit.
-      if (this.halfBarTimer !== undefined) clearTimeout(this.halfBarTimer);
-      const halfBarAt = time + (COMMIT_BEATS * 60) / this.bpm;
-      this.halfBarTimer = setTimeout(() => {
-        this.halfBarTimer = undefined;
-        if (this.stopping) return;
-        this.cue(bar, bar * BEATS_PER_BAR + COMMIT_BEATS);
-      }, Math.max(0, (halfBarAt - this.now()) * 1000));
-      const ctx = {bar, key:this.state.key, chord:this.state.chord ?? undefined,
-        creativity:this.state.creativity, dynamics:this.state.dynamics, rng:this.rhythmRng};
-      for (const voice of ['drums'] as const) {
-        if (!this.amount || !this.state.enabled[voice]) continue;
-        const events = PATTERNS[this.state.genre][voice].nextBar(ctx);
-        if (events.length) this.players.schedule(voice, events.map(e => ({...e,velocity:e.velocity*this.velocityAmount})), time, this.bpm);
+      // The second half-bar cue: one bar of lead time for the model, a half bar of commit. It
+      // comes from the clock's transport (see onHalfBar below); the timer is only for a clock
+      // without one, and a browser clamps it to a second in a background tab.
+      if (!this.clock.onHalfBar) {
+        if (this.halfBarTimer !== undefined) clearTimeout(this.halfBarTimer);
+        const halfBarAt = time + (COMMIT_BEATS * 60) / this.bpm;
+        this.halfBarTimer = setTimeout(() => {
+          this.halfBarTimer = undefined;
+          if (this.stopping) return;
+          this.cue(bar, bar * BEATS_PER_BAR + COMMIT_BEATS);
+        }, Math.max(0, (halfBarAt - this.now()) * 1000));
       }
+      this.drumClock.fire(bar, time);
     });
+    this.clock.onHalfBar?.(bar => {
+      if (this.stopping) return;
+      this.cue(bar, bar * BEATS_PER_BAR + COMMIT_BEATS);
+    });
+    this.drums.start(bpm, firstBarAt);
     this.clock.start(bpm, firstBarAt);
 
     this.detach?.();
@@ -239,19 +284,27 @@ export class AmtEngine implements BandEngine {
       if (this.stopping || session !== this.inputSession) return;
       this.latestCaptureTimeSec = e.timeSec;
       if (e.type === 'note_off') {
-        if (e.durationSec !== undefined) {
-          this.releaseBuf.push({ id: e.id, dur: e.durationSec * this.bpm / 60, captureTimeSec: e.timeSec });
+        this.heldNotes.delete(e.id);
+        const held = this.heldInput.get(e.id);
+        this.heldInput.delete(e.id);
+        if (held?.sentBeat !== undefined && e.durationSec !== undefined) {
+          const releaseBeat = (e.timeSec + inputOffset - this.firstBarAt) * this.bpm / 60;
+          this.releaseBuf.push({ id: e.id, dur: Math.max(0, releaseBeat - held.sentBeat), captureTimeSec: e.timeSec });
           this.flushNotes();
         }
         return;
       }
-      const beat = ((e.timeSec + inputOffset - this.firstBarAt) * this.bpm) / 60;
-      if (beat < 0) return;
-      this.noteBuf.push({ id: e.id, beat, pitch: e.midi, dur: DEFAULT_NOTE_DUR_BEATS,
-        vel: e.velocity, source: e.source, confidence: e.confidence, captureTimeSec: e.timeSec, held: true });
+      this.latestOnsetCapture = e.timeSec;
+      this.heldNotes.add(e.id);
+      this.interruptPhrase();
+      this.heldInput.set(e.id, { event: e, audioTime: e.timeSec + inputOffset });
       this.flushNotes();
     }) || undefined : this.notes.onNote(n => {
       if (this.stopping || session !== this.inputSession) return;
+      this.legacyOnsetAt = this.now();
+      this.latestOnsetCapture = n.timeSec;
+      this.latestCaptureTimeSec = n.timeSec;
+      this.interruptPhrase();
       const beat = ((n.timeSec + inputOffset - this.firstBarAt) * this.bpm) / 60;
       if (beat < 0) return;
       this.noteBuf.push({ beat, pitch: n.midi, dur: DEFAULT_NOTE_DUR_BEATS, vel: n.velocity });
@@ -261,8 +314,120 @@ export class AmtEngine implements BandEngine {
     this.commitPollTimer = setInterval(() => this.scheduleDue(), NOTE_BATCH_MS);
   }
 
+  /** Opens the socket and, once it is up, tells the server where the set stands: `start`
+   *  (flagged `resume` on a reconnect so the server listens two beats, not eight) and the
+   *  full `set`. Every socket starts a fresh server session, so nothing is assumed told. */
+  private connect(resume: boolean): void {
+    this.lastSetPayload = undefined;
+    this.lastSetAt = 0;
+    this.tickCapable = false;
+    this.performanceCapable = false;
+    this.setBpmCapable = false;
+    this.cueSentAt.clear();
+    this.lastPlanCueId = undefined;
+    clearTimeout(this.responseTimer);
+    this.responseTimer = undefined;
+
+    const wsUrl = RELAY_URL.replace(/^http/, 'ws') + '/amt';
+    const ws = this.ws = new WebSocket(wsUrl);
+    let opened = false;
+    if (resume) {
+      // Leave the attempt room inside what is left of the budget, so the give-up is on time.
+      const left = RECONNECT_BUDGET_MS - (Date.now() - (this.reconnectSince ?? Date.now()));
+      this.attemptTimer = setTimeout(() => {
+        this.attemptTimer = undefined;
+        if (this.ws === ws && !opened) ws.close();
+      }, Math.max(0, Math.min(CONNECT_ATTEMPT_MS, left)));
+    }
+    const dropped = (reason: string) => {
+      if (this.ws !== ws || this.stopping) return;
+      this.ws = undefined;
+      clearTimeout(this.attemptTimer);
+      this.attemptTimer = undefined;
+      // The first socket failing to open at all is a connectivity failure the app decides
+      // about (it falls back to Patterns); a drop after that, or a failed retry, is retried.
+      if (!opened && !resume) {
+        this.onError?.(reason);
+        return;
+      }
+      this.scheduleReconnect(reason);
+    };
+    ws.addEventListener('open', () => {
+      if (this.ws !== ws || this.stopping) return;
+      opened = true;
+      clearTimeout(this.attemptTimer);
+      this.attemptTimer = undefined;
+      this.clearReconnect();
+      this.send({
+        type: 'start',
+        bpm: this.bpm,
+        key: keyString(this.state.key),
+        genre: this.state.genre,
+        lookaheadBeats: LOOKAHEAD_BEATS,
+        commitBeats: COMMIT_BEATS,
+        listenBeats: LISTEN_BEATS,
+        phraseResponses: true,
+        enabledRoles: { keys: this.state.enabled.keys, bass: this.state.enabled.bass, lead: this.state.enabled.lead },
+        accompInstruments: this.effectiveAccompPresets,
+        accompBias: this.accompBias,
+        ...(resume ? { resume: true } : {}),
+      });
+      this.queueSet();
+      this.flushSet();
+      if (resume) {
+        // The new server has no held-note history. Seed only the notes still held now.
+        this.noteBuf = this.noteBuf.filter(n => !n.id || !this.heldInput.has(n.id));
+        this.releaseBuf = this.releaseBuf.filter(n => !this.heldInput.has(n.id));
+        for (const held of this.heldInput.values()) {
+          held.audioTime = Math.max(this.now(), this.firstBarAt);
+          held.sentBeat = undefined;
+        }
+        this.flushNotes();
+        this.onStatus?.('Listening');
+      }
+      this.onConnected?.();
+    });
+    ws.addEventListener('message', ev => { if (this.ws === ws && !this.stopping) this.onMessage(ev); });
+    ws.addEventListener('error', () => dropped('AMT: connection error'));
+    ws.addEventListener('close', ev => dropped(`AMT: closed${ev.reason ? ` (${ev.reason})` : ''}`));
+  }
+
+  /** Backoff: 0.5, 1, 2, 4, 8 s between attempts, none starting past `RECONNECT_BUDGET_MS`
+   *  after the drop. Only then is the error reported, and the app decides what to do. */
+  private scheduleReconnect(reason: string): void {
+    const now = Date.now();
+    if (this.reconnectSince === undefined) this.reconnectSince = now;
+    const delay = RECONNECT_DELAYS_MS[Math.min(this.reconnectAttempt, RECONNECT_DELAYS_MS.length - 1)];
+    if (now - this.reconnectSince + delay > RECONNECT_BUDGET_MS) {
+      this.clearReconnect();
+      this.onError?.(reason);
+      return;
+    }
+    this.reconnectAttempt++;
+    this.onStatus?.('Reconnecting');
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = undefined;
+      if (this.stopping) return;
+      this.connect(true);
+    }, delay);
+  }
+
+  private clearReconnect(): void {
+    clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = undefined;
+    this.reconnectSince = undefined;
+    this.reconnectAttempt = 0;
+  }
+
   stop(): void {
     this.stopping = true;
+    this.clearReconnect();
+    clearTimeout(this.attemptTimer);
+    this.attemptTimer = undefined;
+    this.pendingBpm = undefined;
+    this.interruptPhrase();
+    this.heldNotes.clear();
+    this.heldInput.clear();
     this.responseTimings.clear();
     this.timingFlushPending = false;
     this.onResponseTiming?.(null);
@@ -278,6 +443,7 @@ export class AmtEngine implements BandEngine {
     this.detach = undefined;
     this.noteBuf = [];
     this.releaseBuf = [];
+    this.drums.stop();
     this.clock.stop();
     if (this.noteFlushTimer !== undefined) clearInterval(this.noteFlushTimer);
     this.noteFlushTimer = undefined;
@@ -293,18 +459,20 @@ export class AmtEngine implements BandEngine {
     this.scheduled.clear();
   }
 
-  set(p: Partial<Pick<BandState, 'genre' | 'key' | 'chord' | 'creativity' | 'dynamics'>>): void {
+  set(p: Partial<Pick<BandState, 'genre' | 'key' | 'chord' | 'creativity' | 'dynamics'>> & { chordBeat?: number }): void {
     if (p.dynamics !== undefined) this.state.dynamics = p.dynamics;
     if (p.genre !== undefined) this.state.genre = p.genre;
     if (p.key !== undefined) this.state.key = p.key;
     // The model follows actual notes; detected harmony also anchors the supporting bass.
     if (p.chord !== undefined) this.state.chord = p.chord;
     if (p.creativity !== undefined) this.state.creativity = p.creativity;
+    this.drums.set(p);
     this.queueSet();
   }
 
   setEnabled(i: Instrument, on: boolean): void {
     this.state.enabled[i] = on;
+    if (i === 'drums') this.drums.setEnabled(i, on);
     this.players.setEnabled?.(i, on);
     this.queueSet();
   }
@@ -329,6 +497,7 @@ export class AmtEngine implements BandEngine {
   private queueSet(): void {
     const payload = JSON.stringify({
       type: 'set',
+      bpm: this.bpm,
       genre: this.state.genre,
       key: keyString(this.state.key),
       chord: this.state.chord ? chordName(this.state.chord) : null,
@@ -380,13 +549,31 @@ export class AmtEngine implements BandEngine {
     this.flushSet();
   }
 
+  /** A tempo change. Against a server that takes `set {bpm}` it is applied at the next downbeat,
+   *  together with the clock's own change: the beat grid stays continuous, the server rescales
+   *  its session in place and the socket stays open. An older server, or one not yet heard
+   *  from, gets what this always did: a new socket and a new session. */
   setBpm(bpm: number): void {
-    if (bpm === this.bpm) return;
+    if (bpm === this.bpm || bpm === this.pendingBpm) return;
+    if (this.setBpmCapable && this.ws?.readyState === WebSocket.OPEN) {
+      this.pendingBpm = bpm;
+      this.clock.setBpm(bpm);
+      return;
+    }
     const firstBarAt = this.now() + 0.1;
     this.stop();
     this.start(bpm, firstBarAt).catch(err => {
       this.onError?.(`AMT: ${err instanceof Error ? err.message : String(err)}`);
     });
+  }
+
+  /** Re-anchors the beat grid so that beat `bar * 4` is exactly at `time` under the new tempo,
+   *  and queues the `set` that carries it; the cue that follows flushes it first. */
+  private applyBpm(bpm: number, bar: number, time: number): void {
+    this.pendingBpm = undefined;
+    this.bpm = bpm;
+    this.firstBarAt = time - (bar * BEATS_PER_BAR * 60) / bpm;
+    this.queueSet();
   }
 
   /** Current absolute beat position (fractional), used to decide which plan notes are
@@ -405,7 +592,22 @@ export class AmtEngine implements BandEngine {
     this.scheduleDue();
   }
 
+  /** Notes held through count-in enter at beat zero; released count-in notes never enter. */
+  private queueHeldInput(): void {
+    // Transport callbacks run ahead of audible time; wait for the actual count-in end.
+    if (this.now() < this.firstBarAt) return;
+    for (const held of this.heldInput.values()) {
+      if (held.sentBeat !== undefined) continue;
+      const e = held.event;
+      const beat = (Math.max(held.audioTime, this.firstBarAt) - this.firstBarAt) * this.bpm / 60;
+      held.sentBeat = beat;
+      this.noteBuf.push({ id: e.id, beat, pitch: e.midi, dur: DEFAULT_NOTE_DUR_BEATS,
+        vel: e.velocity, source: e.source, confidence: e.confidence, captureTimeSec: e.timeSec, held: true });
+    }
+  }
+
   private flushNotes(): void {
+    this.queueHeldInput();
     // An unavailable socket must not retain an unbounded performance history.
     if (this.noteBuf.length > MAX_BUFFERED_NOTES) this.noteBuf.splice(0, this.noteBuf.length - MAX_BUFFERED_NOTES);
     if (this.releaseBuf.length > MAX_BUFFERED_NOTES) this.releaseBuf.splice(0, this.releaseBuf.length - MAX_BUFFERED_NOTES);
@@ -422,7 +624,15 @@ export class AmtEngine implements BandEngine {
     if (!msg) return;
     this.flushSet();
     this.flushNotes();
-    if (this.sendRaw(JSON.stringify({ ...msg, cueId: ++this.cueId, latestCaptureTimeSec: this.latestCaptureTimeSec })) && this.responseTimer === undefined) {
+    const cueId = ++this.cueId;
+    const sent = this.sendRaw(JSON.stringify({ ...msg, cueId, latestCaptureTimeSec: this.latestCaptureTimeSec,
+      ...(this.rttMs !== undefined ? { rttMs: this.rttMs } : {}) }));
+    if (sent) {
+      this.cueSentAt.set(cueId, Date.now());
+      // A cue whose plan never came (superseded server-side) must not pin memory for the set.
+      for (const id of this.cueSentAt.keys()) if (id < cueId - 8) this.cueSentAt.delete(id);
+    }
+    if (sent && this.responseTimer === undefined) {
       this.responseTimer = setTimeout(() => {
         this.responseTimer = undefined;
         this.onError?.('AMT: model response timed out');
@@ -447,6 +657,7 @@ export class AmtEngine implements BandEngine {
     const keep: PlanNote[] = [];
     const byBarVoice = new Map<string, PlanNote[]>();
     for (const n of this.pending) {
+      if (n.phraseSignal?.aborted) continue;
       if (this.firstBarAt + n.beat * spb < minTime) {
         this.tooLate++;
         continue;
@@ -459,7 +670,7 @@ export class AmtEngine implements BandEngine {
       const barNum = Math.floor(n.beat / BEATS_PER_BAR);
       // Notes on the 'keys' voice with different gmInstr are different real instruments
       // (see gmInstruments.ts) and must reach separate Players.scheduleAccompaniment() calls.
-      const key = `${barNum}:${n.voice}:${n.gmInstr ?? ''}`;
+      const key = `${barNum}:${n.voice}:${n.gmInstr ?? ''}:${n.phraseSignal ? 'phrase' : 'backing'}`;
       const list = byBarVoice.get(key) ?? [];
       list.push(n);
       byBarVoice.set(key, list);
@@ -477,9 +688,10 @@ export class AmtEngine implements BandEngine {
         velocity: n.vel * this.velocityAmount,
       }));
       const session = this.inputSession;
+      const signal = list[0].phraseSignal;
       const original = new Map(events.map((event, i) => [event, list[i]]));
       const onScheduled = (accepted: readonly NoteEvent[]) => {
-        if (this.stopping || session !== this.inputSession || !this.amount || !this.state.enabled[voice]) return;
+        if (signal?.aborted || this.stopping || session !== this.inputSession || !this.amount || !this.state.enabled[voice]) return;
         if (!accepted.length) return;
         if (!this.gotFirstNotes) {
           this.gotFirstNotes = true;
@@ -494,7 +706,7 @@ export class AmtEngine implements BandEngine {
       };
       const gmInstr = gmInstrStr ? Number(gmInstrStr) : undefined;
       if (gmInstr !== undefined && this.players.scheduleAccompaniment) {
-        this.players.scheduleAccompaniment(gmInstr, events, barStart, this.bpm, onScheduled);
+        this.players.scheduleAccompaniment(gmInstr, events, barStart, this.bpm, onScheduled, signal);
       } else {
         this.players.schedule(voice, events, barStart, this.bpm, onScheduled);
       }
@@ -525,6 +737,19 @@ export class AmtEngine implements BandEngine {
         this.onResponseTiming?.(best);
       }
     });
+  }
+
+  /** The hop for the plan that just arrived: wall time from its cue to now, minus the time
+   *  the server itself held the request. The `status` frame follows its `plan`, which carries
+   *  the cueId, so this runs on the status. */
+  private measureRtt(serverMs: number): void {
+    if (this.lastPlanCueId === undefined) return;
+    const sentAt = this.cueSentAt.get(this.lastPlanCueId);
+    this.cueSentAt.delete(this.lastPlanCueId);
+    this.lastPlanCueId = undefined;
+    if (sentAt === undefined) return;
+    const hop = Date.now() - sentAt - serverMs;
+    if (Number.isFinite(hop)) this.rttMs = Math.max(0, Math.round(hop));
   }
 
   /** Keeps the dedupe key set from growing for the length of the session. */
@@ -561,6 +786,7 @@ export class AmtEngine implements BandEngine {
     if (msg.type === 'ready') {
       this.tickCapable = msg.tick === true;
       this.performanceCapable = msg.performanceEvents === true;
+      this.setBpmCapable = msg.setBpm === true;
       this.flushNotes();
       return;
     }
@@ -568,21 +794,42 @@ export class AmtEngine implements BandEngine {
       clearTimeout(this.responseTimer); this.responseTimer = undefined;
     }
     if (msg.type === 'status' && typeof msg.latencyMs === 'number') {
-      this.onStatus?.('', msg.latencyMs);
+      const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+      const requestAgeMs = num(msg.requestAgeMs);
+      this.measureRtt(requestAgeMs ?? msg.latencyMs);
+      this.onStatus?.('', msg.latencyMs, { tooLate: this.tooLate, queueLatencyMs: num(msg.queueLatencyMs), requestAgeMs });
     }
     if (msg.type === 'plan') {
+      this.lastPlanCueId = typeof msg.cueId === 'number' ? msg.cueId : undefined;
       const notes = Array.isArray(msg.notes) ? (msg.notes as PlanNote[]).filter(n =>
         n && ['keys','bass','lead'].includes(n.voice) && Number.isFinite(n.beat) && n.beat >= 0 &&
         Number.isInteger(n.pitch) && n.pitch >= 0 && n.pitch <= 127 &&
         Number.isFinite(n.dur) && n.dur > 0 && Number.isFinite(n.vel) && n.vel >= 0 && n.vel <= 1) : [];
       if (!notes.length) this.onStatus?.('Listening · resting');
+      // Legacy full-bar plans replace only their first two beats with an answer.
+      // New servers identify the exact shaped interval explicitly.
+      const phraseFrom = typeof msg.phraseFromBeat === 'number' && Number.isFinite(msg.phraseFromBeat)
+        ? msg.phraseFromBeat : typeof msg.fromBeat === 'number' && Number.isFinite(msg.fromBeat)
+          ? msg.fromBeat : Math.min(...notes.map(n => n.beat));
+      const phraseTo = typeof msg.phraseToBeat === 'number' && Number.isFinite(msg.phraseToBeat)
+        ? msg.phraseToBeat : Math.min(phraseFrom + COMMIT_BEATS,
+          typeof msg.toBeat === 'number' && Number.isFinite(msg.toBeat) ? msg.toBeat : Infinity);
       for (const n of notes) {
-        // Already handed to Players (or already queued): Tone has no way to cancel a
-        // triggered event, so the first scheduling of a note is the one that stands.
+        const phrase = msg.phraseResponse === true && Number.isInteger(msg.phraseInstrument)
+          && n.gmInstr === msg.phraseInstrument && n.beat >= phraseFrom && n.beat < phraseTo;
+        // Legacy listeners have no release lifecycle; retain a short onset guard.
+        // A cancellable GM sampler is required for remembered responses.
+        const stalePhrase = this.latestOnsetCapture > -Infinity
+          && (typeof msg.latestCaptureTimeSec !== 'number' || !Number.isFinite(msg.latestCaptureTimeSec)
+            || msg.latestCaptureTimeSec < this.latestOnsetCapture);
+        if (phrase && (stalePhrase || this.heldNotes.size || this.now() - this.legacyOnsetAt < .25
+          || !this.players.scheduleAccompaniment)) continue;
+        // Keep the first scheduling of a note; canceled responses must not be
+        // resurrected by a duplicate plan after the performer resumes.
         const key = AmtEngine.noteKey(n);
         if (this.scheduled.has(key)) continue;
         if (this.pending.some(p => AmtEngine.noteKey(p) === key)) continue;
-        this.pending.push({ ...n, captureTimeSec: typeof msg.latestCaptureTimeSec === 'number' && Number.isFinite(msg.latestCaptureTimeSec) ? msg.latestCaptureTimeSec : undefined });
+        this.pending.push({ ...n, phraseSignal: phrase ? this.phraseController.signal : undefined, captureTimeSec: typeof msg.latestCaptureTimeSec === 'number' && Number.isFinite(msg.latestCaptureTimeSec) ? msg.latestCaptureTimeSec : undefined });
       }
       this.pruneScheduled();
       this.scheduleDue();

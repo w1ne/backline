@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { defaultRedirect, isAllowedOrigin, isAllowedRedirect } from "../src/index";
+import { afterEach, vi } from "vitest";
+import { defaultRedirect, isAllowedOrigin, isAllowedRedirect, upstreamState } from "../src/index";
 import type { Env } from "../src/index";
 
 const env = { ALLOWED_ORIGINS: "https://soundofthe.world,https://shylenko.com" } as Env;
@@ -32,6 +33,13 @@ describe("isAllowedOrigin", () => {
 
   it("rejects a foreign origin and a missing one", () => {
     expect(isAllowedOrigin("https://evil.example", env)).toBe(false);
+  });
+  it("accepts Pages branch previews by host suffix, https only", () => {
+    const e = { ...env, ALLOWED_ORIGIN_SUFFIXES: ".backline-88n.pages.dev" } as typeof env;
+    expect(isAllowedOrigin("https://feat-x.backline-88n.pages.dev", e)).toBe(true);
+    expect(isAllowedOrigin("http://feat-x.backline-88n.pages.dev", e)).toBe(false);
+    expect(isAllowedOrigin("https://evil.example/.backline-88n.pages.dev", e)).toBe(false);
+    expect(isAllowedOrigin("https://backline-88n.pages.dev", e)).toBe(false);
     expect(isAllowedOrigin(null, env)).toBe(false);
   });
 });
@@ -46,5 +54,31 @@ describe("defaultRedirect", () => {
     const shylenkoOnly = { ALLOWED_ORIGINS: "https://shylenko.com" } as Env;
     const req = new Request("https://backline-relay.example.workers.dev/auth/login");
     expect(defaultRedirect(req, shylenkoOnly)).toBe("https://shylenko.com/backline/");
+  });
+});
+
+describe("upstreamState", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function stubHealth(status: number) {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status })));
+  }
+
+  it("is ok on a 200", async () => {
+    stubHealth(200);
+    expect(await upstreamState("wss://example.runpod.net/ws")).toBe("ok");
+  });
+
+  it("is loading on a 503: the pod is up but its model is not ready", async () => {
+    stubHealth(503);
+    expect(await upstreamState("wss://example.runpod.net/ws")).toBe("loading");
+  });
+
+  it("is down on any other failure, a fetch error, or no upstream", async () => {
+    stubHealth(500);
+    expect(await upstreamState("wss://example.runpod.net/ws")).toBe("down");
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("refused"); }));
+    expect(await upstreamState("wss://example.runpod.net/ws")).toBe("down");
+    expect(await upstreamState(undefined)).toBe("down");
   });
 });

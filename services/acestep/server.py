@@ -55,9 +55,69 @@ log = logging.getLogger("acestep-server")
 PORT = int(os.environ.get("PORT", "8080"))
 MODEL_DIR = os.environ.get("ACE_MODEL_DIR", "/workspace/models")
 ACE_REPO_DIR = os.environ.get("ACE_REPO_DIR", "/opt/ace-step")
+# DiT checkpoint folder under ACESTEP_CHECKPOINTS_DIR. The 4B XL-turbo renders a
+# 4.8 s block in ~1.2 s on an L40S (the 2B turbo took ~1.6 s) with clearly better
+# fidelity, so it is the default. Weights on the pod are a bf16 conversion of the
+# 20 GB fp32 HF repo (services/acestep/README.md).
+DIT_MODEL = os.environ.get("ACE_DIT_MODEL", "acestep-v15-xl-turbo")
 MODEL_OUTPUT_SR = 44100  # ACE-Step 1.5 renders at 44.1 kHz; we resample to 48 kHz for the client.
 TARGET_SR = 48000
 INFERENCE_STEPS = 8
+# Block engine v2 (feature flag, off by default until A/B-tested by ear):
+#  - every request spans at least MIN_GEN_SECONDS: ACE-Step's documented minimum is
+#    10 s (constants.DURATION_MIN) and the model was never trained on our ~7 s canvases.
+#    The extra tail is repainted with the block and discarded;
+#  - up to CONTEXT_MAX_SECONDS of already-played audio is kept as repaint context
+#    instead of a single bar, so the model hears the groove it is continuing;
+#  - one seed per session instead of a new one per block, and an explicit
+#    instrumental lyric so the model stops hallucinating vocal-like material.
+BLOCK_V2 = os.environ.get("ACE_BLOCK_V2", "0").lower() in ("1", "true", "yes")
+MIN_GEN_SECONDS = float(os.environ.get("ACE_MIN_GEN_SECONDS", "15"))
+CONTEXT_MAX_SECONDS = float(os.environ.get("ACE_CONTEXT_MAX_SECONDS", "12"))
+# Song mode (feature flag, off by default; implies the v2 canvas/context/seed rules): the
+# first block renders a whole SONG_SEGMENT_BARS segment in one pass (XL: ~2 s for a
+# minute of audio), later blocks are sliced from it and paced one block ahead of
+# playback, and when the segment runs out the next one is repainted with the last
+# CONTEXT_MAX_SECONDS as context. One coherent arrangement instead of a new 2-bar idea
+# every request; the client protocol (2-bar blocks) is unchanged.
+SONG_MODE = os.environ.get("ACE_SONG_MODE", "0").lower() in ("1", "true", "yes")
+SONG_SEGMENT_BARS = int(os.environ.get("ACE_SONG_SEGMENT_BARS", "16"))
+# how far ahead of the block's due time a sliced block may be sent (gives the client
+# a buffer to ride out a 2-5 s re-render)
+SONG_PACE_LEAD_SECONDS = 3.0
+# tempo drift below this fraction does not restart the song (the client cuts and resyncs
+# to the new grid; the current segment keeps playing at its old tempo until it runs out)
+SONG_BPM_RESTART_FRACTION = 0.10
+# Voice-following: the client streams its mic as 16 kHz mono PCM16 frames prefixed with
+# HUM_MAGIC. Once a full segment of singing has been heard, the next segment is rendered
+# with ACE-Step's `cover` task on that audio, which keeps the sung melody, harmony and
+# groove and re-voices them as the band (strength 0.6 measured: chroma corr 0.31 vs 0.03
+# for text-only; 0.3 did nothing).
+SONG_COVER = os.environ.get("ACE_SONG_COVER", "1").lower() in ("1", "true", "yes")
+COVER_STRENGTH = float(os.environ.get("ACE_COVER_STRENGTH", "0.6"))
+# Creativity slider -> how tightly the band follows the voice: low creativity clings to the
+# sung melody, high creativity reinterprets it. Kept inside the range that measurably
+# followed (0.3 did nothing).
+COVER_STRENGTH_TIGHT = 0.75
+COVER_STRENGTH_LOOSE = 0.45
+
+
+def creativity_to_cover_strength(creativity: float) -> float:
+    c = max(0.0, min(1.0, creativity))
+    return round(COVER_STRENGTH_TIGHT - c * (COVER_STRENGTH_TIGHT - COVER_STRENGTH_LOOSE), 3)
+HUM_SR = 16000
+HUM_MAGIC = b"MIC0"
+HUM_MAX_SECONDS = 120.0
+if SONG_MODE:
+    BLOCK_V2 = True
+# Point at an already-running acestep-api instead of spawning one (lets a flagged test
+# instance share the GPU model with the live service).
+ACE_HTTP_BASE = os.environ.get("ACE_HTTP_BASE")
+# Block source wavs go to RAM: a full container disk broke tempfile lookup on the pod
+# (1.5 TB RAM there). Must be set before the first tempfile call, and acestep-api
+# validates src_audio_path against *its* tempfile.gettempdir(), so it inherits this.
+if os.path.isdir("/dev/shm") and "TMPDIR" not in os.environ:
+    os.environ["TMPDIR"] = "/dev/shm"
 # Chords named in the prompt; more than a bar or two of history just dilutes it.
 CHORD_PROMPT_MAX = 4
 
@@ -73,6 +133,13 @@ INSTRUMENT_WORDS = {
     "bass": "bass",
     "keys": "electric piano",
     "lead": "electric guitar lead",
+}
+# the accompaniment tiles, as prompt colours
+EXTRA_WORDS = {
+    "sax": "saxophone",
+    "strings": "string section",
+    "orchestral": "orchestral ensemble, harp",
+    "ambient": "ambient pads, flute",
 }
 
 
@@ -108,6 +175,7 @@ def build_prompt(
     space: bool = True,
     density: Optional[float] = None,
     fill: bool = False,
+    extras: Optional[list[str]] = None,
 ) -> str:
     genre_text = GENRE_PROMPTS.get(genre, GENRE_PROMPTS["lofi"])
     # The client already chose the instrument set from the player's activity; when it marks a
@@ -121,6 +189,9 @@ def build_prompt(
     parts = [genre_text, "cohesive backing for a live melody, steady recurring groove", density_words(d)]
     if fill and INSTRUMENT_WORDS["lead"] in words:
         parts.append("one brief guitar answer in the melody's gap, then leave space")
+    for e in extras or []:
+        if e in EXTRA_WORDS and EXTRA_WORDS[e] not in words:
+            words.append(EXTRA_WORDS[e])
     if words:
         parts.append(", ".join(words))
     if chords:
@@ -209,6 +280,8 @@ class GenParams:
     inference_steps: int
     guidance: float
     seed: int
+    lyrics: Optional[str] = None
+    audio_cover_strength: Optional[float] = None
     src_audio_path: Optional[str] = None
     track_classes: Optional[list[str]] = None
     repainting_start: Optional[float] = None
@@ -226,9 +299,12 @@ class AceStepModel:
     def __init__(self, model_dir: str):
         self.model_dir = model_dir
         self._http_proc: Optional[subprocess.Popen] = None
-        self._http_base = "http://127.0.0.1:8010"
+        self._http_base = ACE_HTTP_BASE or "http://127.0.0.1:8010"
 
     def load(self) -> None:
+        if ACE_HTTP_BASE:
+            log.info("reusing acestep-api at %s", ACE_HTTP_BASE)
+            return
         self._start_http_server()
 
     def _start_http_server(self) -> None:
@@ -239,6 +315,14 @@ class AceStepModel:
         # the default <ace repo>/checkpoints.
         env = dict(os.environ)
         env.setdefault("ACESTEP_CHECKPOINTS_DIR", self.model_dir)
+        env.setdefault("ACESTEP_CONFIG_PATH", DIT_MODEL)
+        # No 5Hz LM: it only rewrote the caption (bpm/key come from the player),
+        # cost ~2 s of every block, and on a big GPU acestep-api auto-downloads
+        # the 8 GB lm-4B for it -- which filled the 40 GB pod disk to 100%.
+        env.setdefault("ACESTEP_INIT_LLM", "false")
+        # acestep-api only accepts src/reference audio paths inside ITS temp dir, so the
+        # subprocess must inherit exactly the TMPDIR this process writes block wavs to
+        # (set process-wide at import below).
         # Invoke the venv's acestep-api binary directly rather than "uv run
         # acestep-api": "uv run" re-syncs the environment against
         # pyproject.toml/uv.lock on every invocation, which silently reverts
@@ -304,6 +388,10 @@ class AceStepModel:
             "batch_size": 1,
             "audio_format": "wav",
         }
+        if params.lyrics is not None:
+            body["lyrics"] = params.lyrics
+        if params.audio_cover_strength is not None:
+            body["audio_cover_strength"] = params.audio_cover_strength
         if params.src_audio_path:
             body["src_audio_path"] = params.src_audio_path
         if params.track_classes:
@@ -356,7 +444,7 @@ class AceStepModel:
                     raise RuntimeError(f"ACE-Step task {task_id} succeeded with no audio file")
                 out_path = _local_path_from_audio_url(candidates[0]["file"])
                 break
-            time.sleep(1.0)
+            time.sleep(0.1)
         if out_path is None:
             raise RuntimeError(f"ACE-Step task {task_id} timed out")
 
@@ -377,6 +465,24 @@ class Session:
         self.prev_audio: Optional[np.ndarray] = None
         self._task: Optional[asyncio.Task] = None
         self._latest_seq = -1
+        self.seed: Optional[int] = None
+        # song mode: the pre-rendered segment being sliced, the read position, and the
+        # wall-clock moment its first block was due (for pacing).
+        self.song: Optional[np.ndarray] = None
+        self.song_pos = 0
+        self.song_t0 = 0.0
+        self.song_blocks_served = 0
+        # what the current segment was rendered with; a change re-renders at the next block
+        self.song_prompt_key: Optional[tuple] = None
+        # the player's voice, 16 kHz mono float32, most recent HUM_MAX_SECONDS
+        self.hum = np.zeros(0, dtype=np.float32)
+
+    def ingest_audio(self, data: bytes) -> None:
+        if not data.startswith(HUM_MAGIC):
+            return
+        pcm = np.frombuffer(data[len(HUM_MAGIC):], dtype="<i2").astype(np.float32) / 32768.0
+        keep = int(HUM_MAX_SECONDS * HUM_SR)
+        self.hum = np.concatenate([self.hum, pcm])[-keep:]
 
     def cancel_inflight(self) -> None:
         if self._task and not self._task.done():
@@ -408,6 +514,11 @@ class Session:
 
         duration = bars * 240.0 / bpm
         needs_restart = bpm != self.last_bpm or key != self.last_key or self.prev_audio is None
+        if SONG_MODE:
+            drift = abs(bpm - (self.last_bpm or bpm)) / max(1, self.last_bpm or bpm)
+            song_restart = key != self.last_key or self.prev_audio is None or drift > SONG_BPM_RESTART_FRACTION
+            await self._run_song_block(msg, seq, bpm, key, duration, song_restart, send_binary, send_json)
+            return
         # `complete` adds tracks over source audio. Feeding its mix back repeatedly layers
         # instruments over the same passage. Instead preserve one bar of context and repaint
         # a NEW, silent two-bar interval; send only that new interval to the browser.
@@ -415,13 +526,30 @@ class Session:
         context_samples = 0
         source_path = None
         target_samples = round(duration * TARGET_SR)
+        # v2 repaints a longer silent tail than we keep, so the model always works on a
+        # canvas of at least MIN_GEN_SECONDS; the surplus is discarded below.
+        tail_samples = 0
+        if BLOCK_V2:
+            context_seconds = CONTEXT_MAX_SECONDS
+        else:
+            context_seconds = 240.0 / bpm
         if not needs_restart:
-            context = self.prev_audio[-round(240.0 / bpm * TARGET_SR):]
+            context = self.prev_audio[-round(context_seconds * TARGET_SR):]
             context_samples = len(context)
+        if BLOCK_V2:
+            tail_samples = max(0, round(MIN_GEN_SECONDS * TARGET_SR) - context_samples - target_samples)
+        if not needs_restart:
             source_path = _write_temp_wav(np.concatenate([
-                context, np.zeros((target_samples, 2), dtype=np.float32),
+                context, np.zeros((target_samples + tail_samples, 2), dtype=np.float32),
             ]))
         context_duration = context_samples / TARGET_SR
+        tail_duration = tail_samples / TARGET_SR
+        if BLOCK_V2:
+            if needs_restart or self.seed is None:
+                self.seed = creativity_to_seed(creativity, 0)
+            seed = self.seed
+        else:
+            seed = creativity_to_seed(creativity, seq)
         prompt = build_prompt(
             genre,
             instruments,
@@ -438,13 +566,14 @@ class Session:
             prompt=prompt,
             bpm=bpm,
             key_scale=key,
-            audio_duration=context_duration + duration,
+            audio_duration=context_duration + duration + tail_duration,
             inference_steps=INFERENCE_STEPS,
             guidance=density_to_guidance(creativity, density),
-            seed=creativity_to_seed(creativity, seq),
+            seed=seed,
             src_audio_path=source_path,
             repainting_start=context_duration if source_path else None,
-            repainting_end=context_duration + duration if source_path else None,
+            repainting_end=context_duration + duration + tail_duration if source_path else None,
+            lyrics="[Instrumental]" if BLOCK_V2 else None,
         )
 
         loop = asyncio.get_running_loop()
@@ -472,7 +601,11 @@ class Session:
 
         self.last_bpm = bpm
         self.last_key = key
-        self.prev_audio = audio.copy()
+        if BLOCK_V2 and self.prev_audio is not None:
+            keep = round(CONTEXT_MAX_SECONDS * TARGET_SR)
+            self.prev_audio = np.concatenate([self.prev_audio, audio])[-keep:]
+        else:
+            self.prev_audio = audio.copy()
 
         pcm = float_to_pcm16(audio)
         header = struct.pack("<I", seq)
@@ -480,13 +613,125 @@ class Session:
         await send_json({"type": "done", "seq": seq, "ms": elapsed_ms})
 
 
-def _write_temp_wav(audio: np.ndarray) -> str:
+async def pace_sleep(seconds: float) -> None:
+    if seconds > 0:
+        await asyncio.sleep(seconds)
+
+
+async def _run_song_block(self: "Session", msg: dict, seq: int, bpm: int, key: str, duration: float,
+                          needs_restart: bool, send_binary, send_json) -> None:
+    target_samples = round(duration * TARGET_SR)
+    t0 = time.monotonic()
+    elapsed_ms = 0.0
+    if needs_restart:
+        self.song = None
+        self.prev_audio = None
+    # Song mode arranges for everything the user switched on ("enabled"); the per-block
+    # dynamics-thinned "instruments" list would otherwise re-render the song every time the
+    # player got busy or left space.
+    instruments = msg.get("enabled") or msg.get("instruments", ["drums", "bass"])
+    extras = [str(e) for e in (msg.get("extras") or [])]
+    prompt_key = (msg.get("genre", "lofi"), tuple(sorted(instruments)), tuple(sorted(extras)), msg.get("player_instrument"))
+    if self.song is not None and self.song_prompt_key is not None and prompt_key != self.song_prompt_key:
+        # style or instrument switch: drop the rest of this segment and re-render from here,
+        # continuing from what was already heard
+        self.song = None
+    if self.song is None or self.song_pos + target_samples > len(self.song):
+        # render the next segment: text2music on a fresh start, otherwise a repaint that
+        # continues the last CONTEXT_MAX_SECONDS of what the player already heard.
+        segment = SONG_SEGMENT_BARS * 240.0 / bpm
+        context_samples = 0
+        source_path = None
+        hum_needed = int(segment * HUM_SR)
+        cover = SONG_COVER and len(self.hum) >= hum_needed
+        if cover:
+            # re-voice the last segment of singing as the band; no repaint context (cover
+            # takes the whole canvas), continuity comes from the fixed seed + the voice itself
+            source_path = _write_temp_wav(self.hum[-hum_needed:].reshape(-1, 1), HUM_SR)
+        elif self.prev_audio is not None:
+            context = self.prev_audio[-round(CONTEXT_MAX_SECONDS * TARGET_SR):]
+            context_samples = len(context)
+            source_path = _write_temp_wav(np.concatenate([
+                context, np.zeros((round(segment * TARGET_SR), 2), dtype=np.float32),
+            ]))
+        context_duration = context_samples / TARGET_SR
+        if self.seed is None or needs_restart:
+            self.seed = creativity_to_seed(float(msg.get("creativity", 0.5)), 0)
+        prompt = build_prompt(
+            msg.get("genre", "lofi"), instruments, exclude=msg.get("player_instrument"),
+            chords=[str(c) for c in (msg.get("chords") or [])],
+            intensity=float(msg.get("intensity", 0.5)), space=True,
+            density=float(msg.get("density", msg.get("intensity", 0.5))), fill=False,
+            extras=extras,
+        )
+        task = "cover" if cover else ("text2music" if source_path is None else "repaint")
+        params = GenParams(
+            task_type=task,
+            prompt=prompt, bpm=bpm, key_scale=key,
+            audio_duration=context_duration + segment,
+            inference_steps=INFERENCE_STEPS,
+            guidance=density_to_guidance(float(msg.get("creativity", 0.5)), 0.5),
+            seed=self.seed, src_audio_path=source_path,
+            repainting_start=context_duration if task == "repaint" else None,
+            repainting_end=context_duration + segment if task == "repaint" else None,
+            lyrics="[Instrumental]",
+            audio_cover_strength=creativity_to_cover_strength(float(msg.get("creativity", 0.5))) if cover else None,
+        )
+        loop = asyncio.get_running_loop()
+
+        def generate():
+            try:
+                return self.model.generate(params)
+            finally:
+                if source_path:
+                    try:
+                        os.unlink(source_path)
+                    except FileNotFoundError:
+                        pass
+
+        audio = await loop.run_in_executor(None, generate)
+        audio = audio[context_samples:context_samples + round(segment * TARGET_SR)]
+        if len(audio) < target_samples:
+            raise RuntimeError("ACE returned a shorter segment than requested")
+        if seq != self._latest_seq:
+            return
+        log.info("song segment: task=%s bars=%d bpm=%d key=%s hum=%.0fs render=%.0fms",
+                 task, SONG_SEGMENT_BARS, bpm, key, len(self.hum) / HUM_SR, (time.monotonic() - t0) * 1000.0)
+        self.song = audio
+        self.song_prompt_key = prompt_key
+        self.song_pos = 0
+        self.song_t0 = time.monotonic()
+        self.song_blocks_served = 0
+        elapsed_ms = (time.monotonic() - t0) * 1000.0
+    else:
+        # pacing: block k of the segment is due k*duration after the segment's first block
+        due = self.song_t0 + self.song_blocks_served * duration - SONG_PACE_LEAD_SECONDS
+        await pace_sleep(due - time.monotonic())
+        if seq != self._latest_seq:
+            return
+
+    block = self.song[self.song_pos:self.song_pos + target_samples]
+    self.song_pos += target_samples
+    self.song_blocks_served += 1
+    self.last_bpm = bpm
+    self.last_key = key
+    keep = round(CONTEXT_MAX_SECONDS * TARGET_SR)
+    self.prev_audio = block.copy() if self.prev_audio is None else np.concatenate([self.prev_audio, block])[-keep:]
+    header = struct.pack("<I", seq)
+    await send_binary(header + float_to_pcm16(block))
+    await send_json({"type": "done", "seq": seq, "ms": elapsed_ms})
+
+
+Session._run_song_block = _run_song_block
+
+
+def _write_temp_wav(audio: np.ndarray, sr: int = TARGET_SR) -> str:
     import soundfile as sf
     import tempfile
 
     fd, path = tempfile.mkstemp(suffix=".wav", prefix="acestep_block_")
     os.close(fd)
-    sf.write(path, audio, TARGET_SR, subtype="PCM_16")
+    sf.write(path, audio, sr, subtype="PCM_16")
     return path
 
 
@@ -513,7 +758,13 @@ def create_app(model: AceStepModel):
 
         try:
             while True:
-                raw = await websocket.receive_text()
+                message = await websocket.receive()
+                if message.get("type") == "websocket.disconnect":
+                    raise WebSocketDisconnect(message.get("code", 1000))
+                if message.get("bytes") is not None:
+                    session.ingest_audio(message["bytes"])
+                    continue
+                raw = message.get("text") or ""
                 msg = json.loads(raw)
                 mtype = msg.get("type")
                 if mtype == "ping":

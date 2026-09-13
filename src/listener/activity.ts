@@ -99,7 +99,8 @@ export class ActivityTracker {
   private beatLevels: number[] = [];
   /** rolling level history for the 95th-percentile reference */
   private levelHistory: number[] = [];
-  private lastOnsetAt: number | null = null;
+  private lastSoundAt: number | null = null;
+  private held = false;
   private lastTickAt: number | null = null;
   private beatSec = DEFAULT_BEAT_SEC;
   private intensity = 0;
@@ -119,7 +120,13 @@ export class ActivityTracker {
   /** One detected note/hit at time `t` (seconds, same base as `tick`). */
   onset(t: number): void {
     this.onsets.push(t);
-    if (this.lastOnsetAt === null || t > this.lastOnsetAt) this.lastOnsetAt = t;
+    if (this.lastSoundAt === null || t > this.lastSoundAt) this.lastSoundAt = t;
+  }
+
+  /** Performance lifecycles distinguish a sustained note from a gap between onsets. */
+  setHeld(held: boolean, t: number): void {
+    this.held = held;
+    if (this.lastSoundAt === null || t > this.lastSoundAt) this.lastSoundAt = t;
   }
 
   /** One input-level sample. `t` is accepted for symmetry; samples are folded per beat. */
@@ -159,8 +166,8 @@ export class ActivityTracker {
     if (this.intensity < 1e-4) this.intensity = 0;
 
     const silenceBeats =
-      this.lastOnsetAt === null ? 0 : Math.max(0, (t - this.lastOnsetAt) / (this.beatSec || DEFAULT_BEAT_SEC));
-    const live = this.lastOnsetAt !== null;
+      this.held || this.lastSoundAt === null ? 0 : Math.max(0, (t - this.lastSoundAt) / (this.beatSec || DEFAULT_BEAT_SEC));
+    const live = this.lastSoundAt !== null;
     const bar = Math.floor(beatIndex / this.beatsPerBar);
     const onDownbeat = beatIndex % this.beatsPerBar === 0;
     const lastOfGroup = ((bar % this.barsPerGroup) + this.barsPerGroup) % this.barsPerGroup === this.barsPerGroup - 1;
@@ -182,7 +189,8 @@ export class ActivityTracker {
     this.onsets = [];
     this.beatLevels = [];
     this.levelHistory = [];
-    this.lastOnsetAt = null;
+    this.lastSoundAt = null;
+    this.held = false;
     this.lastTickAt = null;
     this.beatSec = DEFAULT_BEAT_SEC;
     this.intensity = 0;

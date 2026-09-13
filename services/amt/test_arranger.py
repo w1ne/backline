@@ -45,3 +45,58 @@ class ArrangerTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def test_sections_change_same_material_without_changing_instrument_identity():
+    raw = [(i * .25, .2, instr, pitch) for instr, pitch in [(24, 64), (40, 60), (42, 48)] for i in range(8)]
+    outputs = {section: Arranger(amount=1, section=section).arrange(raw, 0, 2, .5)
+               for section in ('intro', 'groove', 'lift', 'breakdown', 'ending', 'ended')}
+    assert 0 < len(outputs['intro']) < len(outputs['groove']) < len(outputs['lift'])
+    assert 0 < len(outputs['breakdown']) < len(outputs['groove'])
+    assert {n['gmInstr'] for n in outputs['breakdown']} == {24}
+    assert outputs['ended'] == []
+    assert all(n['beat'] + n['dur'] <= 1 for n in outputs['ending'])
+    assert all(n['gmInstr'] in (24, 40, 42) for out in outputs.values() for n in out)
+
+
+def test_sections_preserve_a_sparse_selected_instrument_and_never_unmute():
+    for section in ('intro', 'groove', 'lift', 'breakdown', 'ending'):
+        for instr in (24, 40, 42):
+            raw = [(0, .2, instr, 60)]
+            assert len(Arranger(section=section).arrange(raw, 0, 1, .5)) == 1
+            assert Arranger(amount=0, section=section).arrange(raw, 0, 1, .5) == []
+            assert Arranger(section=section, enabled_roles={'keys':False,'bass':False,'lead':False}).arrange(raw, 0, 1, .5) == []
+
+
+def test_section_spacing_is_anchored_to_beats_across_half_bar_windows():
+    arranger = Arranger(amount=1, section='breakdown')
+    left = arranger.arrange([(2, .2, 24, 64), (2.5, .2, 24, 67)], 2, 3, .5)
+    right = arranger.arrange([(3, .2, 24, 64), (3.5, .2, 24, 67)], 3, 4, .5)
+    assert [n['beat'] for n in left + right] == [4, 6]
+
+
+def test_phrase_rhythm_and_count_do_not_depend_on_creativity():
+    from musical_identity import MusicalIdentity
+    phrase = [(0, .25, 60), (.25, .25, 64), (.75, .25, 62), (5, .5, 67), (7.5, .5, 65)]
+    rhythms = []
+    for creativity in (.2, .9, 1):
+        identity = MusicalIdentity()
+        identity.observe(phrase, {}, 9)
+        shaped = identity.shape([(4.5, .2, 24, 64)], 9, 11, .5, 9, creativity, 'lift')
+        arranged = Arranger(amount=1, creativity=creativity, section='lift').constrain(
+            shaped, 4.5, 5.5, .5, key='C major', chord='C', phrase_instrument=24)
+        rhythms.append([(n[0], n[1]) for n in arranged])
+    assert rhythms[0] == rhythms[1] == rhythms[2]
+    assert len(rhythms[0]) == 3
+
+
+def test_breakdown_keeps_the_actual_phrase_voice_from_unsorted_model_output():
+    from musical_identity import MusicalIdentity
+    identity = MusicalIdentity()
+    identity.observe([(0,.5,60),(1,.5,64),(4,.5,67),(7,.5,64)], {}, 9)
+    raw = [(4.5,.5,41,72),(4.5,.5,40,60)]
+    shaped = identity.shape(raw,9,11,.5,9,.3,'breakdown')
+    assert identity.response_instrument == 41
+    final = Arranger(amount=1, section='breakdown').constrain(
+        shaped,4.5,5.5,.5,phrase_instrument=identity.response_instrument)
+    assert final and {n[2] for n in final} == {41}

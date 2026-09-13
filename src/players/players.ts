@@ -7,6 +7,7 @@ import { DEFAULT_DRUM_KIT, type DrumKit } from './sampledVoices';
 import type { PlayersLike, ScheduleConfirmation } from '../band/bandleader';
 import { routeTargets, type MorphRoute } from '../audio/routing';
 import { GM_INSTRUMENTS } from './gmInstruments';
+import { amtSampleStorage, amtSampleUrl } from './amtSamples';
 
 /** The bit of a Tone/Web Audio node the routing actually uses. Keeps `route()` testable
  *  with plain fakes instead of a real audio graph. */
@@ -62,6 +63,7 @@ export class Players implements PlayersLike {
   onSchedule?: (instrument: Instrument, events: NoteEvent[], barStartTime: number, bpm: number) => void;
   /** AMT only: fires per GM program actually scheduled through scheduleAccompaniment(), so
    *  the AMT panel can show which preset(s) are currently sounding. */
+  onSampleError?: (gmProgram: number, error: unknown) => void;
   onAccompSchedule?: (gmProgram: number, events: NoteEvent[], barStartTime: number, bpm: number) => void;
   /** Count of note events dropped because they were stale (too close to/before now) or a
    * duplicate on the same monophonic voice within the merge window. Test/diagnostic hook. */
@@ -72,6 +74,8 @@ export class Players implements PlayersLike {
   /** Lazily-created real-instrument sampler per GM program, for AMT accompaniment. */
   private accompVoices = new Map<number, ReturnType<typeof Soundfont>>();
   private accompanimentStops = new Set<() => void>();
+  private responseDisposals = new Set<() => void>();
+  private idleResponseVoices = new Map<number, { voice: ReturnType<typeof Soundfont>; destination: GainNode }>();
 
   async init() {
     if (!this.out) {
@@ -104,17 +108,30 @@ export class Players implements PlayersLike {
     this.setGenre(this.genre);
   }
 
+  private morphListeners = new Set<(node: AudioNode | undefined) => void>();
+
   /** Hands the players the MORPH bus input (or undefined when the output is off).
    *  Every instrument's route is re-applied, so "morph" pads become audible on the box
    *  and fall back to the main output when it goes away. */
   setMorphBus(node: AudioNode | undefined): void {
     this.morphNode = node;
     INSTRUMENTS.forEach(i => this.applyRoute(i));
+    this.morphListeners.forEach(cb => cb(node));
+  }
+
+  /** Notifies a voice outside the fixed Instrument set (e.g. the found-sound sampler) of the
+   *  MORPH bus, immediately and on every change, so it can route itself without needing a
+   *  slot in `busses`/`INSTRUMENTS`. Returns an unsubscribe function. */
+  onMorphChange(cb: (node: AudioNode | undefined) => void): () => void {
+    this.morphListeners.add(cb);
+    cb(this.morphNode);
+    return () => this.morphListeners.delete(cb);
   }
 
   /** Remove old-tempo events and tails when an engine transport restarts. */
   cancelScheduled(): void {
     this.accompanimentEpoch++;
+    for (const dispose of this.responseDisposals) dispose();
     for (const stop of this.accompanimentStops) stop();
     this.accompanimentStops.clear();
     this.accompVoices.forEach(voice => voice.stop());
@@ -289,18 +306,10 @@ export class Players implements PlayersLike {
    *  smplr silently drops a note whose sample buffer hasn't finished loading yet (no error,
    *  just no sound) — monitor.ts always awaits `.ready` before playing for that reason, and
    *  this must too, or a freshly-toggled preset's first bars are inaudible. */
-  scheduleAccompaniment(gmProgram: number, events: NoteEvent[], barStart: number, bpm: number, onScheduled?: ScheduleConfirmation): void {
-    if (!(bpm > 0)) return;
+  scheduleAccompaniment(gmProgram: number, events: NoteEvent[], barStart: number, bpm: number, onScheduled?: ScheduleConfirmation, signal?: AbortSignal): void {
+    if (!(bpm > 0) || signal?.aborted) return;
     const gm = GM_INSTRUMENTS[gmProgram];
     if (!gm || !this.busses || !this.enabled[gm.role] || !this.bandAmount) return;
-    let voice = this.accompVoices.get(gmProgram);
-    if (!voice) {
-      const ctx = this.rawContext();
-      const destination = ctx.createGain();
-      Tone.connect(destination, this.busses[gm.role]);
-      voice = Soundfont(ctx, { instrument: gm.name, kit: 'MusyngKite', destination });
-      this.accompVoices.set(gmProgram, voice);
-    }
     const spb = 60 / bpm;
     const minT = Tone.getContext().currentTime + 0.005;
     const kept: NoteEvent[] = [];
@@ -315,31 +324,95 @@ export class Players implements PlayersLike {
       notes.push({ note: e.note, time: t, duration: Math.max(0.05, e.duration * spb), velocity: Math.max(1, Math.round(e.velocity * 127)) });
     }
     if (!kept.length) return;
+    // A response gets its own output node. smplr marks duration-limited native
+    // sources "stopping" immediately, so its stop handle alone cannot silence
+    // sources already promoted into WebAudio lookahead. Disconnect this batch's
+    // output on abort; cached backing voices remain completely untouched.
+    const idle = signal ? this.idleResponseVoices.get(gmProgram) : undefined;
+    if (idle) this.idleResponseVoices.delete(gmProgram);
+    let voice = idle?.voice ?? (signal ? undefined : this.accompVoices.get(gmProgram));
+    let destination: GainNode | undefined = idle?.destination;
+    if (idle) Tone.connect(idle.destination, this.busses[gm.role]);
+    if (!voice) {
+      const ctx = this.rawContext();
+      destination = ctx.createGain();
+      Tone.connect(destination, this.busses[gm.role]);
+      voice = Soundfont(ctx, { instrumentUrl: amtSampleUrl(gm.name), loadLoopData: false, storage: amtSampleStorage, destination });
+      if (!signal) this.accompVoices.set(gmProgram, voice);
+    }
+    const batchStops = new Set<() => void>();
+    let remaining = notes.length;
+    let disposed = false;
+    let expiry: ReturnType<typeof setTimeout> | undefined;
+    const disposeResponse = () => finishResponse(false);
+    const finishResponse = (reusable: boolean) => {
+      if (!signal || disposed) return;
+      disposed = true;
+      clearTimeout(expiry);
+      signal.removeEventListener('abort', disposeResponse);
+      this.responseDisposals.delete(disposeResponse);
+      destination?.disconnect();
+      for (const cancel of batchStops) cancel();
+      if (reusable && destination && !this.idleResponseVoices.has(gmProgram)) {
+        // Reuse decoded samples only after every note really ended. Interrupted
+        // samplers cannot be reused: native duration tails may still exist.
+        this.idleResponseVoices.set(gmProgram, { voice, destination });
+      } else voice.dispose();
+    };
+    if (signal) {
+      this.responseDisposals.add(disposeResponse);
+      signal.addEventListener('abort', disposeResponse, { once: true });
+      // Missing samples need not emit onEnded. Bound their resources as well as
+      // ordinary tails, even if readiness never resolves.
+      const lastEnd = Math.max(...notes.map(n => n.time + n.duration));
+      expiry = setTimeout(disposeResponse, Math.max(0, lastEnd - Tone.getContext().currentTime + 2) * 1000);
+    }
     const epoch = this.accompanimentEpoch;
     voice.ready.then(() => {
-      if (epoch !== this.accompanimentEpoch || !this.enabled[gm.role] || !this.bandAmount) return;
+      if (disposed || signal?.aborted || epoch !== this.accompanimentEpoch || !this.enabled[gm.role] || !this.bandAmount) return;
       // Loading may take longer than the scheduling lead. Never burst overdue
       // notes on readiness or report them as sounding in the activity display.
       const minReadyTime = Tone.getContext().currentTime + .005;
       const sounding: NoteEvent[] = [];
       notes.forEach((note, index) => {
-        if (note.time < minReadyTime) { this.dropped++; return; }
+        if (note.time < minReadyTime) { this.dropped++; remaining--; return; }
         let stop: (() => void) | undefined;
         let ended = false;
+        const forget = () => {
+          this.accompanimentStops.delete(cancel);
+          batchStops.delete(cancel);
+          signal?.removeEventListener('abort', cancel);
+        };
+        const cancel = () => { forget(); stop?.(); };
         stop = voice.start({...note, onEnded: () => {
+          if (ended) return;
           ended = true;
-          if (stop) this.accompanimentStops.delete(stop);
+          forget();
+          if (--remaining === 0) finishResponse(true);
         }});
-        // start() owns a scheduler event before a source exists. Soundfont.stop()
-        // alone cannot cancel it, so retain its handle until it ends or we stop.
-        if (stop && !ended) this.accompanimentStops.add(stop);
+        // Cancel the individual scheduler event, including before a source exists.
+        // Never stop the whole GM voice: it may also carry ordinary backing.
+        if (!ended) {
+          this.accompanimentStops.add(cancel);
+          batchStops.add(cancel);
+          signal?.addEventListener('abort', cancel, { once: true });
+        }
         sounding.push(kept[index]);
       });
-      if (!sounding.length) return;
+      if (!sounding.length) { disposeResponse(); return; }
       this.onSchedule?.(gm.role, sounding, barStart, bpm);
       this.onAccompSchedule?.(gmProgram, sounding, barStart, bpm);
       onScheduled?.(sounding);
-    }, () => { this.dropped += notes.length; });
+    }, error => {
+      this.dropped += notes.length;
+      if (!signal && this.accompVoices.get(gmProgram) === voice) {
+        this.accompVoices.delete(gmProgram);
+        destination?.disconnect();
+        voice.dispose();
+        this.onSampleError?.(gmProgram, error);
+      } else if (signal && !disposed) this.onSampleError?.(gmProgram, error);
+      disposeResponse();
+    });
   }
 
   private hit(note: number, t: number, v: number) {

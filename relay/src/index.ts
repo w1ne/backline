@@ -8,6 +8,9 @@ export interface Env {
   GITHUB_TOKEN: string;
   /** Comma-separated list of origins the app is served from. */
   ALLOWED_ORIGINS: string;
+  /** Comma-separated host suffixes (e.g. ".backline-88n.pages.dev") whose https origins are
+   *  also allowed -- Cloudflare Pages branch previews get a new hostname per branch. */
+  ALLOWED_ORIGIN_SUFFIXES?: string;
   REPO: string;
   ACESTEP_UPSTREAM?: string;
   AMT_UPSTREAM?: string;
@@ -25,7 +28,12 @@ export function allowedOrigins(env: Env): string[] {
 }
 
 export function isAllowedOrigin(origin: string | null, env: Env): boolean {
-  return !!origin && allowedOrigins(env).includes(origin);
+  if (!origin) return false;
+  if (allowedOrigins(env).includes(origin)) return true;
+  const suffixes = (env.ALLOWED_ORIGIN_SUFFIXES ?? "").split(",").map(s => s.trim()).filter(Boolean);
+  const host = origin.startsWith("https://") ? origin.slice("https://".length) : "";
+  if (!host || host.includes("/") || host.includes(":")) return false;
+  return suffixes.some(sfx => host.endsWith(sfx) && host.length > sfx.length);
 }
 
 /**
@@ -225,13 +233,15 @@ async function handleMe(req: Request, env: Env): Promise<Response> {
 // them. What keeps the upstream keys from being a free API for the whole
 // internet is (a) an Origin allowlist, which browsers set on every WebSocket
 // upgrade and scripts cannot forge from another page, and (b) a per-IP cap on
-// how many upgrades one caller may open per minute.
+// how many upgrades one caller may open per minute. Twenty: a client that
+// reconnects with backoff after a blip, plus an old build that still reopens
+// the socket on every tempo step, has to fit under it for a whole set.
 //
 // The counter lives in the isolate, so it is per-colo and resets on eviction.
 // That is deliberate: it is a cheap brake on runaway clients, not a billing
 // guarantee, and it costs no storage round-trip on the hot path.
 
-const UPGRADE_LIMIT = 6;
+const UPGRADE_LIMIT = 20;
 const UPGRADE_WINDOW_MS = 60_000;
 const upgradeHits = new Map<string, number[]>();
 
@@ -274,7 +284,9 @@ export function guardUpgrade(req: Request, env: Env): Response | null {
   }
   const ip = req.headers.get("cf-connecting-ip") ?? "unknown";
   if (!allowUpgrade(ip)) {
-    return new Response("too many requests", { status: 429, headers: { "Retry-After": "60" } });
+    return new Response(`too many requests: at most ${UPGRADE_LIMIT} websocket upgrades per minute per IP`, {
+      status: 429, headers: { "Retry-After": "60" },
+    });
   }
   return null;
 }
@@ -442,15 +454,20 @@ export async function handleAmt(req: Request, env: Env): Promise<Response> {
   return proxyWebSocket(upstreamUrl, AMT_KEEPALIVE_MS);
 }
 
-/** GET <origin>/health on an upstream given as its ws(s):// URL; false on any error or after 3 s. */
-async function upstreamHealthy(upstream: string | undefined): Promise<boolean> {
-  if (!upstream) return false;
+export type UpstreamState = "ok" | "loading" | "down";
+
+/** GET <origin>/health on an upstream given as its ws(s):// URL. "ok" on a 2xx; "loading" on a
+ *  503 (the service is up but its model is not ready yet, so wait rather than restart); "down"
+ *  on anything else, an error, or after 3 s. */
+export async function upstreamState(upstream: string | undefined): Promise<UpstreamState> {
+  if (!upstream) return "down";
   try {
     const origin = new URL(upstream.replace(/^wss:\/\//, "https://").replace(/^ws:\/\//, "http://")).origin;
     const res = await fetch(origin + "/health", { signal: AbortSignal.timeout(3000) });
-    return res.ok;
+    if (res.ok) return "ok";
+    return res.status === 503 ? "loading" : "down";
   } catch {
-    return false;
+    return "down";
   }
 }
 
@@ -462,11 +479,14 @@ export default {
       // The app probes this cross-origin to light the engine LEDs. The relay being up says
       // nothing about the GPU pod behind it, so each upstream is probed too (3 s budget);
       // a stopped pod must show as an offline engine, not as a band that silently went generic.
-      const [amt, acestep] = await Promise.all([
-        upstreamHealthy(env.AMT_UPSTREAM),
-        upstreamHealthy(env.ACESTEP_UPSTREAM),
+      const [amtState, acestepState] = await Promise.all([
+        upstreamState(env.AMT_UPSTREAM),
+        upstreamState(env.ACESTEP_UPSTREAM),
       ]);
-      return new Response(JSON.stringify({ relay: "ok", amt, acestep, lyria: !!env.GEMINI_API_KEY }), {
+      // `amt`/`acestep` stay booleans for the app; the states let the watchdog and smoke tell a
+      // pod that is still loading its model from one that is gone.
+      const amt = amtState === "ok", acestep = acestepState === "ok";
+      return new Response(JSON.stringify({ relay: "ok", amt, acestep, amtState, acestepState, lyria: !!env.GEMINI_API_KEY }), {
         status: 200,
         headers: { ...corsHeaders(req, env), "content-type": "application/json" },
       });

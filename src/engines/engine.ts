@@ -1,5 +1,6 @@
 import type { AccompPreset, BandState, Instrument } from '../types';
 import type { MorphRoute } from '../audio/routing';
+import type { FormResult } from '../band/form';
 
 export interface BandEngine {
   start(bpm: number, firstBarAt: number): Promise<void>;
@@ -17,13 +18,17 @@ export interface BandEngine {
   /** smallest bpm change worth forwarding in follow mode */
   readonly bpmStep: number;
   onBar?: (bar: number) => void;
+  /** Engines with a song form of their own (Patterns, AMT's local drums) report each bar's
+   *  section here, after onBar has handed them the bar's dynamics. */
+  onForm?: (bar: number, form: FormResult) => void;
   /** called with a human-readable message when the engine hits an unrecoverable error */
+  // (see EngineStatusStats below for the optional numbers a status update can carry)
   onError?: (msg: string) => void;
   /** called once the engine has actually produced/received its first audio block */
   onFirstBlock?: () => void;
   onConnected?: () => void;
   onResponseTiming?: (estimatedMs: number | null) => void;
-  onStatus?: (message: string, latencyMs?: number) => void;
+  onStatus?: (message: string, latencyMs?: number, stats?: EngineStatusStats) => void;
   /** periodic playback stats (e.g. Lyria's audio-buffer loop/underrun counters) */
   onStats?: (s: { loops: number; starvedSec: number }) => void;
   /** ms until a control change is audible; UI shows "joining…" for this long */
@@ -35,4 +40,12 @@ export interface BandEngine {
   /** Audio engines expose a tap on their output so the visualiser can draw a spectrum.
    *  Only valid after start(); note-based engines don't implement it. */
   getAnalyser?(): AnalyserNode | undefined;
+}
+
+/** Diagnostic numbers an engine can attach to a status update: plan notes that arrived too
+ *  late to play, and the server's own queue wait / total request age for the last plan. */
+export interface EngineStatusStats {
+  tooLate: number;
+  queueLatencyMs?: number;
+  requestAgeMs?: number;
 }

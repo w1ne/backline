@@ -7,7 +7,8 @@ const sf = vi.hoisted(() => ({ instruments: [] as any[] }));
 vi.mock('smplr', () => ({
   Soundfont: (_ctx: unknown, options: unknown) => {
     let resolveReady!: () => void;
-    const inst = { options, stop: vi.fn(), ready: new Promise<void>(r => { resolveReady = r; }), start: vi.fn(), resolveReady: () => resolveReady() };
+    let rejectReady!: (error: Error) => void;
+    const inst = { options, stop: vi.fn(), dispose: vi.fn(), ready: new Promise<void>((r, reject) => { resolveReady = r; rejectReady = reject; }), start: vi.fn(), resolveReady: () => resolveReady(), rejectReady: (error: Error) => rejectReady(error) };
     sf.instruments.push(inst);
     return inst;
   },
@@ -482,4 +483,93 @@ it('forgets completed GM handles instead of retaining one cancellation per note 
   ended();
   players.cancelScheduled();
   expect(cancelQueued).not.toHaveBeenCalled();
+});
+
+it.each([false, true])('aborts only a phrase batch (sampler ready: %s), preserving backing on the same instrument', async readyFirst => {
+  sf.instruments.length = 0;
+  const players = new Players(); withFakeBusses(players);
+  const response = new AbortController();
+  const confirmed = vi.fn();
+  const event = {time:0,note:60,duration:2,velocity:.8};
+  players.scheduleAccompaniment(24, [event], 100, 120, confirmed, response.signal);
+  players.scheduleAccompaniment(24, [{...event,note:64}], 100, 120);
+  const voice = sf.instruments[0];
+  const backing = sf.instruments[1];
+  const phraseStop = vi.fn(); const backingStop = vi.fn();
+  voice.start.mockImplementation((n: {note:number}) => n.note === 60 ? phraseStop : backingStop);
+  backing.start.mockReturnValue(backingStop);
+  backing.resolveReady(); await backing.ready;
+  if (readyFirst) { voice.resolveReady(); await voice.ready; }
+  response.abort();
+  if (!readyFirst) { voice.resolveReady(); await voice.ready; }
+  expect(voice.start.mock.calls.map((c: any[]) => c[0].note)).toEqual(readyFirst ? [60] : []);
+  expect(backing.start).toHaveBeenCalledOnce();
+  expect(phraseStop).toHaveBeenCalledTimes(readyFirst ? 1 : 0);
+  expect(backingStop).not.toHaveBeenCalled();
+  expect(voice.stop).not.toHaveBeenCalled();
+  if (!readyFirst) expect(confirmed).not.toHaveBeenCalled();
+});
+
+it('silences phrase sources already promoted into native WebAudio lookahead even when sampler stop is ineffective', async () => {
+  sf.instruments.length = 0;
+  const players = new Players(); withFakeBusses(players);
+  const response = new AbortController();
+  players.scheduleAccompaniment(24, [{time:0,note:60,duration:2,velocity:.8}], 100, 120, undefined, response.signal);
+  const phrase = sf.instruments[0];
+  const disconnected = vi.spyOn(phrase.options.destination, 'disconnect');
+  phrase.start.mockReturnValue(vi.fn()); // Native duration release makes smplr stop a no-op.
+  phrase.resolveReady(); await phrase.ready;
+  response.abort();
+  expect(disconnected).toHaveBeenCalled();
+});
+
+it('reuses a fully ended response sampler without reloading its samples', async () => {
+  sf.instruments.length = 0;
+  const players = new Players(); withFakeBusses(players);
+  const signal = new AbortController().signal;
+  const event = {time:0,note:60,duration:2,velocity:.8};
+  players.scheduleAccompaniment(24, [event], 100, 120, undefined, signal);
+  const voice = sf.instruments[0];
+  voice.start.mockReturnValue(vi.fn()); voice.resolveReady(); await voice.ready;
+  voice.start.mock.calls[0][0].onEnded();
+  players.scheduleAccompaniment(24, [event], 110, 120, undefined, signal);
+  await Promise.resolve();
+  expect(sf.instruments).toHaveLength(1);
+  expect(voice.start).toHaveBeenCalledTimes(2);
+  players.cancelScheduled();
+});
+
+it('loads every AMT program from bundled same-origin assets, including response batches', () => {
+  sf.instruments.length = 0;
+  const players = new Players(); withFakeBusses(players);
+  const programs = [4,24,40,41,42,46,48,56,65,73,88];
+  for (const program of programs) {
+    players.scheduleAccompaniment(program, [{time:0,note:60,duration:1,velocity:.8}], 100, 120);
+  }
+  for (const voice of sf.instruments) {
+    expect(voice.options.instrumentUrl).toMatch(/^\/.*samples\/amt\/[a-z0-9_]+-ogg\.js$/);
+    expect(voice.options.loadLoopData).toBe(false);
+    expect(voice.options.instrument).toBeUndefined();
+  }
+  const response = new AbortController();
+  players.scheduleAccompaniment(40, [{time:0,note:60,duration:1,velocity:.8}], 100, 120, undefined, response.signal);
+  expect(sf.instruments.at(-1).options.instrumentUrl).toMatch(/samples\/amt\/violin-ogg\.js$/);
+  response.abort();
+});
+
+
+it('reports sample failure and allows a fresh bounded load on the next plan', async () => {
+  sf.instruments.length = 0;
+  const players = new Players(); withFakeBusses(players);
+  const error = vi.fn(); players.onSampleError = error;
+  const event = {time:0,note:60,duration:1,velocity:.8};
+  players.scheduleAccompaniment(40, [event], 100, 120);
+  const voice = sf.instruments[0];
+  const failure = new Error('asset unavailable');
+  voice.rejectReady(failure);
+  await voice.ready.catch(() => undefined);
+  expect(error).toHaveBeenCalledWith(40, failure);
+  expect(voice.dispose).toHaveBeenCalled();
+  players.scheduleAccompaniment(40, [event], 102, 120);
+  expect(sf.instruments).toHaveLength(2);
 });

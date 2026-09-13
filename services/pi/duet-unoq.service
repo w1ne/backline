@@ -4,7 +4,7 @@ After=duet-web.service
 Wants=duet-web.service
 
 [Service]
-User=test
+User=root
 WorkingDirectory=/home/test/duet-ai
 ExecStart=/bin/bash /home/test/duet-ai/services/pi/unoq-sync.sh
 Restart=always

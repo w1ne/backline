@@ -1,7 +1,6 @@
 import type { Chord, Genre, Key } from '../types';
 import { scaleOf } from './scales';
-
-const mod12 = (n: number): number => ((n % 12) + 12) % 12;
+import { mod12 } from './pitchClass';
 
 /** Scale-degree index (0-6) of `chord`'s root within `key`, or -1 when it isn't diatonic. */
 function diatonicDegree(chord: Chord, key: Key): number {

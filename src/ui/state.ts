@@ -12,6 +12,10 @@ export interface AppState {
   accompanimentStatus: string;
   modelLatencyMs: number | null;
   responseLatencyMs: number | null;
+  /** Server queue wait + request age for the last AMT plan, and plan notes dropped as too late. */
+  queueLatencyMs: number | null;
+  requestAgeMs: number | null;
+  tooLate: number;
   activeParts: Partial<Record<Instrument, boolean>>;
   sources: SourceStatus;
   genre: Genre;
@@ -78,6 +82,10 @@ export interface AppState {
   accompPresets: AccompPreset[];
   /** AMT: which accompaniment presets have an audible note right now, for the tiles' LEDs */
   accompActive: Partial<Record<AccompPreset, boolean>>;
+  /** the SAMPLE pad is actively capturing a found sound from the mic */
+  sampleRecording: boolean;
+  /** a found-sound clip has been captured and is ready to trigger */
+  sampleReady: boolean;
 }
 
 const defaults: AppState = {
@@ -85,6 +93,9 @@ const defaults: AppState = {
   accompanimentStatus: 'Listening',
   modelLatencyMs: null,
   responseLatencyMs: null,
+  queueLatencyMs: null,
+  requestAgeMs: null,
+  tooLate: 0,
   activeParts: {},
   sources: { mic: 'off', midi: 'off' },
   genre: 'lofi',
@@ -97,7 +108,7 @@ const defaults: AppState = {
   intensity: 0.5,
   effectiveIntensity: 0,
   enabled: { drums: true, bass: true, keys: true, lead: false },
-  input: { bpm: null, key: null, chord: null, notesNow: [], pitch: null, inputLevel: 0, onsets: 0, pendingBpm: null, dynamics: IDLE_DYNAMICS },
+  input: { bpm: null, key: null, chord: null, notesNow: [], pitch: null, inputLevel: 0, onsets: 0, pendingBpm: null, voiceBpm: null, dynamics: IDLE_DYNAMICS },
   locked: false,
   tempoMode: 'locked',
   countIn: true,
@@ -126,6 +137,8 @@ const defaults: AppState = {
   midiInputs: [],
   accompPresets: ['strings'],
   accompActive: {},
+  sampleRecording: false,
+  sampleReady: false,
 };
 
 export class Store {

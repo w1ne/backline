@@ -57,3 +57,219 @@ class ContinuationTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class BlockV2Test(unittest.TestCase):
+    def run_blocks(self, n=3, bpm=120):
+        requests, sources, packets = [], [], []
+
+        class Model:
+            def generate(self, params):
+                requests.append(params)
+                return np.full((round(params.audio_duration * server.TARGET_SR), 2), 0.2, dtype=np.float32)
+
+        def write(audio):
+            sources.append(audio.copy())
+            return '/tmp/backline-test-source.wav'
+
+        async def send_binary(packet):
+            packets.append(packet)
+
+        async def send_json(_):
+            pass
+
+        async def run():
+            session = server.Session(Model())
+            for seq in range(1, n + 1):
+                await session.handle_block(dict(seq=seq, bpm=bpm, bars=2, key='C major',
+                                                instruments=['drums', 'bass']), send_binary, send_json)
+            return session
+
+        with patch.object(server, 'BLOCK_V2', True), patch.object(server, '_write_temp_wav', side_effect=write):
+            session = asyncio.run(run())
+        return session, requests, sources, packets
+
+    def test_every_request_spans_the_minimum_canvas_and_only_the_block_is_returned(self):
+        _, requests, sources, packets = self.run_blocks(n=3)
+        for p in requests:
+            self.assertGreaterEqual(p.audio_duration, server.MIN_GEN_SECONDS)
+        # block 2: 4 s of context (one block played so far), repaint from there to the canvas end
+        self.assertEqual(requests[1].task_type, 'repaint')
+        self.assertEqual(requests[1].repainting_start, 4)
+        self.assertEqual(requests[1].repainting_end, requests[1].audio_duration)
+        self.assertEqual(sources[0].shape[0], round(requests[1].audio_duration * server.TARGET_SR))
+        for packet in packets:
+            self.assertEqual(len(packet), 4 + 4 * server.TARGET_SR * 2 * 2)
+
+    def test_seed_is_fixed_per_session_and_context_accumulates(self):
+        session, requests, _, _ = self.run_blocks(n=4)
+        self.assertEqual(len({p.seed for p in requests}), 1)
+        self.assertEqual(requests[0].lyrics, '[Instrumental]')
+        # 4 blocks x 4 s = 16 s played, capped to CONTEXT_MAX_SECONDS
+        self.assertEqual(session.prev_audio.shape[0], round(server.CONTEXT_MAX_SECONDS * server.TARGET_SR))
+        self.assertEqual(requests[3].repainting_start, 12)
+
+
+class SongModeTest(unittest.TestCase):
+    def test_first_block_renders_a_segment_and_later_blocks_are_sliced(self):
+        requests, packets, sleeps = [], [], []
+
+        class Model:
+            def generate(self, params):
+                requests.append(params)
+                n = round(params.audio_duration * server.TARGET_SR)
+                audio = np.zeros((n, 2), dtype=np.float32)
+                audio[:, 0] = np.arange(n) / n  # ramp so slices are distinguishable
+                return audio
+
+        async def send_binary(packet):
+            packets.append(packet)
+
+        async def send_json(_):
+            pass
+
+        async def fake_sleep(seconds):
+            sleeps.append(seconds)
+
+        async def run():
+            session = server.Session(Model())
+            for seq in range(1, 11):  # 16-bar segment = 8 two-bar blocks, so block 9 re-renders
+                await session.handle_block(dict(seq=seq, bpm=120, bars=2, key='C major',
+                                                instruments=['drums', 'bass']), send_binary, send_json)
+            return session
+
+        with patch.object(server, 'SONG_MODE', True), patch.object(server, 'BLOCK_V2', True), \
+             patch.object(server, 'pace_sleep', fake_sleep), \
+             patch.object(server, '_write_temp_wav', return_value='/tmp/backline-test-source.wav'), \
+             patch.object(server.os, 'unlink'):
+            asyncio.run(run())
+
+        self.assertEqual([p.task_type for p in requests], ['text2music', 'repaint'])
+        self.assertEqual(requests[0].audio_duration, 32)          # 16 bars at 120 bpm
+        self.assertEqual(requests[1].repainting_start, server.CONTEXT_MAX_SECONDS)
+        self.assertEqual(requests[1].audio_duration, server.CONTEXT_MAX_SECONDS + 32)
+        self.assertEqual(requests[0].seed, requests[1].seed)
+        self.assertEqual(len(packets), 10)
+        for packet in packets:
+            self.assertEqual(len(packet), 4 + 4 * server.TARGET_SR * 2 * 2)
+        # consecutive slices of the same ramp: block 2 starts where block 1 ended
+        b1 = np.frombuffer(packets[0][4:], dtype='<i2')[::2]
+        b2 = np.frombuffer(packets[1][4:], dtype='<i2')[::2]
+        self.assertLess(b1.mean(), b2.mean())
+        self.assertLessEqual(abs(int(b2[0]) - int(b1[-1])), 2)
+        self.assertEqual(len(sleeps), 8)  # every sliced block was paced
+
+
+class SongModeFollowsSwitchesTest(unittest.TestCase):
+    def drive(self, msgs):
+        requests, packets = [], []
+
+        class Model:
+            def generate(self, params):
+                requests.append(params)
+                return np.zeros((round(params.audio_duration * server.TARGET_SR), 2), dtype=np.float32)
+
+        async def send_binary(packet):
+            packets.append(packet)
+
+        async def send_json(_):
+            pass
+
+        async def fake_sleep(_):
+            pass
+
+        async def run():
+            session = server.Session(Model())
+            for seq, m in enumerate(msgs, 1):
+                await session.handle_block(dict(seq=seq, bars=2, **m), send_binary, send_json)
+
+        with patch.object(server, 'SONG_MODE', True), patch.object(server, 'BLOCK_V2', True), \
+             patch.object(server, 'pace_sleep', fake_sleep), \
+             patch.object(server, '_write_temp_wav', return_value='/tmp/backline-test-source.wav'), \
+             patch.object(server.os, 'unlink'):
+            asyncio.run(run())
+        return requests, packets
+
+    def test_genre_or_instrument_switch_re_renders_with_context_and_tempo_drift_does_not(self):
+        base = dict(bpm=100, key='A minor', genre='lofi', instruments=['drums', 'bass'])
+        requests, packets = self.drive([
+            base, base,
+            dict(base, genre='rock'),                      # style switch -> repaint from here
+            dict(base, genre='rock', bpm=104),             # 4% drift -> keep slicing
+            dict(base, genre='rock', bpm=104, instruments=['drums', 'bass', 'keys']),  # switch -> repaint
+        ])
+        self.assertEqual([p.task_type for p in requests], ['text2music', 'repaint', 'repaint'])
+        self.assertIn('rock', requests[1].prompt.lower())
+        self.assertEqual(requests[1].repainting_start, 2 * 4.8)   # 9.6 s already heard as context
+        self.assertEqual(len(packets), 5)
+
+    def test_dynamics_thinning_the_instruments_does_not_re_render_but_a_toggle_does(self):
+        base = dict(bpm=100, key='A minor', genre='lofi', enabled=['drums', 'bass', 'keys'])
+        requests, _ = self.drive([
+            dict(base, instruments=['drums', 'bass', 'keys']),
+            dict(base, instruments=['drums', 'bass']),                 # busy player: keys thinned out
+            dict(base, instruments=['drums', 'bass', 'keys', 'lead']), # space: lead fill
+            dict(base, enabled=['drums', 'bass'], instruments=['drums', 'bass']),  # user switched keys off
+        ])
+        self.assertEqual([p.task_type for p in requests], ['text2music', 'repaint'])
+        self.assertNotIn('electric piano', requests[1].prompt.lower())
+
+    def test_key_change_or_large_tempo_change_starts_a_fresh_song(self):
+        base = dict(bpm=100, key='A minor', genre='lofi', instruments=['drums', 'bass'])
+        requests, _ = self.drive([base, dict(base, key='C major'), dict(base, key='C major', bpm=125)])
+        self.assertEqual([p.task_type for p in requests], ['text2music', 'text2music', 'text2music'])
+
+
+class VoiceFollowingTest(unittest.TestCase):
+    def test_segment_uses_cover_on_the_sung_audio_once_a_full_segment_was_heard(self):
+        requests, written = [], []
+
+        class Model:
+            def generate(self, params):
+                requests.append(params)
+                return np.zeros((round(params.audio_duration * server.TARGET_SR), 2), dtype=np.float32)
+
+        def write(audio, sr=server.TARGET_SR):
+            written.append((audio.shape, sr))
+            return '/tmp/backline-test-source.wav'
+
+        async def nothing(*_):
+            pass
+
+        async def run():
+            session = server.Session(Model())
+            session.ingest_audio(b'JUNK' + b'\x00' * 100)          # unknown frame is ignored
+            self.assertEqual(len(session.hum), 0)
+            msg = dict(bpm=120, bars=2, key='C major', instruments=['drums', 'bass'])
+            await session.handle_block(dict(seq=1, **msg), nothing, nothing)   # nothing sung yet
+            # 32 s of singing = one 16-bar segment at 120 bpm
+            pcm = (np.zeros(32 * server.HUM_SR, dtype='<i2')).tobytes()
+            for i in range(0, len(pcm), 8000):
+                session.ingest_audio(server.HUM_MAGIC + pcm[i:i + 8000])
+            self.assertEqual(len(session.hum), 32 * server.HUM_SR)
+            session.song = None                                     # force the next render
+            await session.handle_block(dict(seq=2, **msg), nothing, nothing)
+
+        with patch.object(server, 'SONG_MODE', True), patch.object(server, 'BLOCK_V2', True), \
+             patch.object(server, 'SONG_COVER', True), patch.object(server, 'pace_sleep', nothing), \
+             patch.object(server, '_write_temp_wav', side_effect=write), patch.object(server.os, 'unlink'):
+            asyncio.run(run())
+
+        self.assertEqual([p.task_type for p in requests], ['text2music', 'cover'])
+        self.assertEqual(requests[1].audio_cover_strength, server.creativity_to_cover_strength(0.5))
+        self.assertEqual(requests[1].audio_duration, 32)
+        self.assertIsNone(requests[1].repainting_start)
+        self.assertEqual(written[-1], ((32 * server.HUM_SR, 1), server.HUM_SR))
+
+
+class ControlsReachAceTest(unittest.TestCase):
+    def test_accompaniment_tiles_become_prompt_instruments(self):
+        p = server.build_prompt('lofi', ['drums', 'bass'], extras=['sax', 'strings', 'bogus'])
+        self.assertIn('saxophone', p)
+        self.assertIn('string section', p)
+        self.assertNotIn('bogus', p)
+
+    def test_creativity_sets_how_tightly_the_cover_follows(self):
+        self.assertEqual(server.creativity_to_cover_strength(0.0), server.COVER_STRENGTH_TIGHT)
+        self.assertEqual(server.creativity_to_cover_strength(1.0), server.COVER_STRENGTH_LOOSE)
+        self.assertGreater(server.creativity_to_cover_strength(0.3), server.creativity_to_cover_strength(0.8))

@@ -3,6 +3,7 @@ import type { BandState, Genre, Instrument, Pattern } from '../types';
 import { Bandleader, type PlayersLike } from '../band/bandleader';
 import { ToneClock } from '../band/clock';
 import type { BandEngine } from './engine';
+import type { FormResult } from '../band/form';
 
 /** Wraps the existing Bandleader + ToneClock + Players behind the BandEngine interface. */
 export class PatternEngine implements BandEngine {
@@ -10,10 +11,12 @@ export class PatternEngine implements BandEngine {
   readonly bpmStep = 0.5;
   private band: Bandleader;
   onBar?: (bar: number) => void;
+  onForm?: (bar: number, form: FormResult) => void;
 
   constructor(players: PlayersLike, patterns: Record<Genre, Record<Instrument, Pattern>>) {
     this.band = new Bandleader(new ToneClock(), players, patterns, Date.now(), () => Tone.getContext().currentTime);
     this.band.onBarCb = bar => this.onBar?.(bar);
+    this.band.onFormCb = (bar, form) => this.onForm?.(bar, form);
   }
 
   async start(bpm: number, firstBarAt: number): Promise<void> {

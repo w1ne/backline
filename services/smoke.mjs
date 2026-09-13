@@ -1,14 +1,17 @@
 // One-command live smoke test for the AMT service and relay: run after every pod deploy, or as
 // a watchdog check. Checks relay /health, then runs the arpeggio and hummed-melody clips through
 // the relay's AMT websocket (reusing bench/streammuse/tools/tick_latency.mjs's runClip) and
-// asserts on latency/quality thresholds. Prints a compact table; exits non-zero on any failure,
+// asserts on latency/quality thresholds, then a mid-session tempo change via `set {bpm}` that
+// has to keep the socket open. Prints a compact table; exits non-zero on any failure,
 // with the failing line printed first.
 //
 //   npm run smoke:live
 //   node services/smoke.mjs [relayBase]
 //
 // relayBase defaults to https://backline-relay.shylenkoa.workers.dev (health at /health, AMT ws
-// at /amt). Total runtime target: well under 90 s (two 8-bar clips at 90 bpm ~= 21s each).
+// at /amt). Total runtime target: well under 90 s (two 8-bar clips at 90 bpm ~= 21s each, the
+// tempo-change run ~= 20s).
+import WebSocket from 'ws';
 import { runClip } from '../bench/streammuse/tools/tick_latency.mjs';
 
 const RELAY_BASE = process.argv[2] ?? 'https://backline-relay.shylenkoa.workers.dev';
@@ -23,6 +26,8 @@ const CHORD_ACCURACY_MIN = 0.4;
 
 const failures = [];
 const rows = [];
+/** Set when the AMT pod answers but its model is still loading; exits 2 rather than 1. */
+let notReady = false;
 
 function check(label, ok, detail) {
   rows.push({ label, ok, detail });
@@ -39,15 +44,25 @@ async function checkHealth() {
     return;
   }
   check('relay health', body.relay === 'ok', `relay=${body.relay}`);
-  check('amt health', body.amt === true, `amt=${body.amt}`);
-  check('acestep health', body.acestep === true, `acestep=${body.acestep}`);
+  check('amt health', body.amt === true, `amt=${body.amt}${body.amtState ? ` (${body.amtState})` : ''}`);
+  check('acestep health', body.acestep === true, `acestep=${body.acestep}${body.acestepState ? ` (${body.acestepState})` : ''}`);
+  // A 503 from the pod (relayed as amtState "loading") is the model still loading after a
+  // restart: not ready, but not broken. Reported separately so a caller can wait instead of alarm.
+  if (body.amt !== true && body.amtState === 'loading') notReady = true;
 }
 
 async function checkClip(clip) {
   const r = await runClip({ url: WS_URL, bars: BARS, clip, lookaheadBeats: LOOKAHEAD });
 
-  check(`${clip}: no empty plans past listen window`, r.emptyModel.length === 0,
-    `${r.emptyModel.length} empty of ${r.modelPlans.length} model plans`);
+  // Policy (architecture review, decision 1): a single empty window is a rest; two in a row
+  // are filled by the service. So the smoke fails on consecutive empties, not on one.
+  let consecutiveEmpty = 0, maxConsecutiveEmpty = 0;
+  for (const p of r.modelPlans) {
+    consecutiveEmpty = p.notes?.length ? 0 : consecutiveEmpty + 1;
+    maxConsecutiveEmpty = Math.max(maxConsecutiveEmpty, consecutiveEmpty);
+  }
+  check(`${clip}: no two consecutive empty plans past listen window`, maxConsecutiveEmpty < 2,
+    `${r.emptyModel.length} empty of ${r.modelPlans.length} model plans, longest run ${maxConsecutiveEmpty}`);
 
   const mean = r.cueToPlanModel.mean;
   const p95 = r.cueToPlanModel.p95;
@@ -68,6 +83,66 @@ async function checkClip(clip) {
   return r;
 }
 
+// A mid-session tempo change through `set {bpm}` (90 -> 100 at bar 4 of 8): the socket has to
+// stay open and plans have to keep coming on the new beat grid. This used to be a reconnect,
+// an empty session and the eight-beat listen gate again, every time the singer drifted.
+async function checkTempoChange() {
+  const BPM_A = 90, BPM_B = 100, BARS = 8, CHANGE_BEAT = 16, LISTEN = 8;
+  const ws = new WebSocket(WS_URL, { headers: { Origin: 'https://www.duetai.art' } });
+  const sleep = ms => new Promise(r => setTimeout(r, Math.max(0, ms)));
+  let ready = null;
+  const plans = [];
+  const errors = [];
+  let closed = null;
+  ws.on('message', raw => {
+    const m = JSON.parse(raw.toString());
+    if (m.type === 'ready') ready = m;
+    else if (m.type === 'plan') plans.push({ ...m, at: Date.now() });
+    else if (m.type === 'error') errors.push(m.message);
+  });
+  ws.on('close', (code, reason) => { closed = { code, reason: reason.toString() }; });
+  try {
+    await new Promise((res, rej) => { ws.on('open', res); ws.on('error', rej); });
+  } catch (err) {
+    check('tempo-change: socket opens', false, err.message);
+    return;
+  }
+  ws.send(JSON.stringify({ type: 'start', bpm: BPM_A, key: 'A minor', genre: 'lofi',
+    lookaheadBeats: LOOKAHEAD, commitBeats: 2, listenBeats: LISTEN }));
+  ws.send(JSON.stringify({ type: 'set', bpm: BPM_A, key: 'A minor', creativity: 0.3, amount: 1,
+    enabledRoles: { keys: true, bass: true, lead: false } }));
+  await sleep(500);
+  check('tempo-change: server takes set {bpm}', ready?.setBpm === true, `ready=${JSON.stringify(ready)}`);
+
+  // One A-minor scale note per beat, absolute beats; wall-clock per beat follows the tempo.
+  const scale = [57, 59, 60, 62, 64, 65, 67, 69];
+  let bpm = BPM_A;
+  let changedAt = null;
+  let t = Date.now();
+  for (let beat = 0; beat < BARS * 4; beat += 2) {
+    if (beat === CHANGE_BEAT) {
+      bpm = BPM_B;
+      ws.send(JSON.stringify({ type: 'set', bpm, key: 'A minor', creativity: 0.3, amount: 1,
+        enabledRoles: { keys: true, bass: true, lead: false } }));
+      changedAt = Date.now();
+    }
+    ws.send(JSON.stringify({ type: 'notes', notes: [
+      { beat, pitch: scale[beat % scale.length], dur: 1, vel: 0.7 },
+      { beat: beat + 1, pitch: scale[(beat + 1) % scale.length], dur: 1, vel: 0.7 }] }));
+    ws.send(JSON.stringify({ type: 'tick', beat }));
+    t += 2 * 60000 / bpm;
+    await sleep(t - Date.now());
+  }
+  await sleep(2000);
+  const after = plans.filter(p => changedAt !== null && p.at > changedAt);
+  const afterWithNotes = after.filter(p => p.notes?.length);
+  check('tempo-change: socket stays open across set {bpm}', closed === null && errors.length === 0,
+    closed ? `closed ${closed.code} ${closed.reason}` : errors.length ? `error: ${errors[0]}` : 'open');
+  check('tempo-change: plans keep coming after the change', after.length >= 6 && afterWithNotes.length >= 4,
+    `${after.length} plans after the change, ${afterWithNotes.length} with notes`);
+  ws.close();
+}
+
 async function main() {
   const t0 = Date.now();
   await checkHealth();
@@ -77,6 +152,7 @@ async function main() {
   if (healthOk) {
     await checkClip('arpeggio');
     await checkClip('melody');
+    await checkTempoChange();
   } else {
     check('clips skipped', false, 'relay/amt/acestep health failed, skipping clip runs');
   }
@@ -92,6 +168,10 @@ async function main() {
 
   if (failures.length) {
     console.error('');
+    if (notReady) {
+      console.error('SMOKE NOT READY: amt is still loading its model (503); wait and re-run');
+      process.exit(2);
+    }
     console.error(`SMOKE FAILED (${failures.length} failure${failures.length > 1 ? 's' : ''}):`);
     console.error(`  ${failures[0]}`);
     for (const f of failures.slice(1)) console.error(`  ${f}`);

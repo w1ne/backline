@@ -242,6 +242,35 @@ describe('Bandleader song form', () => {
     expect(clock.stopped).toBe(false);
   });
 
+  it('reports each bar\'s section and the ending through onFormCb, after the bar\'s dynamics landed', () => {
+    const { clock, b } = mkSpy();
+    const seen: { bar: number; section: string; shouldStop: boolean }[] = [];
+    b.onFormCb = (bar, form) => seen.push({ bar, section: form.section, shouldStop: form.shouldStop });
+    // The app pushes this bar's dynamics from onBarCb; the form must be ticked after that.
+    b.onBarCb = bar => { if (bar === 2) b.set({ dynamics: { ...IDLE_DYNAMICS, silenceBeats: 16 } }); };
+    clock.tick(0); clock.tick(1); clock.tick(2); clock.tick(3);
+    expect(seen).toEqual([
+      { bar: 0, section: 'intro', shouldStop: false },
+      { bar: 1, section: 'intro', shouldStop: false },
+      { bar: 2, section: 'ending', shouldStop: true },
+      { bar: 3, section: 'ended', shouldStop: false },
+    ]);
+    b.start(120, 0);
+    clock.tick(0);
+    expect(seen[4]).toEqual({ bar: 0, section: 'intro', shouldStop: false });
+  });
+
+  it('still reports the section for a bar whose start time is already past', () => {
+    const clock = new FakeClock();
+    const b = new Bandleader(clock, { schedule: () => {} }, PATTERNS, 1, () => 100);
+    b.setEnabled('drums', true);
+    b.start(120, 0);
+    const sections: string[] = [];
+    b.onFormCb = (_bar, form) => sections.push(form.section);
+    clock.tick(0); clock.tick(1); clock.tick(2);
+    expect(sections).toEqual(['intro', 'intro', 'groove']);
+  });
+
   it('restarting the band resets the form back to intro', () => {
     const { clock, seen, b } = mkSpy();
     clock.tick(0); clock.tick(1);

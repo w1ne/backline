@@ -1,7 +1,7 @@
 import { mulberry32 } from '../rng';
 import type { Arrangement, BarContext, Instrument, NoteEvent, Pattern } from '../types';
 import { DRUM } from '../types';
-import { chordDegreeToMidi, chordScale, sameChord } from '../listener/chordDetector';
+import { chordDegreeToMidi, chordScale, sameChord } from '../music/chords';
 import { chordAt } from './toolkit';
 
 /** Where a bar sits in the song's 4-bar phrase / 8-bar section structure. Pure function of

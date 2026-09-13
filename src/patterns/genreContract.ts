@@ -3,7 +3,7 @@ import type { Chord, Dynamics, Genre, Instrument, Pattern, NoteEvent } from '../
 import { INSTRUMENTS } from '../types';
 import { mulberry32 } from '../rng';
 import { scaleOf } from '../music/scales';
-import { chordTones } from '../listener/chordDetector';
+import { chordTones } from '../music/chords';
 const DRUMS = new Set([36, 38, 42, 46, 49]);
 const KEY = { root: 7, mode: 'major' as const };
 /**

@@ -28,9 +28,11 @@ const PITCH_RMS_FLOOR = 0.01;
 class SimSource implements Source {
   note!: (m: number, v: number, t: number) => void;
   pitch?: (p: StablePitch | null) => void;
-  async start(onNote: SimSource['note'], _onLevel: (l: number) => void, onPitch?: SimSource['pitch']) {
+  flux?: (f: number, t: number) => void;
+  async start(onNote: SimSource['note'], _onLevel: (l: number) => void, onPitch?: SimSource['pitch'], onFlux?: SimSource['flux']) {
     this.note = onNote;
     this.pitch = onPitch;
+    this.flux = onFlux;
   }
   stop() {}
 }
@@ -163,6 +165,7 @@ export function runClip(
 
     // --- onset path: same 1024-sample analysis frame ending at this hop ---
     const { flux, rms } = pre.hops[h];
+    source.flux?.(flux, t);
     const at = onset.pushFlux(flux, t, rms);
     if (at !== null) {
       currentSimT = at;

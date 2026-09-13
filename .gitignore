@@ -16,3 +16,11 @@ COMMIT.pi
 # MIR-1K audio (research use; not redistributed) and rendered mixes
 bench/realvoice/data/
 bench/realvoice/out/
+
+# tempo bench: reference-library venv and outputs
+bench/tempo/.venv/
+bench/tempo/out/
+
+# Downloaded, integrity-checked AMT assets are bundled at build time.
+public/samples/amt/
+test-results/
