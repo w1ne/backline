@@ -207,3 +207,45 @@ class SongModeFollowsSwitchesTest(unittest.TestCase):
         base = dict(bpm=100, key='A minor', genre='lofi', instruments=['drums', 'bass'])
         requests, _ = self.drive([base, dict(base, key='C major'), dict(base, key='C major', bpm=125)])
         self.assertEqual([p.task_type for p in requests], ['text2music', 'text2music', 'text2music'])
+
+
+class VoiceFollowingTest(unittest.TestCase):
+    def test_segment_uses_cover_on_the_sung_audio_once_a_full_segment_was_heard(self):
+        requests, written = [], []
+
+        class Model:
+            def generate(self, params):
+                requests.append(params)
+                return np.zeros((round(params.audio_duration * server.TARGET_SR), 2), dtype=np.float32)
+
+        def write(audio, sr=server.TARGET_SR):
+            written.append((audio.shape, sr))
+            return '/tmp/backline-test-source.wav'
+
+        async def nothing(*_):
+            pass
+
+        async def run():
+            session = server.Session(Model())
+            session.ingest_audio(b'JUNK' + b'\x00' * 100)          # unknown frame is ignored
+            self.assertEqual(len(session.hum), 0)
+            msg = dict(bpm=120, bars=2, key='C major', instruments=['drums', 'bass'])
+            await session.handle_block(dict(seq=1, **msg), nothing, nothing)   # nothing sung yet
+            # 32 s of singing = one 16-bar segment at 120 bpm
+            pcm = (np.zeros(32 * server.HUM_SR, dtype='<i2')).tobytes()
+            for i in range(0, len(pcm), 8000):
+                session.ingest_audio(server.HUM_MAGIC + pcm[i:i + 8000])
+            self.assertEqual(len(session.hum), 32 * server.HUM_SR)
+            session.song = None                                     # force the next render
+            await session.handle_block(dict(seq=2, **msg), nothing, nothing)
+
+        with patch.object(server, 'SONG_MODE', True), patch.object(server, 'BLOCK_V2', True), \
+             patch.object(server, 'SONG_COVER', True), patch.object(server, 'pace_sleep', nothing), \
+             patch.object(server, '_write_temp_wav', side_effect=write), patch.object(server.os, 'unlink'):
+            asyncio.run(run())
+
+        self.assertEqual([p.task_type for p in requests], ['text2music', 'cover'])
+        self.assertEqual(requests[1].audio_cover_strength, server.COVER_STRENGTH)
+        self.assertEqual(requests[1].audio_duration, 32)
+        self.assertIsNone(requests[1].repainting_start)
+        self.assertEqual(written[-1], ((32 * server.HUM_SR, 1), server.HUM_SR))

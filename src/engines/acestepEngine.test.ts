@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AceStepEngine, selectBlockInstruments } from './acestepEngine';
+import { AceStepEngine, selectBlockInstruments, encodeMicFrame, MIC_FRAME_MAGIC, MIC_STREAM_RATE } from './acestepEngine';
 import type { Instrument } from '../types';
 
 const allOn: Record<Instrument, boolean> = { drums: true, bass: true, keys: true, lead: true };
@@ -297,5 +297,21 @@ describe('selectBlockInstruments', () => {
     const enabled: Record<Instrument, boolean> = { drums: true, bass: true, keys: true, lead: false };
     const sel = selectBlockInstruments({ intensity: 0.85, space: false }, enabled);
     expect(sel.instruments).toEqual(['drums', 'bass']);
+  });
+});
+
+
+describe('encodeMicFrame', () => {
+  it('decimates to 16 kHz PCM16 behind the MIC0 prefix', () => {
+    const src = new Float32Array(4800);
+    for (let i = 0; i < src.length; i++) src[i] = Math.sin((2 * Math.PI * 440 * i) / 48000);
+    const frame = encodeMicFrame(src, 48000);
+    expect(String.fromCharCode(...frame.slice(0, 4))).toBe(MIC_FRAME_MAGIC);
+    expect((frame.length - 4) / 2).toBe(src.length / (48000 / MIC_STREAM_RATE));
+    const pcm = new Int16Array(frame.buffer, 4, (frame.length - 4) / 2);
+    let peak = 0;
+    for (const v of pcm) peak = Math.max(peak, Math.abs(v));
+    expect(peak).toBeGreaterThan(30000);
+    expect(peak).toBeLessThanOrEqual(32768);
   });
 });

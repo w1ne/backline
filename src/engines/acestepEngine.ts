@@ -8,6 +8,32 @@ import type { MorphRoute } from '../audio/routing';
 import { RELAY_URL } from '../config';
 
 const CUT_FADE_SEC = 0.15;
+/** the player's voice goes up to the server as 16 kHz mono PCM16 frames with this prefix */
+export const MIC_FRAME_MAGIC = 'MIC0';
+export const MIC_STREAM_RATE = 16000;
+const MIC_PROCESSOR_SIZE = 4096;
+
+/**
+ * Decimates a mono float block from `fromRate` to `toRate` (linear interpolation) and packs
+ * it as little-endian PCM16 behind MIC_FRAME_MAGIC. Pure, so it is unit-tested on its own.
+ */
+export function encodeMicFrame(input: Float32Array, fromRate: number, toRate = MIC_STREAM_RATE): Uint8Array {
+  const ratio = fromRate / toRate;
+  const n = Math.floor(input.length / ratio);
+  const out = new Uint8Array(MIC_FRAME_MAGIC.length + n * 2);
+  for (let i = 0; i < MIC_FRAME_MAGIC.length; i++) out[i] = MIC_FRAME_MAGIC.charCodeAt(i);
+  const view = new DataView(out.buffer, MIC_FRAME_MAGIC.length);
+  for (let i = 0; i < n; i++) {
+    const pos = i * ratio;
+    const j = Math.floor(pos);
+    const frac = pos - j;
+    const a = input[j] ?? 0;
+    const b = input[j + 1] ?? a;
+    const v = Math.max(-1, Math.min(1, a + (b - a) * frac));
+    view.setInt16(i * 2, v < 0 ? v * 32768 : v * 32767, true);
+  }
+  return out;
+}
 const KEEPALIVE_MS = 30000;
 const BARS_PER_BLOCK = 2;
 /** how many recent half-bar chords ride along in the block request as a progression */
@@ -123,8 +149,12 @@ export class AceStepEngine implements BandEngine {
 
   private bandRoute: MorphRoute = 'main';
   private morphNode?: AudioNode;
+  private micTap?: ScriptProcessorNode;
+  private micSink?: GainNode;
 
-  constructor(private ctx: AudioContext) {}
+  /** `micNode` hands back the live mic source node (undefined until the mic is running); its
+   *  audio is streamed to the server so the band can follow what the player sings. */
+  constructor(private ctx: AudioContext, private micNode?: () => AudioNode | undefined) {}
 
   /** Sends the generated stream to the main output, the MORPH output, or both. */
   routeBand(route: MorphRoute, morphNode?: AudioNode): void {
@@ -159,6 +189,7 @@ export class AceStepEngine implements BandEngine {
     this.ws.binaryType = 'arraybuffer';
 
     this.ws.addEventListener('open', () => {
+      this.startMicStream();
       this.requestBlock();
       this.keepalive = setInterval(() => {
         this.send({ type: 'ping' });
@@ -190,8 +221,39 @@ export class AceStepEngine implements BandEngine {
     return this.player?.getAnalyser();
   }
 
+  /** Taps the mic and ships it to the server, 16 kHz mono PCM16, while the socket is open. */
+  private startMicStream(): void {
+    const src = this.micNode?.();
+    if (!src || this.micTap || typeof this.ctx.createScriptProcessor !== 'function') return;
+    const tap = this.ctx.createScriptProcessor(MIC_PROCESSOR_SIZE, 1, 1);
+    // a muted sink keeps the processor alive without feeding the mic to the speakers
+    const sink = this.ctx.createGain();
+    sink.gain.value = 0;
+    tap.onaudioprocess = ev => {
+      if (this.ws?.readyState !== WebSocket.OPEN) return;
+      this.ws.send(encodeMicFrame(ev.inputBuffer.getChannelData(0), this.ctx.sampleRate));
+    };
+    src.connect(tap);
+    tap.connect(sink);
+    sink.connect(this.ctx.destination);
+    this.micTap = tap;
+    this.micSink = sink;
+  }
+
+  private stopMicStream(): void {
+    if (this.micTap) {
+      this.micTap.onaudioprocess = null;
+      try { this.micNode?.()?.disconnect(this.micTap); } catch { /* already gone */ }
+      this.micTap.disconnect();
+    }
+    this.micSink?.disconnect();
+    this.micTap = undefined;
+    this.micSink = undefined;
+  }
+
   stop(): void {
     this.stopping = true;
+    this.stopMicStream();
     if (this.startTimer !== undefined) clearTimeout(this.startTimer);
     this.startTimer = undefined;
     if (this.barTimer !== undefined) clearInterval(this.barTimer);

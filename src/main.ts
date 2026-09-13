@@ -295,7 +295,7 @@ function makeBand(engine: EngineChoice): BandEngine {
   accompActivity.clear();
   store.update({activeParts: {}, accompActive: {}, modelLatencyMs:null, responseLatencyMs:null, queueLatencyMs:null, requestAgeMs:null, tooLate:0, accompanimentStatus: 'Listening'});
   if (engine === 'lyria') return new LyriaEngine(players.rawContext());
-  if (engine === 'acestep') return new AceStepEngine(players.rawContext());
+  if (engine === 'acestep') return new AceStepEngine(players.rawContext(), () => mic?.sourceNode);
   if (engine === 'amt') return new AmtEngine(players, listener!, undefined, undefined, undefined, () => outputLatencyMs(players.rawContext()));
   return new PatternEngine(players, PATTERNS);
 }
