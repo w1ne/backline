@@ -155,10 +155,10 @@ function skeleton(): string {
         <span class="lcd" id="lcd"></span>
         <div class="bar-input">
           <p class="connection-line" id="input-status"></p>
+          <p class="connection-line band-line"><span id="band-status" role="status"></span><span id="model-latency"></span></p>
           <button type="button" id="enable-audio" class="audio-start">Enable sound</button>
         </div>
       </div>
-      <div class="section-heading band-heading"><div><h2>Your band</h2><p id="band-status" role="status"></p></div><span id="model-latency"></span></div>
       <div class="readout">
         <div class="ro-tempo"><small>Tempo</small><strong id="ro-tempo">&mdash;</strong></div>
         <div class="ro-side">

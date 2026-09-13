@@ -1915,8 +1915,9 @@ body {
 .instrument-controls select { width: 100%; min-width: 0; border: 2px solid var(--ink); border-radius: 8px; background: var(--panel); padding: 10px; font: 14px var(--mono); }
 .instrument-controls input[type=range] { accent-color: var(--ink); width: 100%; min-height: 36px; margin: 0; }
 .instrument-controls output { float: right; }
-.band-heading { padding: 0 4px; }
-#model-latency { font-size: 11px; line-height: 1.5; }
+.band-line { display: flex; gap: 12px; flex-wrap: wrap; font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+.band-line:empty, .band-line > span:empty { display: none; }
+#model-latency { opacity: .7; }
 .screen[data-live] .readout { flex: none; }
 .screen[data-live] .row2 { grid-auto-flow: row; grid-template-columns: .85fr .85fr 1.2fr 1.2fr; }
 .screen[data-live] .row2 .zone { height: auto; min-width: 0; }
