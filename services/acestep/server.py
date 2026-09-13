@@ -55,6 +55,11 @@ log = logging.getLogger("acestep-server")
 PORT = int(os.environ.get("PORT", "8080"))
 MODEL_DIR = os.environ.get("ACE_MODEL_DIR", "/workspace/models")
 ACE_REPO_DIR = os.environ.get("ACE_REPO_DIR", "/opt/ace-step")
+# DiT checkpoint folder under ACESTEP_CHECKPOINTS_DIR. The 4B XL-turbo renders a
+# 4.8 s block in ~1.2 s on an L40S (the 2B turbo took ~1.6 s) with clearly better
+# fidelity, so it is the default. Weights on the pod are a bf16 conversion of the
+# 20 GB fp32 HF repo (services/acestep/README.md).
+DIT_MODEL = os.environ.get("ACE_DIT_MODEL", "acestep-v15-xl-turbo")
 MODEL_OUTPUT_SR = 44100  # ACE-Step 1.5 renders at 44.1 kHz; we resample to 48 kHz for the client.
 TARGET_SR = 48000
 INFERENCE_STEPS = 8
@@ -239,6 +244,14 @@ class AceStepModel:
         # the default <ace repo>/checkpoints.
         env = dict(os.environ)
         env.setdefault("ACESTEP_CHECKPOINTS_DIR", self.model_dir)
+        env.setdefault("ACESTEP_CONFIG_PATH", DIT_MODEL)
+        # No 5Hz LM: it only rewrote the caption (bpm/key come from the player),
+        # cost ~2 s of every block, and on a big GPU acestep-api auto-downloads
+        # the 8 GB lm-4B for it -- which filled the 40 GB pod disk to 100%.
+        env.setdefault("ACESTEP_INIT_LLM", "false")
+        # A full disk also breaks tempfile lookup; the pod has 1.5 TB of RAM.
+        if os.path.isdir("/dev/shm"):
+            env.setdefault("TMPDIR", "/dev/shm")
         # Invoke the venv's acestep-api binary directly rather than "uv run
         # acestep-api": "uv run" re-syncs the environment against
         # pyproject.toml/uv.lock on every invocation, which silently reverts

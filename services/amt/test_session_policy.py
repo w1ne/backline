@@ -39,10 +39,11 @@ class Committer:
 def session_class(generate):
     tree = ast.parse(Path(__file__).with_name('server.py').read_text())
     node = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'Session')
+    apply_node = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'apply_session_message')
     namespace = dict(MusicalIdentity=MusicalIdentity, Arranger=Arranger, HarmonyBrain=HarmonyBrain, PerformanceHistory=PerformanceHistory,
                      sampling_for=sampling_for, plan_window=plan_window, ACCOMP_BIAS=2,
-                     PLAN_LOOKAHEAD_BEATS=4., BEATS_PER_BAR=4., CONTEXT_BEATS=16., FILL_UNTIL_HEARD_BEATS=8.,
-                     DEFAULT_PRESETS=('strings',), MELODY_INSTR=0, TIME_OFFSET=0,
+                     PLAN_LOOKAHEAD_BEATS=4., BEATS_PER_BAR=4., CONTEXT_BEATS=16., FILL_UNTIL_HEARD_BEATS=8., RESUME_LISTEN_BEATS=2.,
+                     DEFAULT_PRESETS=('strings',), MELODY_INSTR=0, TIME_OFFSET=0, DUR_OFFSET=0, MAX_DUR=1000,
                      TIME_RESOLUTION=100, DEFAULT_RTT_S=.25, DEADLINE_MARGIN_S=.15, DEADLINE_FLOOR_S=.1, SAMPLER='cached',
                      make_event=encode, AccompanimentCommitter=Committer,
                      resolve_instruments=lambda names: tuple(p for name in names for p in PRESETS.get(name, ())),
@@ -50,7 +51,8 @@ def session_class(generate):
                      generate_duet=generate, parse_events=lambda result: result,
                      ops=SimpleNamespace(clip=lambda *a, **kw: [], pad=lambda *a, **kw: []),
                      time=__import__('time'), log=logging.getLogger('test'))
-    exec(compile(ast.Module(body=[node], type_ignores=[]), 'server.py', 'exec'), namespace)
+    exec(compile(ast.Module(body=[node, apply_node], type_ignores=[]), 'server.py', 'exec'), namespace)
+    namespace['Session'].apply_message = staticmethod(namespace['apply_session_message'])
     return namespace['Session']
 
 
@@ -184,6 +186,48 @@ class SessionPolicyTests(unittest.TestCase):
         self.assertIs(snapshot.brain, snapshot.performance.on_note.__self__)
         self.assertEqual(self.session.history, [0, 25, 60])
         self.assertEqual(snapshot.history, [0, 150, 60])
+
+    def test_set_bpm_rescales_seconds_and_keeps_beats(self):
+        # Two beats heard at 120 bpm (0.5 s/beat), one accompaniment window committed ...
+        self.session.update_human_notes([{'id': 'n1', 'dur': 1}])
+        self.session.add_human_notes([{'id': 'n2', 'beat': 2, 'pitch': 64, 'dur': 1}])
+        self.model_notes = [(2.0, .5, 24, 48)]
+        self.session.generate_tick_plan(2)
+        self.model_notes = []
+        self.assertEqual(self.session.history, [0, 50, 60, 100, 50, 64, 200, 50, 24 * 128 + 48])
+        horizon, heard, listen = self.session.committed_horizon_beats, self.session.brain.notes_heard, self.session.listen_beats
+        # ... then the tempo halves: every second doubles, nothing measured in beats moves.
+        self.session.apply_message(self.session, {'type': 'set', 'bpm': 60})
+        self.assertEqual(self.session.bpm, 60)
+        self.assertAlmostEqual(self.session.beat_s, 1.0)
+        self.assertAlmostEqual(self.session.performance.beat_seconds, 1.0)
+        self.assertEqual(self.session.history, [0, 100, 60, 200, 100, 64, 400, 100, 24 * 128 + 48])
+        self.assertEqual(self.session.human_notes, [(0., 1., 60), (2., 1., 64)])
+        self.assertEqual((self.session.committed_horizon_beats, self.session.brain.notes_heard, self.session.listen_beats),
+                         (horizon, heard, listen))
+        self.assertEqual(self.session.first_human_beat, 0)
+        # A release after the change is encoded at the new tempo, in the right token slot.
+        self.session.update_human_notes([{'id': 'n2', 'dur': 2}])
+        self.assertEqual(self.session.history[3:6], [200, 200, 64])
+        # The next window generates in the new seconds domain.
+        self.session.generate_tick_plan(4)
+        self.assertEqual(self.calls[-1][1:3], (6.0, 8.0))
+
+    def test_set_without_bpm_or_same_bpm_leaves_history_alone(self):
+        self.session.update_human_notes([{'id': 'n1', 'dur': 1}])
+        before = list(self.session.history)
+        self.session.apply_message(self.session, {'type': 'set', 'creativity': .5})
+        self.session.apply_message(self.session, {'type': 'set', 'bpm': 120})
+        self.session.apply_message(self.session, {'type': 'set', 'bpm': 'fast'})
+        self.session.apply_message(self.session, {'type': 'set', 'bpm': 0})
+        self.assertEqual(self.session.history, before)
+        self.assertEqual(self.session.bpm, 120)
+
+    def test_resume_start_listens_two_beats_not_eight(self):
+        self.session.apply_message(self.session, {'type': 'start', 'bpm': 100, 'listenBeats': 8, 'resume': True})
+        self.assertEqual(self.session.listen_beats, 2)
+        self.session.apply_message(self.session, {'type': 'start', 'bpm': 100, 'listenBeats': 8})
+        self.assertEqual(self.session.listen_beats, 8)
 
 
 if __name__ == '__main__':

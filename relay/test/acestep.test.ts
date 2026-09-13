@@ -48,19 +48,19 @@ describe("handleAceStep", () => {
     expect(await resp.text()).toBe("acestep upstream not configured");
   });
 
-  it("returns 429 on the seventh upgrade from one IP within a minute", async () => {
+  it("returns 429 on the twenty-first upgrade from one IP within a minute", async () => {
     const env = baseEnv(); // 503 means the request passed the gate
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 20; i++) {
       const resp = await handleAceStep(upgradeRequest(), env);
       expect(resp.status).toBe(503);
     }
-    const seventh = await handleAceStep(upgradeRequest(), env);
-    expect(seventh.status).toBe(429);
+    const over = await handleAceStep(upgradeRequest(), env);
+    expect(over.status).toBe(429);
   });
 
   it("counts the cap per client IP, not globally", async () => {
     const env = baseEnv();
-    for (let i = 0; i < 6; i++) await handleAceStep(upgradeRequest(), env);
+    for (let i = 0; i < 20; i++) await handleAceStep(upgradeRequest(), env);
     const other = await handleAceStep(upgradeRequest({ "cf-connecting-ip": "198.51.100.4" }), env);
     expect(other.status).toBe(503);
   });
