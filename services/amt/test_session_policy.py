@@ -15,6 +15,9 @@ from brain import HarmonyBrain, sampling_for
 from performance_history import PerformanceHistory
 
 
+PRESETS = {'strings': (40, 41, 42), 'guitar': (24,), 'sax': (65,)}
+
+
 def encode(t, d, instrument, pitch):
     return [round(t * 100), round(d * 100), instrument * 128 + pitch]
 
@@ -41,7 +44,8 @@ def session_class(generate):
                      DEFAULT_PRESETS=('strings',), MELODY_INSTR=0, TIME_OFFSET=0,
                      TIME_RESOLUTION=100, GENERATION_BUDGET=.8, SAMPLER='cached',
                      make_event=encode, AccompanimentCommitter=Committer,
-                     resolve_instruments=lambda names: tuple(p for name in names for p in {'strings': (40, 41, 42), 'guitar': (24,)}.get(name, ())),
+                     resolve_instruments=lambda names: tuple(p for name in names for p in PRESETS.get(name, ())),
+                     resolve_groups=lambda names: [PRESETS[name] for name in names if name in PRESETS],
                      generate_duet=generate, parse_events=lambda result: result,
                      ops=SimpleNamespace(clip=lambda *a, **kw: [], pad=lambda *a, **kw: []),
                      time=__import__('time'), log=logging.getLogger('test'))
@@ -65,7 +69,22 @@ class SessionPolicyTests(unittest.TestCase):
     def test_successful_empty_model_output_is_rest(self):
         out = self.session.generate_tick_plan(2)
         self.assertEqual(out['plan']['notes'], [])
-        self.assertEqual(len(self.calls), 1)
+        self.assertEqual([c[4] for c in self.calls], [(24,), (40, 41, 42)])
+
+    def test_each_selected_preset_gets_its_own_masked_pass(self):
+        self.session.set_controls({'accompInstruments': ['strings', 'sax', 'guitar']})
+        per_group = {(40, 41, 42): [(2, .5, 42, 48)], (65,): [(2, .5, 65, 67)], (24,): [(2, .5, 24, 64)]}
+        self.model_notes = None
+
+        def generate(*args, **kwargs):
+            self.calls.append(args)
+            return per_group[args[4]]
+        self.session = session_class(generate)(SimpleNamespace())
+        self.session.reset(120, 2, 2, 0, .95, instrument_names=['strings', 'sax', 'guitar'], key='C major')
+        self.session.add_human_notes([{'id': 'n1', 'beat': 0, 'pitch': 60, 'held': True}])
+        notes = self.session.generate_tick_plan(2)['plan']['notes']
+        self.assertEqual([c[4] for c in self.calls], [(40, 41, 42), (65,), (24,)])
+        self.assertEqual(sorted((n['voice'], n['gmInstr']) for n in notes), [('bass', 42), ('keys', 65), ('lead', 24)])
 
     def test_listening_and_zero_amount_do_not_generate_or_fill(self):
         self.session.listen_beats = 20
@@ -95,7 +114,7 @@ class SessionPolicyTests(unittest.TestCase):
         self.assertEqual(self.calls[0][3][:3], [0, 100, 60])
         self.session.update_human_notes([{'id': 'n1', 'dur': 3}])
         self.session.generate_tick_plan(4)
-        self.assertEqual(self.calls[1][3][:3], [0, 150, 60])
+        self.assertEqual(self.calls[-1][3][:3], [0, 150, 60])
         self.assertEqual(len(self.session.human_notes), 1)
         self.assertEqual(self.session.brain.notes_heard, 1)
 
