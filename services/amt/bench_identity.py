@@ -31,7 +31,7 @@ for ci, pitches in enumerate(calls):
         for enabled in (False, True):
             session = Session(model)
             session.reset(120, 2, 2, 0, .95, instrument_names=['guitar'], key='C major')
-            session.set_controls({'amount':1, 'creativity':.3})
+            session.set_controls({'amount':1, 'creativity':.3, 'phraseResponses': True})
             if not enabled: session.identity = Bypass()
             session.add_human_notes([{'id':str(i),'beat':i,'pitch':p,'dur':.5,'source':'midi'} for i,p in enumerate(pitches)])
             torch.manual_seed(seed)

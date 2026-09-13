@@ -59,7 +59,7 @@ class LatestPlanner:
                 if kind == 'start':
                     self.material_controls.clear()
                 for name in ('amount', 'enabledRoles', 'accompInstruments', 'key',
-                             'creativity', 'accompBias', 'genre', 'chord'):
+                             'creativity', 'accompBias', 'genre', 'chord', 'phraseResponses'):
                     if name in msg and msg[name] != self.material_controls.get(name):
                         self.input_revision += 1
                         self.material_controls[name] = copy.deepcopy(msg[name])

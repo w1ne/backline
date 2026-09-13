@@ -216,7 +216,7 @@ def identity_session(pitches, bpm=120):
         return [(start + i * 60 / bpm, .4 * 60 / bpm, instruments[0], 64) for i in range(2)]
     session = session_class(generate)(SimpleNamespace())
     session.reset(bpm, 2, 2, 0, .95, instrument_names=['guitar'], key='C major')
-    session.set_controls({'amount': 1, 'creativity': .3})
+    session.set_controls({'amount': 1, 'creativity': .3, 'phraseResponses': True})
     session.add_human_notes([{'id': str(i), 'beat': i, 'pitch': p, 'dur': .5}
                              for i, p in enumerate(pitches)])
     return session
@@ -262,3 +262,12 @@ def test_no_phrase_answer_after_held_note_or_zero_amount():
         assert not plan.get('phraseResponse')
         if control == 'mute':
             assert plan['notes'] == []
+
+
+def test_older_client_never_receives_an_uncancellable_phrase_response():
+    session = identity_session([60,64,67,64,60,64,67,64])
+    session.set_controls({'phraseResponses': False})
+    plan = session.generate_tick_plan(10)['plan']
+    assert not plan.get('phraseResponse')
+    assert not plan.get('phraseInstrument')
+    assert plan['notes']  # Ordinary AMT backing and section policy still work.

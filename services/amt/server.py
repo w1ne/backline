@@ -227,8 +227,11 @@ class Session:
         self.human_notes = self.performance.notes
         self.identity = MusicalIdentity()
         self.phrase_response = False
+        self.phrase_responses = False
 
     def set_controls(self, msg):
+        if 'phraseResponses' in msg:
+            self.phrase_responses = msg['phraseResponses'] is True
         self.key = msg.get("key", self.key)
         self.brain.set_controls(msg)
         self.space = bool(msg.get("space", self.space))
@@ -399,12 +402,15 @@ class Session:
             (t, d, instr, p) for (t, d, instr, p) in accomp
             if start_tick <= round(t * TIME_RESOLUTION) < commit_end_tick
         ]
-        raw_notes = self.identity.shape(raw_notes, start_beat, commit_end_beat, self.beat_s,
-                                        now_beat, self.creativity, self.section)
-        self.phrase_response = self.identity.response_applied
+        # Older open clients cannot cancel a queued answer when the player resumes.
+        # They retain normal AMT backing and section contrast until refreshed.
+        if self.phrase_responses:
+            raw_notes = self.identity.shape(raw_notes, start_beat, commit_end_beat, self.beat_s,
+                                            now_beat, self.creativity, self.section)
+            self.phrase_response = self.identity.response_applied
         raw_notes = arranger.constrain(raw_notes, start_s, commit_end_s, self.beat_s,
                                        self.space, TIME_RESOLUTION, self.key, self.chord,
-                                       phrase_instrument=self.identity.response_instrument)
+                                       phrase_instrument=self.identity.response_instrument if self.phrase_response else None)
         # (onset_s, dur_s, instr, pitch), trimmed/monophonic per instrument by the committer.
         committed = self.committer.commit(raw_notes)
         self.committed_horizon_beats = commit_end_beat
