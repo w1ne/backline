@@ -1,13 +1,12 @@
 import type { Chord } from '../types';
-import { QUALITY_TONES } from '../listener/chordDetector';
+import { QUALITY_TONES } from './chords';
+import { mod12 } from './pitchClass';
 
 export interface VoiceLeadOpts {
   low: number;
   high: number;
   voices?: number;
 }
-
-const mod12 = (n: number): number => ((n % 12) + 12) % 12;
 
 /** All concrete MIDI pitches within [low, high] whose pitch class is one of the chord's tones. */
 function candidatesFor(chord: Chord, low: number, high: number): number[] {

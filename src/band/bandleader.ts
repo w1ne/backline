@@ -1,6 +1,6 @@
 import type { BandState, Chord, Genre, Instrument, NoteEvent, Pattern } from '../types';
 import { INSTRUMENTS, IDLE_DYNAMICS, DRUM } from '../types';
-import { tonicTriad } from '../listener/chordDetector';
+import { tonicTriad } from '../music/chords';
 import { colorChord } from '../music/chordColor';
 import { mulberry32 } from '../rng';
 import type { ClockLike } from './clockTypes';

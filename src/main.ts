@@ -24,6 +24,7 @@ import { PATTERNS } from './patterns';
 import { INSTRUMENTS, IDLE_DYNAMICS } from './types';
 import type { AccompPreset, Chord } from './types';
 import { GM_INSTRUMENTS } from './players/gmInstruments';
+import { mod12 } from './music/pitchClass';
 
 /** AMT's instrument-preference sampling bias; not user-adjustable. The server derives its
  *  sampling temperature from the Creativity knob. */
@@ -131,7 +132,7 @@ function tickBeat(beat: number): void {
   // A mic-only singer has no keyboard chord to lean on, so the band knows to keep the keys
   // comp plain and out of the sung note's way (see colorChord / chordPattern).
   const pitch = listener.input.pitch;
-  const sungPitchClass = pitch?.stable ? ((pitch.midi % 12) + 12) % 12 : undefined;
+  const sungPitchClass = pitch?.stable ? mod12(pitch.midi) : undefined;
   // `source`/`sungPitchClass` are Bandleader-only fields (see src/band/bandleader.ts); cast
   // rather than widen BandEngine.set's signature, since the other engines (Lyria/ACE/AMT)
   // don't and shouldn't know about them -- they simply ignore the extra properties.

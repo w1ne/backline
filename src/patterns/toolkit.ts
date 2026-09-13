@@ -1,14 +1,11 @@
 import type { BarContext, Chord, NoteEvent, Pattern, Key } from '../types';
 import { DRUM } from '../types';
 import { pentaOf } from '../music/scales';
-import { chordDegreeToMidi, tonicTriad } from '../listener/chordDetector';
+import { chordDegreeToMidi, tonicTriad } from '../music/chords';
+import { pcDistance } from '../music/pitchClass';
 import { voiceLead } from '../music/voiceLeading';
 
 export interface Step { t: number; p: number; vel?: number; dur?: number }
-
-const mod12 = (n: number): number => ((n % 12) + 12) % 12;
-/** Semitone distance between two pitch classes, folded to the shorter way round (0-6). */
-const pcDistance = (a: number, b: number): number => { const d = Math.abs(mod12(a) - mod12(b)); return Math.min(d, 12 - d); };
 
 /** The chord in force at `beat` of this bar: the live one if the app supplied it, else the
  *  bar's chord, else the key's tonic triad — so a pattern always has something to sit on. */

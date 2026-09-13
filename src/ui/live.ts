@@ -2,18 +2,17 @@ import { GM_INSTRUMENTS } from '../players/gmInstruments';
 import { GENRES, INSTRUMENTS, ACCOMP_ROW } from '../types';
 import type { AccompPreset, Genre, Instrument } from '../types';
 import { SOUNDS, SOUND_GROUPS, type MonitorSound } from '../players/soundCatalog';
-import { keyName } from '../music/scales';
-import { chordName } from '../listener/chordDetector';
+import { keyName, mod12, NOTE_NAMES } from '../music/pitchClass';
+import { chordName } from '../music/chords';
 import { DEBUG } from '../debug';
 import type { AppState, Store } from './state';
 import type { SourceState } from '../listener/listener';
 import { shortDeviceName } from '../audio/devices';
 import { isPhoneUA } from '../listener/micConstraints';
 
-const KEY_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const ALL_KEYS: { root: number; mode: 'major' | 'minor' }[] = [
-  ...KEY_NAMES.map((_, root) => ({ root, mode: 'major' as const })),
-  ...KEY_NAMES.map((_, root) => ({ root, mode: 'minor' as const })),
+  ...NOTE_NAMES.map((_, root) => ({ root, mode: 'major' as const })),
+  ...NOTE_NAMES.map((_, root) => ({ root, mode: 'minor' as const })),
 ];
 
 export interface LiveActions {
@@ -204,7 +203,7 @@ function skeleton(): string {
               <option value="auto">auto</option>
               ${ALL_KEYS.map(
                 k =>
-                  `<option value="${k.root}-${k.mode}">${KEY_NAMES[k.root]} ${k.mode === 'major' ? 'maj' : 'min'}</option>`,
+                  `<option value="${k.root}-${k.mode}">${keyName(k)}</option>`,
               ).join('')}
             </select>
           </div>
@@ -266,7 +265,7 @@ function skeleton(): string {
 function hearingLabel(s: AppState): string {
   const p = s.input.pitch;
   if (!p || s.micMuted) return '';
-  return ` · HEARING ${KEY_NAMES[((p.midi % 12) + 12) % 12]}${Math.floor(p.midi / 12) - 1}`;
+  return ` · HEARING ${NOTE_NAMES[mod12(p.midi)]}${Math.floor(p.midi / 12) - 1}`;
 }
 
 function wireControls(screen: HTMLElement, store: Store): void {

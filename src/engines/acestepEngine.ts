@@ -1,21 +1,19 @@
 import type { BandState, Chord, Dynamics, Instrument, Key } from '../types';
 import { IDLE_DYNAMICS } from '../types';
-import { chordName } from '../listener/chordDetector';
+import { chordName } from '../music/chords';
+import { keyName } from '../music/pitchClass';
 import type { BandEngine } from './engine';
 import { PcmPlayer } from './pcmPlayer';
 import type { MorphRoute } from '../audio/routing';
 import { RELAY_URL } from '../config';
 
-const KEY_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const CUT_FADE_SEC = 0.15;
 const KEEPALIVE_MS = 30000;
 const BARS_PER_BLOCK = 2;
 /** how many recent half-bar chords ride along in the block request as a progression */
 const CHORD_HISTORY = 4;
 
-function keyString(k: Key): string {
-  return `${KEY_NAMES[k.root]} ${k.mode === 'major' ? 'major' : 'minor'}`;
-}
+const keyString = (k: Key): string => keyName(k, true);
 
 /** intensity above which the player is "busy" and the band should lay back to drums + bass */
 export const BUSY_INTENSITY = 0.6;
