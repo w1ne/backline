@@ -203,6 +203,17 @@ class SongModeFollowsSwitchesTest(unittest.TestCase):
         self.assertEqual(requests[1].repainting_start, 2 * 4.8)   # 9.6 s already heard as context
         self.assertEqual(len(packets), 5)
 
+    def test_dynamics_thinning_the_instruments_does_not_re_render_but_a_toggle_does(self):
+        base = dict(bpm=100, key='A minor', genre='lofi', enabled=['drums', 'bass', 'keys'])
+        requests, _ = self.drive([
+            dict(base, instruments=['drums', 'bass', 'keys']),
+            dict(base, instruments=['drums', 'bass']),                 # busy player: keys thinned out
+            dict(base, instruments=['drums', 'bass', 'keys', 'lead']), # space: lead fill
+            dict(base, enabled=['drums', 'bass'], instruments=['drums', 'bass']),  # user switched keys off
+        ])
+        self.assertEqual([p.task_type for p in requests], ['text2music', 'repaint'])
+        self.assertNotIn('electric piano', requests[1].prompt.lower())
+
     def test_key_change_or_large_tempo_change_starts_a_fresh_song(self):
         base = dict(bpm=100, key='A minor', genre='lofi', instruments=['drums', 'bass'])
         requests, _ = self.drive([base, dict(base, key='C major'), dict(base, key='C major', bpm=125)])
@@ -245,7 +256,20 @@ class VoiceFollowingTest(unittest.TestCase):
             asyncio.run(run())
 
         self.assertEqual([p.task_type for p in requests], ['text2music', 'cover'])
-        self.assertEqual(requests[1].audio_cover_strength, server.COVER_STRENGTH)
+        self.assertEqual(requests[1].audio_cover_strength, server.creativity_to_cover_strength(0.5))
         self.assertEqual(requests[1].audio_duration, 32)
         self.assertIsNone(requests[1].repainting_start)
         self.assertEqual(written[-1], ((32 * server.HUM_SR, 1), server.HUM_SR))
+
+
+class ControlsReachAceTest(unittest.TestCase):
+    def test_accompaniment_tiles_become_prompt_instruments(self):
+        p = server.build_prompt('lofi', ['drums', 'bass'], extras=['sax', 'strings', 'bogus'])
+        self.assertIn('saxophone', p)
+        self.assertIn('string section', p)
+        self.assertNotIn('bogus', p)
+
+    def test_creativity_sets_how_tightly_the_cover_follows(self):
+        self.assertEqual(server.creativity_to_cover_strength(0.0), server.COVER_STRENGTH_TIGHT)
+        self.assertEqual(server.creativity_to_cover_strength(1.0), server.COVER_STRENGTH_LOOSE)
+        self.assertGreater(server.creativity_to_cover_strength(0.3), server.creativity_to_cover_strength(0.8))

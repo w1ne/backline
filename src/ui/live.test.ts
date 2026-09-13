@@ -163,6 +163,14 @@ describe('engine and genre controls while power is off', () => {
     expect(store.state.genre).toBe('funk');
   });
 
+  it('does not show a playback pill in the browser', () => {
+    const root = setup();
+    renderLive(root, store, actions);
+    const pill = root.querySelector<HTMLElement>('#playback-target')!;
+    expect(pill.style.display).toBe('none');
+    expect(pill.textContent).toBe('');
+  });
+
   it('offers every engine as a selectable model', () => {
     const root = setup();
     renderLive(root, store, actions);

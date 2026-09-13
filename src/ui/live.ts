@@ -83,8 +83,11 @@ export function renderLive(root: HTMLElement, store: Store, actions: LiveActions
   update(screen, store.state, actions.changeLatencyMs ?? 0);
   // Only the Pi remote has somewhere else to play; in the browser the pill says nothing useful.
   const target = screen.querySelector<HTMLElement>('#playback-target')!;
-  target.hidden = actions.playbackTarget !== 'Pi';
-  target.textContent = `Playback: ${actions.playbackTarget ?? 'This browser'}`;
+  const onPi = actions.playbackTarget === 'Pi';
+  target.hidden = !onPi;
+  // .pill sets display:flex, which beats the [hidden] attribute -- force it off the page.
+  target.style.display = onPi ? '' : 'none';
+  target.textContent = onPi ? 'Playback: Pi' : '';
   if (actions.setPlaying) {
     const audio = screen.querySelector<HTMLButtonElement>('#enable-audio')!;
     audio.hidden = false;
@@ -587,13 +590,16 @@ export function accompPresetMuted(preset: AccompPreset, enabled: Record<Instrume
 
 function updateAccompTiles(screen: HTMLElement, s: AppState): void {
   const row = screen.querySelector<HTMLElement>('#accomp-tiles')!;
-  row.hidden = s.engine !== 'amt';
+  // AMT plays these as GM presets, ACE-Step renders them into the arrangement; Patterns has
+  // no place for them.
+  row.hidden = s.engine !== 'amt' && s.engine !== 'acestep';
 
   screen.querySelectorAll<HTMLButtonElement>('#accomp-tiles button[data-preset]').forEach(btn => {
     const preset = btn.dataset.preset as AccompPreset;
     const on = s.accompPresets.includes(preset);
-    const muted = accompPresetMuted(preset, s.enabled);
-    const active = on && !muted && !!s.accompActive[preset];
+    // only AMT routes a preset through a band role that can be switched off
+    const muted = s.engine === 'amt' && accompPresetMuted(preset, s.enabled);
+    const active = on && !muted && (s.engine === 'acestep' ? s.locked : !!s.accompActive[preset]);
     btn.classList.toggle('on', on);
     btn.classList.toggle('active', active);
     btn.setAttribute('aria-pressed', String(on));

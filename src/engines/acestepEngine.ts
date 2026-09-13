@@ -1,4 +1,4 @@
-import type { BandState, Chord, Dynamics, Instrument, Key } from '../types';
+import type { AccompPreset, BandState, Chord, Dynamics, Instrument, Key } from '../types';
 import { IDLE_DYNAMICS } from '../types';
 import { chordName } from '../music/chords';
 import { keyName } from '../music/pitchClass';
@@ -112,6 +112,11 @@ interface BlockRequest {
   fill: boolean;
   /** how full the band should sound, 0 (sparse) .. 1 (busy); server maps to energy words */
   density: number;
+  /** the user's own on/off toggles, before dynamics thin them out: song mode arranges for
+   *  these and only re-renders when *they* change, not when the player gets busy */
+  enabled: Instrument[];
+  /** extra colours from the accompaniment tiles (sax, strings, orchestral, ambient) */
+  extras: AccompPreset[];
 }
 
 /** Streams bar-quantized blocks from the ACE-Step service and schedules them back-to-back
@@ -149,12 +154,14 @@ export class AceStepEngine implements BandEngine {
 
   private bandRoute: MorphRoute = 'main';
   private morphNode?: AudioNode;
+  private amount = 1;
+  private extras: AccompPreset[] = [];
+  private micCtx?: AudioContext;
   private micTap?: ScriptProcessorNode;
-  private micSink?: GainNode;
 
-  /** `micNode` hands back the live mic source node (undefined until the mic is running); its
-   *  audio is streamed to the server so the band can follow what the player sings. */
-  constructor(private ctx: AudioContext, private micNode?: () => AudioNode | undefined) {}
+  /** `micStream` hands back the live mic MediaStream (undefined until the mic is running);
+   *  its audio is streamed to the server so the band can follow what the player sings. */
+  constructor(private ctx: AudioContext, private micStream?: () => MediaStream | undefined) {}
 
   /** Sends the generated stream to the main output, the MORPH output, or both. */
   routeBand(route: MorphRoute, morphNode?: AudioNode): void {
@@ -182,6 +189,7 @@ export class AceStepEngine implements BandEngine {
     this.nextBlockAt = firstBarAt;
     this.player = new PcmPlayer(this.ctx, undefined, this.morphNode);
     this.player.routeBand(this.bandRoute, this.morphNode);
+    this.player.setAmount(this.amount);
     this.player.setBarSeconds(240 / bpm);
 
     const wsUrl = RELAY_URL.replace(/^http/, 'ws') + '/acestep';
@@ -221,34 +229,46 @@ export class AceStepEngine implements BandEngine {
     return this.player?.getAnalyser();
   }
 
-  /** Taps the mic and ships it to the server, 16 kHz mono PCM16, while the socket is open. */
+  /** Taps the mic and ships it to the server, 16 kHz mono PCM16, while the socket is open.
+   *  The band's context is Tone's standardized wrapper (no ScriptProcessor), so the raw
+   *  MediaStream gets its own small native AudioContext, opened at 16 kHz where the browser
+   *  allows it so the frames need no resampling. */
   private startMicStream(): void {
-    const src = this.micNode?.();
-    if (!src || this.micTap || typeof this.ctx.createScriptProcessor !== 'function') return;
-    const tap = this.ctx.createScriptProcessor(MIC_PROCESSOR_SIZE, 1, 1);
+    const stream = this.micStream?.();
+    const Ctx = typeof AudioContext !== 'undefined' ? AudioContext : undefined;
+    if (!stream || this.micTap || !Ctx) return;
+    let micCtx: AudioContext;
+    try {
+      micCtx = new Ctx({ sampleRate: MIC_STREAM_RATE });
+    } catch {
+      micCtx = new Ctx();
+    }
+    if (typeof micCtx.createScriptProcessor !== 'function') {
+      void micCtx.close();
+      return;
+    }
+    const src = micCtx.createMediaStreamSource(stream);
+    const tap = micCtx.createScriptProcessor(MIC_PROCESSOR_SIZE, 1, 1);
     // a muted sink keeps the processor alive without feeding the mic to the speakers
-    const sink = this.ctx.createGain();
+    const sink = micCtx.createGain();
     sink.gain.value = 0;
     tap.onaudioprocess = ev => {
       if (this.ws?.readyState !== WebSocket.OPEN) return;
-      this.ws.send(encodeMicFrame(ev.inputBuffer.getChannelData(0), this.ctx.sampleRate));
+      this.ws.send(encodeMicFrame(ev.inputBuffer.getChannelData(0), micCtx.sampleRate));
     };
     src.connect(tap);
     tap.connect(sink);
-    sink.connect(this.ctx.destination);
+    sink.connect(micCtx.destination);
+    void micCtx.resume();
+    this.micCtx = micCtx;
     this.micTap = tap;
-    this.micSink = sink;
   }
 
   private stopMicStream(): void {
-    if (this.micTap) {
-      this.micTap.onaudioprocess = null;
-      try { this.micNode?.()?.disconnect(this.micTap); } catch { /* already gone */ }
-      this.micTap.disconnect();
-    }
-    this.micSink?.disconnect();
+    if (this.micTap) this.micTap.onaudioprocess = null;
     this.micTap = undefined;
-    this.micSink = undefined;
+    void this.micCtx?.close().catch(() => undefined);
+    this.micCtx = undefined;
   }
 
   stop(): void {
@@ -294,6 +314,17 @@ export class AceStepEngine implements BandEngine {
 
   setEnabled(i: Instrument, on: boolean): void {
     this.state.enabled[i] = on;
+  }
+
+  /** Band amount is the stream's output level: the arrangement itself is rendered audio. */
+  setAmount(amount: number): void {
+    this.amount = Number.isFinite(amount) ? Math.min(1, Math.max(0, amount)) : 1;
+    this.player?.setAmount(this.amount);
+  }
+
+  /** The accompaniment tiles become extra instruments in the next render's prompt. */
+  setAccompaniment(presets: AccompPreset[]): void {
+    this.extras = [...presets];
   }
 
   setBpm(bpm: number): void {
@@ -349,6 +380,8 @@ export class AceStepEngine implements BandEngine {
       space: this.state.dynamics.space,
       fill: sel.fill,
       density: sel.density,
+      enabled: (Object.keys(this.state.enabled) as Instrument[]).filter(i => this.state.enabled[i]),
+      extras: [...this.extras],
     };
     this.send(req);
   }
