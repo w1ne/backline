@@ -54,8 +54,15 @@ async function checkHealth() {
 async function checkClip(clip) {
   const r = await runClip({ url: WS_URL, bars: BARS, clip, lookaheadBeats: LOOKAHEAD });
 
-  check(`${clip}: no empty plans past listen window`, r.emptyModel.length === 0,
-    `${r.emptyModel.length} empty of ${r.modelPlans.length} model plans`);
+  // Policy (architecture review, decision 1): a single empty window is a rest; two in a row
+  // are filled by the service. So the smoke fails on consecutive empties, not on one.
+  let consecutiveEmpty = 0, maxConsecutiveEmpty = 0;
+  for (const p of r.modelPlans) {
+    consecutiveEmpty = p.notes?.length ? 0 : consecutiveEmpty + 1;
+    maxConsecutiveEmpty = Math.max(maxConsecutiveEmpty, consecutiveEmpty);
+  }
+  check(`${clip}: no two consecutive empty plans past listen window`, maxConsecutiveEmpty < 2,
+    `${r.emptyModel.length} empty of ${r.modelPlans.length} model plans, longest run ${maxConsecutiveEmpty}`);
 
   const mean = r.cueToPlanModel.mean;
   const p95 = r.cueToPlanModel.p95;
