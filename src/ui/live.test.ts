@@ -71,12 +71,25 @@ describe('the listening LCD', () => {
     return root.querySelector<HTMLElement>('#lcd')!.textContent!;
   }
 
+  // A keyboard's onsets are beats: the detected tempo starts the band, and the LCD counts
+  // the onsets towards the lock (unchanged by the mic-only count-in default).
+  const midi = { sources: { mic: 'on' as const, midi: 'on' as const } };
+
   it('counts onsets towards the lock', () => {
-    expect(lcd({ onsets: 3 })).toBe('LISTENING · MIC ✓ MIDI ✗ · 3/12');
+    expect(lcd({ onsets: 3 }, midi)).toBe('LISTENING · MIC ✓ MIDI ✓ · 3/12');
   });
 
   it('shows the running estimate as soon as there is one', () => {
-    expect(lcd({ onsets: 7, pendingBpm: 98.4 })).toBe('LISTENING · MIC ✓ MIDI ✗ · 7/12 · ~98 BPM');
+    expect(lcd({ onsets: 7, pendingBpm: 98.4 }, midi)).toBe('LISTENING · MIC ✓ MIDI ✓ · 7/12 · ~98 BPM');
+  });
+
+  it('counts onsets for a mic-only session too once the count-in is off', () => {
+    expect(lcd({ onsets: 7, pendingBpm: 98.4 }, { countIn: false })).toBe('LISTENING · MIC ✓ MIDI ✗ · 7/12 · ~98 BPM');
+  });
+
+  it('under a mic alone with the count-in on, the syllable rate is a hint and the singer sets the tempo', () => {
+    expect(lcd({ onsets: 7, pendingBpm: 140.4 })).toBe('LISTENING · MIC ✓ MIDI ✗ · ~140 spoken · TAP OR SET BPM');
+    expect(lcd({ onsets: 0 })).toBe('LISTENING · MIC ✓ MIDI ✗ · TAP OR SET BPM');
   });
 
   it('drops the estimate once the band is live', () => {

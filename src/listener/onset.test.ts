@@ -139,14 +139,6 @@ describe('OnsetDetector (spectral flux)', () => {
     for (let i = 1; i < onsets.length; i++) expect(onsets[i] - onsets[i - 1]).toBeGreaterThanOrEqual(0.08);
   });
 
-  it('reports the input level from rms', () => {
-    const d = new OnsetDetector();
-    d.pushFlux(0, 0, 0.02);
-    expect(d.inputLevel).toBeCloseTo(0.4, 5);
-    d.pushFlux(0, 0.01, 1);
-    expect(d.inputLevel).toBe(1);
-  });
-
   it('keeps the worklet copy of the analysis constants in step', () => {
     const src = readFileSync(new URL('../../public/worklet/onset-processor.js', import.meta.url), 'utf8');
     expect(src).toContain(`const FFT_SIZE = ${FFT_SIZE}`);

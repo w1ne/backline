@@ -11,7 +11,8 @@ import { Listener } from './listener/listener';
 import { MidiSource } from './listener/midiSource';
 import { TapTempo } from './listener/tapTempo';
 import { countInClicks } from './band/countIn';
-import { SongForm, type Section } from './band/form';
+import { waitsForGivenTempo } from './band/startPolicy';
+import { SECTION_LABEL, type FormResult, type Section } from './band/form';
 import { PlanFreshness, chooseChord, chooseSection } from './band/planOverride';
 import { outputLatencyMs } from './audio/outputLatency';
 import { Drone } from './players/drone';
@@ -24,6 +25,7 @@ import { PATTERNS } from './patterns';
 import { INSTRUMENTS, IDLE_DYNAMICS } from './types';
 import type { AccompPreset, Chord } from './types';
 import { GM_INSTRUMENTS } from './players/gmInstruments';
+import { mod12 } from './music/pitchClass';
 
 /** AMT's instrument-preference sampling bias; not user-adjustable. The server derives its
  *  sampling temperature from the Creativity knob. */
@@ -72,7 +74,6 @@ const YOU_NOTE_SEC = 0.25;
 const root = document.getElementById('app')!;
 const store = new Store();
 const performanceGuard = new PerformanceGuard();
-let liveActions: LiveActions;
 const demo = new URLSearchParams(location.search).has('demo');
 let listener: Listener | undefined;
 let band: BandEngine | undefined;
@@ -102,25 +103,12 @@ let beatTimers: ReturnType<typeof setTimeout>[] = [];
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 let countInSynth: Tone.Synth | undefined;
 let countInTimers: ReturnType<typeof setTimeout>[] = [];
-/** Mirrors the Bandleader's own SongForm one-for-one, driven by the same per-bar dynamics,
- *  purely so the app can show the section name and know when to stop and re-arm the band —
- *  see src/band/form.ts for why running a second instance in lockstep is safe. */
-const songForm = new SongForm();
 /** How recently the AMT service's own plan supplied a chord/section — see
- *  src/band/planOverride.ts. While it's fresh, the local songForm/chord tick above still run
- *  (so the fallback path stays warm) but their results are not applied. */
+ *  src/band/planOverride.ts. While it's fresh, the engine's own form and the local chord tick
+ *  still run (so the fallback path stays warm) but their results are not applied. */
 const planFreshness = new PlanFreshness();
 let planChord: Chord | null = null;
 let planSection: Section | null = null;
-
-const SECTION_LABEL: Record<Section, string> = {
-  intro: 'Intro',
-  groove: 'Groove',
-  lift: 'Lift',
-  breakdown: 'Breakdown',
-  ending: 'Ending',
-  ended: 'Ended · sing to start again',
-};
 
 /** Shows a self-dismissing notice in the LCD-styled toast. A later call replaces whatever
  *  is currently showing and restarts the dismiss clock, rather than stacking messages. */
@@ -145,24 +133,26 @@ function tickBeat(beat: number): void {
   // A mic-only singer has no keyboard chord to lean on, so the band knows to keep the keys
   // comp plain and out of the sung note's way (see colorChord / chordPattern).
   const pitch = listener.input.pitch;
-  const sungPitchClass = pitch?.stable ? ((pitch.midi % 12) + 12) % 12 : undefined;
+  const sungPitchClass = pitch?.stable ? mod12(pitch.midi) : undefined;
   // `source`/`sungPitchClass` are Bandleader-only fields (see src/band/bandleader.ts); cast
   // rather than widen BandEngine.set's signature, since the other engines (Lyria/ACE/AMT)
   // don't and shouldn't know about them -- they simply ignore the extra properties.
   band?.set({ dynamics: eff, source: micIsOnlySource() ? 'mic' : 'midi', sungPitchClass } as Parameters<NonNullable<typeof band>['set']>[0]);
   store.update({ effectiveIntensity: eff.intensity });
-  // The form only moves on bar boundaries; tickBeat also runs on beats 1-3 off timers.
-  if (beat % BEATS_PER_BAR !== 0) return;
-  const bar = beat / BEATS_PER_BAR;
-  const result = songForm.tick({ bar, dynamics: eff, silenceBeats: eff.silenceBeats, playerStopped: false });
+}
+
+/** The engine's song form has decided this bar's section (it ticks right after tickBeat handed
+ *  it the bar's dynamics, see Bandleader.onBar). Shows the section and, on the ending bar,
+ *  stops the band: the Bandleader has already scheduled the ending hit and stops its own clock,
+ *  the engine as a whole stops here, and the app goes quiet until the singer's next onset
+ *  re-arms it through the first-lock path (the `!store.state.locked` branch in
+ *  listener.onChange below). */
+function onForm(bar: number, form: FormResult): void {
   // Kept running even under AMT (see planFreshness), purely so the fallback stays warm; its
   // result is only applied when the service hasn't sent a fresher section itself.
-  const section = chooseSection(store.state.engine, planFreshness.sectionFresh(bar), planSection, result.section);
-  if (!planFreshness.sectionFresh(bar) && result.shouldStop) {
-    // The Bandleader has already scheduled and will stop itself after the ending bar; every
-    // engine (including the ones with no form of their own) stops here regardless, and the
-    // app goes quiet until the singer's next onset re-arms it through the existing
-    // first-lock path (see the `!store.state.locked` branch in listener.onChange below).
+  const fresh = planFreshness.sectionFresh(bar);
+  const section = chooseSection(store.state.engine, fresh, planSection, form.section);
+  if (!fresh && form.shouldStop) {
     band?.stop();
     store.update({ locked: false, accompanimentStatus: SECTION_LABEL.ended });
   } else {
@@ -330,6 +320,7 @@ function wireBand(b: BandEngine): void {
       for (let b = 1; b < BEATS_PER_BAR; b++)
         beatTimers.push(setTimeout(() => tickBeat(beat + b), (b * 60000) / bpm));
   };
+  b.onForm = onForm;
   b.onError = msg => store.update({ error: msg, accompanimentStatus: 'Reconnecting' });
   b.onStatus = (message, latencyMs, stats) => {
     if (band !== b) return;
@@ -357,7 +348,7 @@ function wireBand(b: BandEngine): void {
       planSection = section;
       planFreshness.noteSection(store.state.bar);
       if (section === 'ending') {
-        // Same stop the local SongForm drives on its own 'ending' tick (see tickBeat).
+        // Same stop the engine's own form drives on its 'ending' bar (see onForm).
         band?.stop();
         store.update({ locked: false, accompanimentStatus: SECTION_LABEL.ending });
         return;
@@ -372,7 +363,7 @@ function wireBand(b: BandEngine): void {
  *  place at the same bpm. Returns a disposer to call once the engine is confirmed healthy or the
  *  band is torn down for another reason. */
 function armFallback(engine: EngineChoice, b: BandEngine): () => void {
-  const fallback = chooseFallback(engine, '');
+  const fallback = chooseFallback(engine);
   if (!fallback) return () => {};
 
   let settled = false;
@@ -385,7 +376,7 @@ function armFallback(engine: EngineChoice, b: BandEngine): () => void {
     if (store.state.engine === engine) store.update({ engineConnecting: false });
   };
 
-  const timer = setTimeout(() => trigger('timeout'), FALLBACK_TIMEOUT_MS);
+  const timer = setTimeout(trigger, FALLBACK_TIMEOUT_MS);
 
   const userOnError = b.onError;
   b.onFirstBlock = settle;
@@ -394,13 +385,13 @@ function armFallback(engine: EngineChoice, b: BandEngine): () => void {
   if (engine === 'amt') b.onConnected = settle;
   b.onError = msg => {
     userOnError?.(msg);
-    trigger(msg);
+    trigger();
   };
 
-  function trigger(reason: string): void {
+  function trigger(): void {
     if (band !== b) return;
     settle();
-    const result = chooseFallback(engine, reason);
+    const result = chooseFallback(engine);
     if (!result || band !== b) return;
     b.stop();
     planFreshness.reset();
@@ -435,7 +426,6 @@ fetch(RELAY_URL + '/health')
 
 async function power() {
   store.update({ error: null });
-  songForm.reset();
   planFreshness.reset();
   planChord = null;
   planSection = null;
@@ -518,6 +508,9 @@ async function power() {
       store.update({ locked: true });
       lastFollowedBpm = input.bpm;
     } else if (input.bpm && !store.state.locked) {
+      // A singer alone: the detected tempo is syllable rate, not beat, so with the count-in on
+      // the band waits for a tapped or typed tempo (the LCD shows the estimate as a hint).
+      if (waitsForGivenTempo({ micOnly: micIsOnlySource(), countIn: store.state.countIn, hasBpmOverride: listener!.hasBpmOverride })) return;
       const db = listener!.downbeat! + perfOffset();
       const barLen = 240 / input.bpm;
       let first = db;
@@ -529,8 +522,7 @@ async function power() {
         first += 2 * barLen;
         scheduleCountIn(input.bpm, first);
       }
-      songForm.reset(); // this onset may be the singer re-starting the band after an ending
-      store.update({ locked: true });
+      store.update({ locked: true }); // this onset may be the singer re-starting the band after an ending
       lastFollowedBpm = input.bpm;
       disarmFallback?.();
       disarmFallback = armFallback(store.state.engine, band!);
@@ -571,7 +563,6 @@ function powerOff() {
   clearBeatTimers();
   clearCountIn();
   band?.stop();
-  songForm.reset();
   playbackActivity.clear();
   accompActivity.clear();
   // Remove the monitor's owned edge before the listener disconnects the shared
@@ -602,215 +593,214 @@ function powerOff() {
   });
 }
 
-store.subscribe(s => {
-  liveActions = {
-    toggleRecord: () => {
-      if (!store.state.recording) {
-        midiRecorder.reset();
-        const ctx = Tone.getContext().rawContext as AudioContext;
-        // the synth band plays through Tone's destination; generated audio and the mic
-        // register themselves with the recorder when they are created
-        if (!masterTap) {
-          masterTap = ctx.createGain();
-          Tone.getDestination().connect(masterTap);
-          audioRecorder.addSource(masterTap);
-        }
-        const audioOk = audioRecorder.start(ctx);
-        store.update({ recording: true, error: audioOk ? null : 'This browser cannot record audio; only MIDI will be saved' });
-        return;
+/** Every control the panel can drive. Built once: the store emits on every listener update
+ *  (level, pitch, onset), and each entry reads live state when it runs, not a snapshot. */
+const liveActions: LiveActions = {
+  toggleRecord: () => {
+    if (!store.state.recording) {
+      midiRecorder.reset();
+      const ctx = Tone.getContext().rawContext as AudioContext;
+      // the synth band plays through Tone's destination; generated audio and the mic
+      // register themselves with the recorder when they are created
+      if (!masterTap) {
+        masterTap = ctx.createGain();
+        Tone.getDestination().connect(masterTap);
+        audioRecorder.addSource(masterTap);
       }
-      store.update({ recording: false });
-      const name = `duetai-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}`;
-      const hadAudio = audioRecorder.recording;
-      void audioRecorder.stop().then(audio => {
-        if (audio && audio.blob.size) downloadBlob(audio.blob, `${name}.${audio.ext}`);
-      });
-      if (midiRecorder.empty) {
-        store.update({ error: hadAudio ? 'Audio saved. No notes for MIDI: the band was not playing and no sung note was heard' : 'Nothing was recorded: no audio support and no notes heard' });
-        return;
-      }
-      const bpm = lastFollowedBpm ?? store.state.input.bpm ?? undefined;
-      downloadMidi(midiRecorder.toMidi(bpm), `${name}.mid`);
-    },
-    togglePause: () => {
-      if (!band) return;
-      if (!store.state.paused) {
-        if (halfBarTimer !== undefined) clearTimeout(halfBarTimer);
-        halfBarTimer = undefined;
-        clearBeatTimers();
-        band.stop();
-        playbackActivity.clear();
-        // The band alone isn't the whole mix: the ambient drone/noise beds run independently
-        // of the transport, so pause has to silence those too or it isn't actually silent.
-        drone.setEnabled(false);
-        whiteNoise.setEnabled(false);
-        store.update({ paused: true, activeParts: {}, accompanimentStatus: 'Paused' });
-        showToast('Paused — mic & MIDI input is not being taken');
-        return;
-      }
-      if (toastTimer !== undefined) clearTimeout(toastTimer);
-      toastTimer = undefined;
-      drone.setEnabled(true);
-      whiteNoise.setEnabled(true);
-      store.update({ paused: false, accompanimentStatus: 'Listening', toast: null });
-      const bpm = lastFollowedBpm ?? store.state.input.bpm;
-      if (bpm && store.state.locked) {
-        startBand(band, bpm, Tone.now() + 0.1).catch(err => {
-          store.update({ error: `${store.state.engine}: ${err instanceof Error ? err.message : String(err)}` });
-        });
-      } else store.update({ accompanimentStatus: 'Listening' });
-    },
-    wake: () => {
-      if (store.state.audioSuspended) {
-        Tone.start()
-          .then(() => store.update({ audioSuspended: false }))
-          .catch(() => undefined);
-      }
-      // The boot-time getUserMedia had no user activation; this tap does.
-      if (store.state.sources.mic !== 'on' && mic && listener) {
-        const l = listener;
-        mic
-          .retry()
-          .then(started => {
-            if (started) l.setSourceState('mic', 'on');
-          })
-          .catch(() => l.setSourceState('mic', 'denied'));
-      }
-    },
-    toggle: i => {
-      // Read live state, not the `s` snapshot from this subscribe callback,
-      // which would freeze `enabled` at whatever it was on the render that
-      // created this closure.
-      const on = !store.state.enabled[i];
-      band?.setEnabled(i, on);
-      store.update({ enabled: { ...store.state.enabled, [i]: on } });
-      recordToggle(i, on, store.state.enabled);
-    },
-    setGenre: g => {
-      players.setGenre(g);
-      band?.set({ genre: g });
-      store.update({ genre: g });
-    },
-    playbackTarget: PI_EDITION ? 'Pi' : 'This browser',
-    soundIds: PI_EDITION ? LOCAL_SOUNDS : undefined,
-    setEngine: e => {
-      const prevEngine = store.state.engine;
-      // A fresh pick clears any stale "<ENGINE> OFFLINE" fallback note.
-      store.update({ engine: e, error: null });
-      if (store.state.power !== 'on' || !band || e === prevEngine) return;
-      // Power-cycle the band engine in place, at the same bpm/key, instead of
-      // making the user power off first.
-      const bpm = lastFollowedBpm ?? store.state.input.bpm ?? undefined;
-      const key = store.state.input.key ?? undefined;
-      disarmFallback?.();
-      disarmFallback = undefined;
+      const audioOk = audioRecorder.start(ctx);
+      store.update({ recording: true, error: audioOk ? null : 'This browser cannot record audio; only MIDI will be saved' });
+      return;
+    }
+    store.update({ recording: false });
+    const name = `duetai-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}`;
+    const hadAudio = audioRecorder.recording;
+    void audioRecorder.stop().then(audio => {
+      if (audio && audio.blob.size) downloadBlob(audio.blob, `${name}.${audio.ext}`);
+    });
+    if (midiRecorder.empty) {
+      store.update({ error: hadAudio ? 'Audio saved. No notes for MIDI: the band was not playing and no sung note was heard' : 'Nothing was recorded: no audio support and no notes heard' });
+      return;
+    }
+    const bpm = lastFollowedBpm ?? store.state.input.bpm ?? undefined;
+    downloadMidi(midiRecorder.toMidi(bpm), `${name}.mid`);
+  },
+  togglePause: () => {
+    if (!band) return;
+    if (!store.state.paused) {
+      if (halfBarTimer !== undefined) clearTimeout(halfBarTimer);
+      halfBarTimer = undefined;
+      clearBeatTimers();
       band.stop();
-      planFreshness.reset();
-      planChord = null;
-      planSection = null;
-      band = makeBand(e);
-      band.set({ genre: store.state.genre, creativity: store.state.creativity, key: key ?? undefined });
-      wireBand(band);
-      if (bpm) {
-        disarmFallback = armFallback(e, band);
-        startBand(band, bpm, Tone.now() + 0.1).catch(err => {
-          store.update({ error: `${e}: ${err instanceof Error ? err.message : String(err)}` });
-        });
+      playbackActivity.clear();
+      // The band alone isn't the whole mix: the ambient drone/noise beds run independently
+      // of the transport, so pause has to silence those too or it isn't actually silent.
+      drone.setEnabled(false);
+      whiteNoise.setEnabled(false);
+      store.update({ paused: true, activeParts: {}, accompanimentStatus: 'Paused' });
+      showToast('Paused — mic & MIDI input is not being taken');
+      return;
+    }
+    if (toastTimer !== undefined) clearTimeout(toastTimer);
+    toastTimer = undefined;
+    drone.setEnabled(true);
+    whiteNoise.setEnabled(true);
+    store.update({ paused: false, accompanimentStatus: 'Listening', toast: null });
+    const bpm = lastFollowedBpm ?? store.state.input.bpm;
+    if (bpm && store.state.locked) {
+      startBand(band, bpm, Tone.now() + 0.1).catch(err => {
+        store.update({ error: `${store.state.engine}: ${err instanceof Error ? err.message : String(err)}` });
+      });
+    } else store.update({ accompanimentStatus: 'Listening' });
+  },
+  wake: () => {
+    if (store.state.audioSuspended) {
+      Tone.start()
+        .then(() => store.update({ audioSuspended: false }))
+        .catch(() => undefined);
+    }
+    // The boot-time getUserMedia had no user activation; this tap does.
+    if (store.state.sources.mic !== 'on' && mic && listener) {
+      const l = listener;
+      mic
+        .retry()
+        .then(started => {
+          if (started) l.setSourceState('mic', 'on');
+        })
+        .catch(() => l.setSourceState('mic', 'denied'));
+    }
+  },
+  toggle: i => {
+    const on = !store.state.enabled[i];
+    band?.setEnabled(i, on);
+    store.update({ enabled: { ...store.state.enabled, [i]: on } });
+    recordToggle(i, on, store.state.enabled);
+  },
+  setGenre: g => {
+    players.setGenre(g);
+    band?.set({ genre: g });
+    store.update({ genre: g });
+  },
+  playbackTarget: PI_EDITION ? 'Pi' : 'This browser',
+  soundIds: PI_EDITION ? LOCAL_SOUNDS : undefined,
+  setEngine: e => {
+    const prevEngine = store.state.engine;
+    // A fresh pick clears any stale "<ENGINE> OFFLINE" fallback note.
+    store.update({ engine: e, error: null });
+    if (store.state.power !== 'on' || !band || e === prevEngine) return;
+    // Power-cycle the band engine in place, at the same bpm/key, instead of
+    // making the user power off first.
+    const bpm = lastFollowedBpm ?? store.state.input.bpm ?? undefined;
+    const key = store.state.input.key ?? undefined;
+    disarmFallback?.();
+    disarmFallback = undefined;
+    band.stop();
+    planFreshness.reset();
+    planChord = null;
+    planSection = null;
+    band = makeBand(e);
+    band.set({ genre: store.state.genre, creativity: store.state.creativity, key: key ?? undefined });
+    wireBand(band);
+    if (bpm) {
+      disarmFallback = armFallback(e, band);
+      startBand(band, bpm, Tone.now() + 0.1).catch(err => {
+        store.update({ error: `${e}: ${err instanceof Error ? err.message : String(err)}` });
+      });
+    }
+  },
+  setCreativity: c => {
+    band?.set({ creativity: c });
+    store.update({ creativity: c });
+  },
+  toggleAccompPreset: (preset: AccompPreset, on: boolean) => {
+    const presets = on
+      ? [...store.state.accompPresets, preset]
+      : store.state.accompPresets.filter(p => p !== preset);
+    band?.setAccompaniment?.(presets, ACCOMP_BIAS);
+    store.update({ accompPresets: presets });
+  },
+  setIntensity: i => {
+    const amount = Math.min(1, Math.max(0, i));
+    band?.setAmount?.(amount);
+    store.update({ intensity: amount });
+  },
+  setBpmOverride: bpm => {
+    const clamped = bpm === undefined ? undefined : Math.min(240, Math.max(40, bpm));
+    listener?.setOverride({ bpm: clamped });
+    if (clamped !== undefined) {
+      lastFollowedBpm = clamped;
+      if (band) setBandBpm(band, clamped);
+    } else {
+      // Override cleared: setOverride() above emits synchronously, so
+      // listener's input already reflects the recovered detected tempo.
+      const recovered = listener?.input.bpm;
+      if (recovered) {
+        lastFollowedBpm = recovered;
+        if (band) setBandBpm(band, recovered);
       }
-    },
-    setCreativity: c => {
-      band?.set({ creativity: c });
-      store.update({ creativity: c });
-    },
-    toggleAccompPreset: (preset: AccompPreset, on: boolean) => {
-      const presets = on
-        ? [...store.state.accompPresets, preset]
-        : store.state.accompPresets.filter(p => p !== preset);
-      band?.setAccompaniment?.(presets, ACCOMP_BIAS);
-      store.update({ accompPresets: presets });
-    },
-    setIntensity: i => {
-      const amount = Math.min(1, Math.max(0, i));
-      band?.setAmount?.(amount);
-      store.update({ intensity: amount });
-    },
-    setBpmOverride: bpm => {
-      const clamped = bpm === undefined ? undefined : Math.min(240, Math.max(40, bpm));
-      listener?.setOverride({ bpm: clamped });
-      if (clamped !== undefined) {
-        lastFollowedBpm = clamped;
-        if (band) setBandBpm(band, clamped);
-      } else {
-        // Override cleared: setOverride() above emits synchronously, so
-        // listener's input already reflects the recovered detected tempo.
-        const recovered = listener?.input.bpm;
-        if (recovered) {
-          lastFollowedBpm = recovered;
-          if (band) setBandBpm(band, recovered);
-        }
-      }
-    },
-    setKeyOverride: key => {
-      listener?.setOverride({ key });
-    },
-    tap: () => {
-      const t = Tone.now();
-      tapCount++;
-      const r = tapTempo.push(t);
-      if (!r || tapCount < 4) return null;
-      // Same path a typed bpm takes: the listener's override wins over any detected tempo.
-      listener?.setOverride({ bpm: r.bpm });
-      lastFollowedBpm = r.bpm;
-      if (band) {
-        disarmFallback?.();
-        disarmFallback = armFallback(store.state.engine, band);
-        store.update({ locked: true });
-        // r.downbeat is the audio-clock time of the tap that just completed the estimate:
-        // restart the band's clock right there so the next bar starts on the beat the
-        // singer just tapped, not on whatever bar the band happened to be in.
-        startBand(band, r.bpm, r.downbeat).catch(err => {
-          store.update({ error: err instanceof Error ? err.message : String(err) });
-        });
-      }
-      return r;
-    },
-    setCountIn: on => {
-      saveBool(COUNT_IN_DISABLED_KEY, !on);
-      store.update({ countIn: on });
-    },
-    setMicMuted: muted => {
-      saveBool(MIC_MUTE_KEY, muted);
-      store.update({ micMuted: muted });
-      listener?.setMicMuted(muted);
-      applyVoiceMonitor();
-    },
-    setVoiceMonitor: enabled => {
-      saveBool(VOICE_MONITOR_KEY, enabled);
-      store.update({ voiceMonitor: enabled });
-      applyVoiceMonitor();
-    },
-    setDroneVolume: value => {
-      const droneVolume = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
-      drone.setEnabled(store.state.power === 'on' && !store.state.paused);
-      drone.setLevel(droneVolume);
-      store.update({ droneVolume });
-    },
-    setNoiseVolume: value => {
-      const noiseVolume = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
-      whiteNoise.setEnabled(store.state.power === 'on' && !store.state.paused);
-      whiteNoise.setLevel(noiseVolume);
-      store.update({ noiseVolume });
-    },
-    setSound: sound => {
-      if (sound === store.state.sound) return;
-      monitor?.setSound(sound).catch(error => store.update({error: `Keyboard sound: ${String(error)}`}));
-      store.update({ sound });
-    },
-    changeLatencyMs: band?.changeLatencyMs,
-  };
-  renderLive(root, store, liveActions);
-  void s;
-});
+    }
+  },
+  setKeyOverride: key => {
+    listener?.setOverride({ key });
+  },
+  tap: () => {
+    const t = Tone.now();
+    tapCount++;
+    const r = tapTempo.push(t);
+    if (!r || tapCount < 4) return null;
+    // Same path a typed bpm takes: the listener's override wins over any detected tempo.
+    listener?.setOverride({ bpm: r.bpm });
+    lastFollowedBpm = r.bpm;
+    if (band) {
+      disarmFallback?.();
+      disarmFallback = armFallback(store.state.engine, band);
+      store.update({ locked: true });
+      // r.downbeat is the audio-clock time of the tap that just completed the estimate:
+      // restart the band's clock right there so the next bar starts on the beat the
+      // singer just tapped, not on whatever bar the band happened to be in.
+      startBand(band, r.bpm, r.downbeat).catch(err => {
+        store.update({ error: err instanceof Error ? err.message : String(err) });
+      });
+    }
+    return r;
+  },
+  setCountIn: on => {
+    saveBool(COUNT_IN_DISABLED_KEY, !on);
+    store.update({ countIn: on });
+  },
+  setMicMuted: muted => {
+    saveBool(MIC_MUTE_KEY, muted);
+    store.update({ micMuted: muted });
+    listener?.setMicMuted(muted);
+    applyVoiceMonitor();
+  },
+  setVoiceMonitor: enabled => {
+    saveBool(VOICE_MONITOR_KEY, enabled);
+    store.update({ voiceMonitor: enabled });
+    applyVoiceMonitor();
+  },
+  setDroneVolume: value => {
+    const droneVolume = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
+    drone.setEnabled(store.state.power === 'on' && !store.state.paused);
+    drone.setLevel(droneVolume);
+    store.update({ droneVolume });
+  },
+  setNoiseVolume: value => {
+    const noiseVolume = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
+    whiteNoise.setEnabled(store.state.power === 'on' && !store.state.paused);
+    whiteNoise.setLevel(noiseVolume);
+    store.update({ noiseVolume });
+  },
+  setSound: sound => {
+    if (sound === store.state.sound) return;
+    monitor?.setSound(sound).catch(error => store.update({error: `Keyboard sound: ${String(error)}`}));
+    store.update({ sound });
+  },
+  get changeLatencyMs() {
+    return band?.changeLatencyMs;
+  },
+};
+
+store.subscribe(() => renderLive(root, store, liveActions));
 
 /** ?debug=1 only: the last few bars of scheduled notes, so chord following can be checked
  *  against what the band actually played rather than against the readout. */

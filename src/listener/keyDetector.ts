@@ -1,5 +1,6 @@
 import type { Key } from '../types';
 import { DEFAULT_TUNING, type KeyTuning } from './tuning';
+import { mod12 } from '../music/pitchClass';
 
 const MAJ = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
 const MIN = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
@@ -25,7 +26,7 @@ export function rankKeys(pitchClassWeights: number[]): { key: Key; confidence: n
   for (let root = 0; root < 12; root++) {
     for (const mode of ['major', 'minor'] as const) {
       const prof = mode === 'major' ? MAJ : MIN;
-      const rotated = w.map((_, i) => prof[((i - root) % 12 + 12) % 12]);
+      const rotated = w.map((_, i) => prof[mod12(i - root)]);
       all.push({ key: { root, mode }, confidence: corr(w, rotated) });
     }
   }
@@ -59,7 +60,7 @@ export class KeyDetector {
   }
 
   addNote(midi: number, weight = 1): void {
-    this.w[((midi % 12) + 12) % 12] += weight;
+    this.w[mod12(midi)] += weight;
     this.count++;
   }
 
@@ -70,7 +71,7 @@ export class KeyDetector {
    * pitch; pair it with `addNote(midi, 0)` on each new note for the minimum-evidence gate.
    */
   addSustain(midi: number, seconds: number): void {
-    this.w[((midi % 12) + 12) % 12] += seconds;
+    this.w[mod12(midi)] += seconds;
     this.sustained += seconds;
   }
 

@@ -1,5 +1,6 @@
 import type { AccompPreset, BandState, Instrument } from '../types';
 import type { MorphRoute } from '../audio/routing';
+import type { FormResult } from '../band/form';
 
 export interface BandEngine {
   start(bpm: number, firstBarAt: number): Promise<void>;
@@ -17,6 +18,9 @@ export interface BandEngine {
   /** smallest bpm change worth forwarding in follow mode */
   readonly bpmStep: number;
   onBar?: (bar: number) => void;
+  /** Engines with a song form of their own (Patterns, AMT's local drums) report each bar's
+   *  section here, after onBar has handed them the bar's dynamics. */
+  onForm?: (bar: number, form: FormResult) => void;
   /** called with a human-readable message when the engine hits an unrecoverable error */
   // (see EngineStatusStats below for the optional numbers a status update can carry)
   onError?: (msg: string) => void;

@@ -2,18 +2,18 @@ import { GM_INSTRUMENTS } from '../players/gmInstruments';
 import { GENRES, INSTRUMENTS, ACCOMP_ROW } from '../types';
 import type { AccompPreset, Genre, Instrument } from '../types';
 import { SOUNDS, SOUND_GROUPS, type MonitorSound } from '../players/soundCatalog';
-import { keyName } from '../music/scales';
-import { chordName } from '../listener/chordDetector';
+import { keyName, mod12, NOTE_NAMES } from '../music/pitchClass';
+import { chordName } from '../music/chords';
 import { DEBUG } from '../debug';
 import type { AppState, Store } from './state';
 import type { SourceState } from '../listener/listener';
 import { shortDeviceName } from '../audio/devices';
 import { isPhoneUA } from '../listener/micConstraints';
+import { waitsForGivenTempo, tempoHint } from '../band/startPolicy';
 
-const KEY_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const ALL_KEYS: { root: number; mode: 'major' | 'minor' }[] = [
-  ...KEY_NAMES.map((_, root) => ({ root, mode: 'major' as const })),
-  ...KEY_NAMES.map((_, root) => ({ root, mode: 'minor' as const })),
+  ...NOTE_NAMES.map((_, root) => ({ root, mode: 'major' as const })),
+  ...NOTE_NAMES.map((_, root) => ({ root, mode: 'minor' as const })),
 ];
 
 export interface LiveActions {
@@ -204,7 +204,7 @@ function skeleton(): string {
               <option value="auto">auto</option>
               ${ALL_KEYS.map(
                 k =>
-                  `<option value="${k.root}-${k.mode}">${KEY_NAMES[k.root]} ${k.mode === 'major' ? 'maj' : 'min'}</option>`,
+                  `<option value="${k.root}-${k.mode}">${keyName(k)}</option>`,
               ).join('')}
             </select>
           </div>
@@ -266,7 +266,7 @@ function skeleton(): string {
 function hearingLabel(s: AppState): string {
   const p = s.input.pitch;
   if (!p || s.micMuted) return '';
-  return ` · HEARING ${KEY_NAMES[((p.midi % 12) + 12) % 12]}${Math.floor(p.midi / 12) - 1}`;
+  return ` · HEARING ${NOTE_NAMES[mod12(p.midi)]}${Math.floor(p.midi / 12) - 1}`;
 }
 
 function wireControls(screen: HTMLElement, store: Store): void {
@@ -498,10 +498,18 @@ function lcdText(s: AppState): string {
     const flags = `${d.space && s.enabled.lead ? ' · ANSWER' : ''}${d.fillDue ? ' · FILL' : ''}`;
     return `LIVE · BAR ${s.bar}${s.input.chord ? ` · ${chordName(s.input.chord)}` : ''}${flags}`;
   }
+  const who = `LISTENING · MIC ${mark(s.sources.mic)} ${midiLabel(s)}`;
+  // A singer alone gives the tempo (tap or typed) and gets a count-in; the syllable rate the
+  // onsets suggest is shown only as a hint. See src/band/startPolicy.ts.
+  const micOnly = s.sources.mic === 'on' && s.sources.midi !== 'on';
+  if (waitsForGivenTempo({ micOnly, countIn: s.countIn, hasBpmOverride: false })) {
+    const hint = tempoHint(s.input.pendingBpm);
+    return `${who}${hint ? ` · ${hint}` : ''} · TAP OR SET BPM`;
+  }
   // once there is enough to guess with, show the running estimate — it is the
   // only feedback that the mic is hearing a tempo and not just noise
   const guess = s.input.pendingBpm ? ` · ~${Math.round(s.input.pendingBpm)} BPM` : '';
-  return `LISTENING · MIC ${mark(s.sources.mic)} ${midiLabel(s)} · ${s.input.onsets}/12${guess}`;
+  return `${who} · ${s.input.onsets}/12${guess}`;
 }
 
 function updateToast(screen: HTMLElement, s: AppState): void {

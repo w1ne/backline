@@ -5,6 +5,16 @@ import type { Arrangement, Dynamics } from '../types';
  *  first-lock restart path). */
 export type Section = 'intro' | 'groove' | 'lift' | 'breakdown' | 'ending' | 'ended';
 
+/** What the status line says for each section. */
+export const SECTION_LABEL: Record<Section, string> = {
+  intro: 'Intro',
+  groove: 'Groove',
+  lift: 'Lift',
+  breakdown: 'Breakdown',
+  ending: 'Ending',
+  ended: 'Ended · sing to start again',
+};
+
 export interface FormInput {
   /** absolute bar number, 0-based, since the band last started */
   bar: number;
@@ -46,11 +56,9 @@ function arrangementFor(section: Section): Arrangement {
 
 /**
  * Drives the song through intro -> groove -> (lift | breakdown)* -> ending. Pure state
- * driven by {@link FormInput} — no clock or player access — so the same sequence of inputs
- * always produces the same sequence of sections. That determinism is relied on: the
- * Bandleader runs one instance to shape the patterns, and the app runs a second, identically
- * driven instance purely to show the section name and to know when to stop the band; the two
- * never need to talk to each other.
+ * driven by {@link FormInput} — no clock or player access. The Bandleader owns the one
+ * instance and reports each bar's result through `onFormCb`, which is how the app shows the
+ * section name and learns when the band has stopped itself.
  */
 export class SongForm {
   private section: Section = 'intro';
