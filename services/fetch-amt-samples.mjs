@@ -18,7 +18,7 @@ export async function fetchAmtSamples({root = defaultRoot, manifest, fetcher = f
       const cached = await readFile(path).catch(() => undefined);
       if (cached && valid(cached, spec)) continue;
       const url = `https://raw.githubusercontent.com/gleitz/midi-js-soundfonts/${manifest.revision}/MusyngKite/${name}`;
-      const response = await fetcher(url, {signal:AbortSignal.timeout(45_000)});
+      const response = await fetcher(url, {signal:AbortSignal.timeout(180_000)});
       if (!response.ok) throw new Error(`AMT sample ${response.status}: ${url}`);
       const data = Buffer.from(await response.arrayBuffer());
       if (!valid(data, spec)) throw new Error(`AMT sample integrity mismatch: ${name}`);
