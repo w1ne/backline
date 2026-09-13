@@ -31,6 +31,7 @@ from typing import Optional
 
 import torch
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse
 import uvicorn
 
 # bench/amt/ lives two directories up from this file (repo_root/bench/amt),
@@ -56,7 +57,8 @@ from arrangement import (  # noqa: E402
 from cached import cached_generate  # noqa: E402
 from brain import HarmonyBrain, sampling_for  # noqa: E402
 from performance_history import PerformanceHistory  # noqa: E402
-from instruments import resolve as resolve_instruments, TOGGLEABLE_PRESETS, DEFAULT_PRESETS  # noqa: E402,F401
+from instruments import resolve as resolve_instruments, resolve_groups, TOGGLEABLE_PRESETS, DEFAULT_PRESETS  # noqa: E402,F401
+from readiness import health_response  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("amt-server")
@@ -67,38 +69,78 @@ if SAMPLER == "cached":
     generate_duet = cached_generate
 
 MODEL_NAME = os.environ.get("AMT_MODEL", "stanford-crfm/music-small-800k")
-# Fraction of the committed window's own duration that generation may spend in wall time.
-GENERATION_BUDGET = 0.8
+# The generation deadline is what is left of the lead time between the cue and the plan's first
+# note once the client<->server hop (`tick.rttMs`, measured by the client; this default until it
+# has) and a fixed margin for the client's own scheduling are taken off. It used to be a fixed
+# 0.8 of the window, which at 120 bpm left 10 ms for the hop and at 140 bpm less than nothing.
+DEFAULT_RTT_S = 0.25
+DEADLINE_MARGIN_S = 0.15
+DEADLINE_FLOOR_S = 0.1
 # Beats of past music kept as context for the next window. generate_duet() prompts the model
 # with the whole prior token stream, so an unpruned session makes every bar's prompt longer
 # than the last and per-bar latency climbs linearly with the length of the take (measured in
 # the browser: 121 ms at bar 1, 936 ms at bar 20, still rising). Four bars of melody plus the
 # accompaniment already committed over them is more than the model needs to continue one bar.
 CONTEXT_BEATS = 16.0
+# Empty-window policy. Silence from a successful model call is normally a rest, but while the
+# model has heard fewer than this many beats of the human (it has little to answer) or when the
+# previous window was already empty (a dropout, not a rest), the window is filled with the
+# key-only plan so the band never goes quiet for a whole bar.
+FILL_UNTIL_HEARD_BEATS = 8.0
 
 app = FastAPI()
 inference_lock = asyncio.Lock()
 _model = None
 _device = None
+_load_error = None
+_load_task: Optional[asyncio.Task] = None
 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok" if _model is not None else "loading", "model": MODEL_NAME, "device": _device, "sampler": SAMPLER}
+    # Readiness, not liveness: 503 `loading` until the model is in memory, 503 `error` if the
+    # load failed, so the relay/watchdog/deploy can tell a slow pod from a broken one.
+    code, body = health_response(_model is not None, _load_error, MODEL_NAME, _device, SAMPLER)
+    return JSONResponse(body, status_code=code)
 
 
 def load_model():
-    global _model, _device
+    global _model, _device, _load_error
     if _model is not None:
         return _model
     _device = "cuda" if torch.cuda.is_available() else "cpu"
     log.info("loading %s on %s ...", MODEL_NAME, _device)
-    from transformers import AutoModelForCausalLM
+    try:
+        from transformers import AutoModelForCausalLM
 
-    _model = AutoModelForCausalLM.from_pretrained(MODEL_NAME).to(_device)
-    _model.eval()
+        model = AutoModelForCausalLM.from_pretrained(MODEL_NAME).to(_device)
+        model.eval()
+    except Exception as error:
+        _load_error = error
+        log.exception("model load failed")
+        raise
+    _model = model
+    _load_error = None
     log.info("model loaded")
     return _model
+
+
+@app.on_event("startup")
+async def load_model_at_start():
+    """Load at process start, in a thread, so /health can answer 503 `loading` meanwhile and the
+    first WebSocket no longer pays the ~4 s load under the inference lock."""
+    global _load_task
+    _load_task = asyncio.create_task(asyncio.to_thread(load_model))
+
+
+async def model_ready():
+    """The loaded model; awaits the startup load (or starts one when the app is run without it)."""
+    global _load_task
+    if _model is not None:
+        return _model
+    if _load_task is None or (_load_task.done() and _load_task.exception() is not None):
+        _load_task = asyncio.create_task(asyncio.to_thread(load_model))
+    return await asyncio.shield(_load_task)
 
 
 class ChordInference:
@@ -175,6 +217,10 @@ class Session:
         self.chord = None
         self.section = "intro"
         self.space = False
+        # Empty-window policy state: onset of the first human note heard, and how many windows
+        # in a row the model has returned nothing for.
+        self.first_human_beat = None
+        self.empty_windows = 0
         self.brain = HarmonyBrain(key=key, genre=genre, lookahead_beats=lookahead_beats, bpm=bpm)
         self.performance = PerformanceHistory(self.history, make_event, MELODY_INSTR, self.beat_s, self.brain.on_note)
         self.human_notes = self.performance.notes
@@ -201,6 +247,8 @@ class Session:
 
     def add_human_notes(self, notes):
         self.performance.add(notes)
+        if self.first_human_beat is None and self.human_notes:
+            self.first_human_beat = min(onset for (onset, _, _) in self.human_notes)
 
     def update_human_notes(self, notes):
         self.performance.update(notes)
@@ -234,11 +282,12 @@ class Session:
         """An old client's `bar` cue: the plan for the whole of bar `bar + 1`."""
         return self.generate_plan(bar * BEATS_PER_BAR, BEATS_PER_BAR, label=f"bar {bar}")
 
-    def generate_tick_plan(self, beat: float) -> dict:
-        """A `tick` cue at `beat` (every `commit_beats`): the plan for the half bar one bar ahead."""
-        return self.generate_plan(beat, self.commit_beats, label=f"tick {beat:g}")
+    def generate_tick_plan(self, beat: float, rtt_ms=None) -> dict:
+        """A `tick` cue at `beat` (every `commit_beats`): the plan for the half bar one bar ahead.
+        `rtt_ms` is the client's last measured cue-to-plan hop, if it has one."""
+        return self.generate_plan(beat, self.commit_beats, label=f"tick {beat:g}", rtt_ms=rtt_ms)
 
-    def generate_plan(self, now_beat: float, span_beats: float, label: str = "") -> dict:
+    def generate_plan(self, now_beat: float, span_beats: float, label: str = "", rtt_ms=None) -> dict:
         """Generate the accompaniment plan for the `span_beats` window starting
         `self.lookahead_beats` past the cue at `now_beat` (4/4 assumed -- matches
         the app's Players.schedule bar granularity).
@@ -297,29 +346,48 @@ class Session:
 
         history_before = list(self.history)
         human_in_context = sum(1 for (onset_beat, _, _) in self.human_notes if onset_beat <= start_beat)
-        # The plan is asked for one bar before its first note is due, and the next cue arrives
-        # after `span_beats`. Spend at most most of the committed window's own duration, so a
-        # half-bar tick gets half the budget of a bar and the queue never falls behind the cues.
-        deadline_s = GENERATION_BUDGET * (commit_end_beat - start_beat) * self.beat_s
+        # Tempo-aware deadline: the plan is due at `start_beat`, so spend what is left of the lead
+        # time after the hop back to the client and its scheduling margin. The next cue arrives
+        # after `span_beats`, so the lead time is also capped at the window's own length to keep
+        # the queue from falling behind the cues.
+        try:
+            rtt_s = float(rtt_ms) / 1000.0 if rtt_ms is not None else DEFAULT_RTT_S
+        except (TypeError, ValueError):
+            rtt_s = DEFAULT_RTT_S
+        if not (0.0 <= rtt_s < 60.0):
+            rtt_s = DEFAULT_RTT_S
+        lead_s = min(start_beat - now_beat, commit_end_beat - start_beat) * self.beat_s
+        deadline_s = max(DEADLINE_FLOOR_S, lead_s - rtt_s - DEADLINE_MARGIN_S)
+        # One sampling pass per selected preset, each masked to that preset's instruments
+        # and prompted with the same history. A single pass over the union locks onto the
+        # first instrument it happens to write (the history then keeps telling it "this is
+        # a cello line"), so any other tile the player switched on never joins.
+        groups = [g for g in (tuple(p for p in group if p in generation_instrs)
+                              for group in resolve_groups(self.instrument_names)) if g]
+        pass_deadline_s = deadline_s / max(1, len(groups))
+        start_tick = round(start_s * TIME_RESOLUTION)
+        commit_end_tick = round(commit_end_s * TIME_RESOLUTION)
         t0 = time.monotonic()
-        result = generate_duet(
-            self.model, start_s, end_s, history_before, generation_instrs, self.top_p, self.accomp_bias,
-            temperature=self.temperature,
-            deadline_s=deadline_s,
-            # The committed voice is monophonic and the app plays to a beat grid, so a
-            # sixteenth note is the shortest onset gap worth sampling.
-            min_interval_ticks=max(1, round(self.beat_s / 4.0 * TIME_RESOLUTION)),
-        )
+        accomp = []
+        tokens_generated = 0
+        result = []
+        for group in groups:
+            result = generate_duet(
+                self.model, start_s, end_s, history_before, group, self.top_p, self.accomp_bias,
+                temperature=self.temperature,
+                deadline_s=pass_deadline_s,
+                # The committed voice is monophonic and the app plays to a beat grid, so a
+                # sixteenth note is the shortest onset gap worth sampling.
+                min_interval_ticks=max(1, round(self.beat_s / 4.0 * TIME_RESOLUTION)),
+            )
+            if SAMPLER == "cached":
+                tokens_generated += getattr(self.model, "amt_sampled_tokens", 0)
+            accomp.extend((t, d, instr, p) for (t, d, instr, p) in parse_events(result) if instr in group)
         latency_ms = (time.monotonic() - t0) * 1000.0
 
         # Compare on the model's own tick grid: the window bounds are bar lines
         # here, and a float `start_s < t` comparison dropped any note landing
         # exactly on one.
-        start_tick = round(start_s * TIME_RESOLUTION)
-        commit_end_tick = round(commit_end_s * TIME_RESOLUTION)
-        accomp = [
-            (t, d, instr, p) for (t, d, instr, p) in parse_events(result) if instr in generation_instrs
-        ]
         raw_notes = [
             (t, d, instr, p) for (t, d, instr, p) in accomp
             if start_tick <= round(t * TIME_RESOLUTION) < commit_end_tick
@@ -339,16 +407,28 @@ class Session:
             " (hit generation budget)" if latency_ms >= deadline_s * 1000.0 else "",
         )
 
-        # The arranger routes the model's actual notes. Empty successful output
-        # is an intentional rest, never an implicit request for synthetic backing.
-        notes_out = arranger.events(committed, self.beat_s, self.space)
+        # The arranger routes the model's actual notes. A single empty window after the model
+        # has heard enough of the human is a rest; before that, or twice in a row, it is filled
+        # with the key-only plan (see FILL_UNTIL_HEARD_BEATS).
+        if committed:
+            self.empty_windows = 0
+            notes_out = arranger.events(committed, self.beat_s, self.space)
+        else:
+            self.empty_windows += 1
+            heard_beats = now_beat - self.first_human_beat if self.first_human_beat is not None else 0.0
+            if heard_beats < FILL_UNTIL_HEARD_BEATS or self.empty_windows >= 2:
+                notes_out = arranger.failure_fallback(self.key, self.chord, start_beat, commit_end_beat, self.beat_s)
+                log.info("%s: empty window filled with key-only plan (%d notes; heard %.1f beats, %d empty in a row)",
+                         label, len(notes_out), heard_beats, self.empty_windows)
+            else:
+                notes_out = []
 
         prior_clipped = ops.pad(
             ops.clip(history_before, 0, int(TIME_RESOLUTION * start_s), clip_duration=False, seconds=False),
             int(TIME_RESOLUTION * start_s),
         )
-        tokens_generated = (getattr(self.model, "amt_sampled_tokens", 0) if SAMPLER == "cached"
-                            else max(0, len(result) - len(prior_clipped)))
+        if SAMPLER != "cached":
+            tokens_generated = max(0, len(result) - len(prior_clipped))
         tokens_per_sec = (tokens_generated / (latency_ms / 1000.0)) if latency_ms > 0 else 0.0
 
         return {
@@ -390,7 +470,7 @@ def apply_session_message(session, msg):
 def generate_session_plan(session, msg):
     if msg["type"] == "bar":
         return session.generate_next_bar_plan(int(msg.get("bar", 0)))
-    return session.generate_tick_plan(float(msg.get("beat", 0.0)))
+    return session.generate_tick_plan(float(msg.get("beat", 0.0)), rtt_ms=msg.get("rttMs"))
 
 
 @app.websocket("/ws")
@@ -398,13 +478,12 @@ async def websocket_endpoint(websocket: WebSocket):
     from live_session import LatestPlanner, InputOverflow
 
     await websocket.accept()
-    async with inference_lock:
-        loading = asyncio.create_task(asyncio.to_thread(load_model))
-        try:
-            model = await asyncio.shield(loading)
-        except asyncio.CancelledError:
-            await loading
-            raise
+    try:
+        model = await model_ready()
+    except Exception as error:
+        await websocket.send_text(json.dumps({"type": "error", "message": f"model not ready: {error}"}))
+        await websocket.close(code=1013)
+        return
     send_lock = asyncio.Lock()
 
     async def send(msg):

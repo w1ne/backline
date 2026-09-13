@@ -12,6 +12,10 @@ export interface AppState {
   accompanimentStatus: string;
   modelLatencyMs: number | null;
   responseLatencyMs: number | null;
+  /** Server queue wait + request age for the last AMT plan, and plan notes dropped as too late. */
+  queueLatencyMs: number | null;
+  requestAgeMs: number | null;
+  tooLate: number;
   activeParts: Partial<Record<Instrument, boolean>>;
   sources: SourceStatus;
   genre: Genre;
@@ -83,6 +87,9 @@ const defaults: AppState = {
   accompanimentStatus: 'Listening',
   modelLatencyMs: null,
   responseLatencyMs: null,
+  queueLatencyMs: null,
+  requestAgeMs: null,
+  tooLate: 0,
   activeParts: {},
   sources: { mic: 'off', midi: 'off' },
   genre: 'lofi',

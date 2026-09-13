@@ -85,3 +85,11 @@ NSDF, MIT). Same 9 gate-subset clips, same tracker (`bench/pitchmodels/pitchy.ts
 Equal accuracy at K = 0.8, the same first-peak fraction our code used, at a nineteenth of the
 per-frame cost. K = 0.9 loses a point and doubles the octave errors, as the original comment in
 pitch.ts predicted. The 60-1200 Hz range and the clarity gate stay in our wrapper.
+
+Follow-up, same day: pitchy's own `findPitch` weighs peaks over every lag, and on the abjones_2
+song a tall sub-harmonic peak below 60 Hz made it skip the real fundamental on a couple of
+frames; the pitch metrics barely moved but two half bars of the keys comp flipped to dissonant
+and the real-voice gate failed by 0.9 points. pitch.ts now uses pitchy's FFT `Autocorrelator`
+for the expensive part and keeps our NSDF and 60-1200 Hz peak rule on top. On the same clips it
+is now metric-for-metric identical to the old detector (`pitchy_src` == `mcleod_old` in
+`bench/pitchmodels/pitchy.ts`) at 0.30 ms per frame; all 44 gate checks pass.
