@@ -40,13 +40,22 @@ Patterns works offline. `--relay` reads `GEMINI_API_KEY` from the environment or
 
 ## How it works
 
+```mermaid
+flowchart LR
+    Mic[Mic: voice or instrument] --> L[Listener<br/>onset, pitch, tempo, key, chord]
+    MIDI[MIDI keyboard] --> L
+    L -->|bpm, key, chord, notes| B[BandEngine]
+    B --> P[Patterns<br/>Tone.js, local]
+    B --> Ly[Lyria RealTime]
+    B --> ACE[ACE-Step]
+    B --> AMT[AMT<br/>note following]
+    Ly & ACE & AMT --> R[Relay<br/>Cloudflare Worker]
+    R --> G[GPU pod<br/>ACE-Step, AMT]
+    R --> Gem[Gemini API]
+    P & Ly & ACE & AMT --> Out[Speakers / LYDIA morph out]
 ```
-mic / MIDI  →  Listener  →  { bpm, key, chord, notes }  →  BandEngine  →  audio
-                                                               |
-                                               Patterns | Lyria | ACE | AMT
-                                                               |
-                                               relay (Cloudflare Worker) -> GPU pod
-```
+
+The same code runs in the browser and on the LYDIA pedal (Raspberry Pi, ALSA audio, LCD, knobs, footswitches).
 
 - **Listener** (`src/listener/`): onset detection, pitch tracking, tempo lock, key and chord detection.
 - **Engines** (`src/engines/`): one interface, four implementations, switchable on the panel.
