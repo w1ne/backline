@@ -1,6 +1,19 @@
 import type { PerformanceEvent } from '../listener/performanceEvent';
 import * as Tone from 'tone';
 import type { AccompPreset, BandState, Chord, Instrument, Key, NoteEvent } from '../types';
+
+/** `?amt=v2` (remembered per browser) talks to the experimental AMT instance behind the relay's
+ *  `/amt2` route, so a new prompt/arranger can be A/B'd against live in two tabs. */
+export function amtPath(): string {
+  try {
+    const q = new URLSearchParams(location.search).get('amt');
+    if (q === 'v2') localStorage.setItem('amt.variant', 'v2');
+    else if (q === 'v1') localStorage.removeItem('amt.variant');
+    return localStorage.getItem('amt.variant') === 'v2' ? '/amt2' : '/amt';
+  } catch {
+    return '/amt';
+  }
+}
 import { IDLE_DYNAMICS } from '../types';
 import { chordName, parseChordName } from '../listener/chordDetector';
 import type { FormResult, Section } from '../band/form';
@@ -328,7 +341,7 @@ export class AmtEngine implements BandEngine {
     clearTimeout(this.responseTimer);
     this.responseTimer = undefined;
 
-    const wsUrl = RELAY_URL.replace(/^http/, 'ws') + '/amt';
+    const wsUrl = RELAY_URL.replace(/^http/, 'ws') + amtPath();
     const ws = this.ws = new WebSocket(wsUrl);
     let opened = false;
     if (resume) {
@@ -389,7 +402,18 @@ export class AmtEngine implements BandEngine {
     });
     ws.addEventListener('message', ev => { if (this.ws === ws && !this.stopping) this.onMessage(ev); });
     ws.addEventListener('error', () => dropped('AMT: connection error'));
-    ws.addEventListener('close', ev => dropped(`AMT: closed${ev.reason ? ` (${ev.reason})` : ''}`));
+    ws.addEventListener('close', ev => {
+      // 1013 = the service is full (admission control). Retrying would only queue behind
+      // everyone else; hand over to the app's fallback (local patterns) right away.
+      if (ev.code === 1013 && this.ws === ws && !this.stopping) {
+        this.ws = undefined;
+        clearTimeout(this.attemptTimer);
+        this.attemptTimer = undefined;
+        this.onError?.('AMT: band is full, playing patterns');
+        return;
+      }
+      dropped(`AMT: closed${ev.reason ? ` (${ev.reason})` : ''}`);
+    });
   }
 
   /** Backoff: 0.5, 1, 2, 4, 8 s between attempts, none starting past `RECONNECT_BUDGET_MS`

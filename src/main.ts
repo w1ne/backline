@@ -446,15 +446,21 @@ function armFallback(engine: EngineChoice, b: BandEngine): () => void {
 
 // Readiness probe: the relay reports each upstream's health, so a stopped GPU pod lights the
 // engine LED red at load instead of the band silently going generic. Engines stay selectable.
-fetch(RELAY_URL + '/health')
-  .then(async res => {
-    const body = await res.text();
-    const health = parseHealth(body);
-    if (health) store.update({ offlineEngines: health });
-  })
-  .catch(() => {
-    store.update({ offlineEngines: ['acestep', 'lyria', 'amt'] });
-  });
+// Re-polled every 30 s: a page opened while the pod was restarting used to keep its red LED
+// for the whole visit ("AMT is always offline"), and a pod that dies mid-set never showed.
+function pollHealth(): void {
+  fetch(RELAY_URL + '/health')
+    .then(async res => {
+      const body = await res.text();
+      const health = parseHealth(body);
+      if (health) store.update({ offlineEngines: health });
+    })
+    .catch(() => {
+      store.update({ offlineEngines: ['acestep', 'lyria', 'amt'] });
+    });
+}
+pollHealth();
+setInterval(pollHealth, 30_000);
 
 async function power() {
   store.update({ error: null });

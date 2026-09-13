@@ -59,6 +59,7 @@ from brain import HarmonyBrain, sampling_for  # noqa: E402
 from musical_identity import MusicalIdentity
 from performance_history import PerformanceHistory  # noqa: E402
 from instruments import resolve as resolve_instruments, resolve_groups, TOGGLEABLE_PRESETS, DEFAULT_PRESETS  # noqa: E402,F401
+from priming import build_prompt  # noqa: E402
 from readiness import health_response  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -104,6 +105,8 @@ async def health():
     # Readiness, not liveness: 503 `loading` until the model is in memory, 503 `error` if the
     # load failed, so the relay/watchdog/deploy can tell a slow pod from a broken one.
     code, body = health_response(_model is not None, _load_error, MODEL_NAME, _device, SAMPLER)
+    body["sessions"] = active_sessions
+    body["maxSessions"] = MAX_SESSIONS
     return JSONResponse(body, status_code=code)
 
 
@@ -411,8 +414,12 @@ class Session:
         tokens_generated = 0
         result = []
         for group in groups:
+            # Style prime + chord pad live only in the prompt (see priming.py); the
+            # prime moves the live timeline later by `shift_s`.
+            prompt, shift_s = build_prompt(history_before, group, self.key, self.genre, self.chord,
+                                           start_s, end_s, self.beat_s)
             result = generate_duet(
-                self.model, start_s, end_s, history_before, group, self.top_p, self.accomp_bias,
+                self.model, start_s + shift_s, end_s + shift_s, prompt, group, self.top_p, self.accomp_bias,
                 temperature=self.temperature,
                 deadline_s=pass_deadline_s,
                 # The committed voice is monophonic and the app plays to a beat grid, so a
@@ -421,7 +428,7 @@ class Session:
             )
             if SAMPLER == "cached":
                 tokens_generated += getattr(self.model, "amt_sampled_tokens", 0)
-            accomp.extend((t, d, instr, p) for (t, d, instr, p) in parse_events(result) if instr in group)
+            accomp.extend((t - shift_s, d, instr, p) for (t, d, instr, p) in parse_events(result) if instr in group)
         latency_ms = (time.monotonic() - t0) * 1000.0
 
         # Compare on the model's own tick grid: the window bounds are bar lines
@@ -529,11 +536,28 @@ def generate_session_plan(session, msg):
     return session.generate_tick_plan(float(msg.get("beat", 0.0)), rtt_ms=msg.get("rttMs"))
 
 
+# Admission control. One process serializes every session's sampling behind
+# `inference_lock`; measured on the L40S with two presets, ~7 concurrent sessions per
+# process still get every plan on time and 15 lose a fifth of them. Past the cap a new
+# connection is told so and closed with 1013 (try again later); the app then plays its
+# local patterns at once instead of sitting in silence while late plans are discarded.
+MAX_SESSIONS = int(os.environ.get("AMT_MAX_SESSIONS", "6"))
+active_sessions = 0
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+    global active_sessions
     from live_session import LatestPlanner, InputOverflow
 
     await websocket.accept()
+    if active_sessions >= MAX_SESSIONS:
+        log.info("busy: %d sessions active, refusing a new one", active_sessions)
+        await websocket.send_text(json.dumps({"type": "error", "code": "busy",
+                                              "message": "band is full, playing patterns"}))
+        await websocket.close(code=1013, reason="busy")
+        return
+    active_sessions += 1
     try:
         model = await model_ready()
     except Exception as error:
@@ -583,6 +607,7 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         log.info("connection closed")
     finally:
+        active_sessions -= 1
         await planner.close()
 
 
