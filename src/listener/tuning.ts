@@ -75,8 +75,3 @@ export const DEFAULT_TUNING: ListenerTuning = {
   key: { earlyNotes: 5, earlyConfidence: 0.7, fullNotes: 8, confidence: 0.6, coverMinSustainSec: 2, coverMin: 0.85, coverMargin: 0.08 },
   chord: { templateMinShare: 0.1, melodyWindowMul: 1.5, melodySwitchMargin: 0.15, melodyMinCoverage: 0.5 },
 };
-
-/** DEFAULT_TUNING with some slices replaced; nested objects are replaced whole. */
-export function withTuning(over: Partial<ListenerTuning>, base: ListenerTuning = DEFAULT_TUNING): ListenerTuning {
-  return { ...base, ...over };
-}

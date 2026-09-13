@@ -361,7 +361,7 @@ function wireBand(b: BandEngine): void {
  *  place at the same bpm. Returns a disposer to call once the engine is confirmed healthy or the
  *  band is torn down for another reason. */
 function armFallback(engine: EngineChoice, b: BandEngine): () => void {
-  const fallback = chooseFallback(engine, '');
+  const fallback = chooseFallback(engine);
   if (!fallback) return () => {};
 
   let settled = false;
@@ -374,7 +374,7 @@ function armFallback(engine: EngineChoice, b: BandEngine): () => void {
     if (store.state.engine === engine) store.update({ engineConnecting: false });
   };
 
-  const timer = setTimeout(() => trigger('timeout'), FALLBACK_TIMEOUT_MS);
+  const timer = setTimeout(trigger, FALLBACK_TIMEOUT_MS);
 
   const userOnError = b.onError;
   b.onFirstBlock = settle;
@@ -383,13 +383,13 @@ function armFallback(engine: EngineChoice, b: BandEngine): () => void {
   if (engine === 'amt') b.onConnected = settle;
   b.onError = msg => {
     userOnError?.(msg);
-    trigger(msg);
+    trigger();
   };
 
-  function trigger(reason: string): void {
+  function trigger(): void {
     if (band !== b) return;
     settle();
-    const result = chooseFallback(engine, reason);
+    const result = chooseFallback(engine);
     if (!result || band !== b) return;
     b.stop();
     planFreshness.reset();

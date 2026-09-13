@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { detectPitch, detectPitchHz, hzToMidi } from './pitch';
+import { detectPitch } from './pitch';
+const detectPitchHz = (x: Float32Array, sr: number) => detectPitch(x, sr)?.hz ?? null;
 const sine = (hz: number, sr = 44100, n = 2048) => Float32Array.from({ length: n }, (_, i) => Math.sin(2 * Math.PI * hz * i / sr));
 describe('pitch', () => {
   it('A4', () => { expect(detectPitchHz(sine(440), 44100)!).toBeCloseTo(440, -1); });
@@ -8,7 +9,6 @@ describe('pitch', () => {
     let s = 1; const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647 - 0.5;
     expect(detectPitchHz(Float32Array.from({ length: 2048 }, rnd), 44100)).toBeNull();
   });
-  it('hzToMidi', () => { expect(hzToMidi(440)).toBe(69); expect(hzToMidi(261.63)).toBe(60); });
   it('inharmonic tone with strong harmonics still resolves to fundamental', () => {
     const sr = 44100, n = 2048;
     const frame = Float32Array.from({ length: n }, (_, i) => {

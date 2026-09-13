@@ -60,7 +60,7 @@ function bestAssignment(candidates: number[], prev: number[], count: number): nu
 
   const sortedPrev = [...prev].sort((a, b) => a - b);
 
-  function search(startIdx: number, chosen: number[], usedPc: Set<number>) {
+  function search(startIdx: number, chosen: number[]) {
     if (chosen.length === count) {
       const sortedChosen = [...chosen].sort((a, b) => a - b);
       const cost = sortedPrev.reduce((sum, p, i) => sum + Math.abs(p - (sortedChosen[i] ?? sortedChosen[sortedChosen.length - 1])), 0);
@@ -71,15 +71,12 @@ function bestAssignment(candidates: number[], prev: number[], count: number): nu
       return;
     }
     for (let i = startIdx; i < candidates.length; i++) {
-      const c = candidates[i];
-      const pc = mod12(c);
-      // Prefer distinct pitch classes first pass; allow repeats only if we run out of room.
-      chosen.push(c);
-      search(i + 1, chosen, usedPc);
+      chosen.push(candidates[i]);
+      search(i + 1, chosen);
       chosen.pop();
     }
   }
-  search(0, [], new Set());
+  search(0, []);
   if (best) return best;
   return pickNearMiddle(candidates, count, (candidates[0] ?? 60));
 }

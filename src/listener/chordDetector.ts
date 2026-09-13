@@ -175,9 +175,6 @@ export class ChordDetector {
   }
 }
 
-/** A pitch class must carry this share of the window's energy to count as a chord tone somebody played (DEFAULT_TUNING.chord). */
-export const TEMPLATE_MIN_SHARE = DEFAULT_TUNING.chord.templateMinShare;
-
 /** The six diatonic triads of `key` the band may sit on, tonic first, then by harmonic weight. */
 export function diatonicTriads(key: Key): Chord[] {
   const scale = scaleOf(key);
