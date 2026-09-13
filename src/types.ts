@@ -6,9 +6,10 @@ export const GENRES: Genre[] = ['lofi', 'funk', 'rock', 'jazz'];
 /** AMT-only GM instrument presets the model may mix into its accompaniment. Names match
  *  services/amt/instruments.py's TOGGLEABLE_PRESETS (bench/amt/amt.py's INSTRUMENT_PRESETS). */
 export type AccompPreset = 'strings' | 'violin' | 'guitar' | 'sax' | 'brass' | 'keys' | 'orchestral' | 'ambient';
-/** The presets exposed as instrument tiles; the others (violin/guitar/brass/keys) are still
- *  valid server-side but not surfaced in the UI. */
-export const ACCOMP_ROW: AccompPreset[] = ['sax', 'strings', 'orchestral', 'ambient'];
+/** The presets exposed as instrument tiles; the others (violin/guitar/brass/keys/ambient) are
+ *  still valid server-side but not surfaced in the UI -- ambient's flute/pad texture doesn't
+ *  read as its own instrument next to sax/strings/orchestral, so it stays a hidden option. */
+export const ACCOMP_ROW: AccompPreset[] = ['sax', 'strings', 'orchestral'];
 
 export interface Key { root: number; mode: 'major' | 'minor' | 'dorian' | 'mixolydian' } // root 0=C … 11=B
 

@@ -214,9 +214,9 @@ function skeleton(): string {
       <div class="inst" id="sample-tile">
         <div class="pad">
           <button type="button" class="pad-btn sample" id="sample-btn"
-                  aria-label="Hold to record a found sound, tap to play it back">
+                  aria-label="Found Sound: hold to record any sound as an instrument, tap to play it back">
             <span class="dot"></span>
-            <span class="name">Sample</span>
+            <span class="name">Found Sound</span>
             <span class="st"><span class="st-text"></span></span>
           </button>
         </div>
