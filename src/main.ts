@@ -875,7 +875,15 @@ players.onSchedule = (inst, events, barStart, bpm) => {
     if (scheduled.length > 200) scheduled.shift();
   }
 };
+const failedAccompSamples = new Set<number>();
+const sampleLoadMessage = 'An accompaniment instrument could not load. Retrying…';
+players.onSampleError = (gmProgram) => {
+  failedAccompSamples.add(gmProgram);
+  store.update({ error: sampleLoadMessage });
+};
 players.onAccompSchedule = (gmProgram, events, barStart, bpm) => {
+  failedAccompSamples.delete(gmProgram);
+  if (!failedAccompSamples.size && store.state.error === sampleLoadMessage) store.update({ error: null });
   for (const preset of GM_INSTRUMENTS[gmProgram]?.presets ?? []) accompActivity.add(preset, events, barStart, bpm);
 };
 
