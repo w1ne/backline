@@ -105,6 +105,8 @@ async def health():
     # Readiness, not liveness: 503 `loading` until the model is in memory, 503 `error` if the
     # load failed, so the relay/watchdog/deploy can tell a slow pod from a broken one.
     code, body = health_response(_model is not None, _load_error, MODEL_NAME, _device, SAMPLER)
+    body["sessions"] = active_sessions
+    body["maxSessions"] = MAX_SESSIONS
     return JSONResponse(body, status_code=code)
 
 
@@ -534,11 +536,28 @@ def generate_session_plan(session, msg):
     return session.generate_tick_plan(float(msg.get("beat", 0.0)), rtt_ms=msg.get("rttMs"))
 
 
+# Admission control. One process serializes every session's sampling behind
+# `inference_lock`; measured on the L40S with two presets, ~7 concurrent sessions per
+# process still get every plan on time and 15 lose a fifth of them. Past the cap a new
+# connection is told so and closed with 1013 (try again later); the app then plays its
+# local patterns at once instead of sitting in silence while late plans are discarded.
+MAX_SESSIONS = int(os.environ.get("AMT_MAX_SESSIONS", "6"))
+active_sessions = 0
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+    global active_sessions
     from live_session import LatestPlanner, InputOverflow
 
     await websocket.accept()
+    if active_sessions >= MAX_SESSIONS:
+        log.info("busy: %d sessions active, refusing a new one", active_sessions)
+        await websocket.send_text(json.dumps({"type": "error", "code": "busy",
+                                              "message": "band is full, playing patterns"}))
+        await websocket.close(code=1013, reason="busy")
+        return
+    active_sessions += 1
     try:
         model = await model_ready()
     except Exception as error:
@@ -588,6 +607,7 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         log.info("connection closed")
     finally:
+        active_sessions -= 1
         await planner.close()
 
 

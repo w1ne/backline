@@ -429,9 +429,14 @@ export async function handleAceStep(req: Request, env: Env): Promise<Response> {
   return proxyWebSocket(upstreamUrl, ACESTEP_KEEPALIVE_MS);
 }
 
-// True for a bare "/amt" path.
+// True for a bare "/amt" path, or "/amt2": the experimental AMT instance on the same pod,
+// reached through the pod's nginx "/v2/" prefix so it needs no second public port or secret.
 export function isAmtPath(pathname: string): boolean {
-  return pathname === "/amt";
+  return pathname === "/amt" || pathname === "/amt2";
+}
+
+export function amtUpstreamFor(pathname: string, upstream: string): string {
+  return pathname === "/amt2" ? upstream.replace(/\/ws$/, "/v2/ws") : upstream;
 }
 
 // Same idle-drop concern as ACE-Step: keep the upstream leg alive with a
@@ -449,7 +454,8 @@ export async function handleAmt(req: Request, env: Env): Promise<Response> {
   // AMT_UPSTREAM is the full wss://.../ws URL of the RunPod-hosted pod, kept
   // as a Worker secret so pod ids never land in git. fetch() needs an
   // https:// scheme for the outbound WebSocket handshake.
-  const upstreamUrl = env.AMT_UPSTREAM.replace(/^wss:\/\//, "https://").replace(/^ws:\/\//, "http://");
+  const upstreamUrl = amtUpstreamFor(new URL(req.url).pathname, env.AMT_UPSTREAM)
+    .replace(/^wss:\/\//, "https://").replace(/^ws:\/\//, "http://");
 
   return proxyWebSocket(upstreamUrl, AMT_KEEPALIVE_MS);
 }
