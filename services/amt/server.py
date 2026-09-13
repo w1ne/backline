@@ -82,6 +82,11 @@ DEADLINE_FLOOR_S = 0.1
 # the browser: 121 ms at bar 1, 936 ms at bar 20, still rising). Four bars of melody plus the
 # accompaniment already committed over them is more than the model needs to continue one bar.
 CONTEXT_BEATS = 16.0
+# Empty-window policy. Silence from a successful model call is normally a rest, but while the
+# model has heard fewer than this many beats of the human (it has little to answer) or when the
+# previous window was already empty (a dropout, not a rest), the window is filled with the
+# key-only plan so the band never goes quiet for a whole bar.
+FILL_UNTIL_HEARD_BEATS = 8.0
 
 app = FastAPI()
 inference_lock = asyncio.Lock()
@@ -212,6 +217,10 @@ class Session:
         self.chord = None
         self.section = "intro"
         self.space = False
+        # Empty-window policy state: onset of the first human note heard, and how many windows
+        # in a row the model has returned nothing for.
+        self.first_human_beat = None
+        self.empty_windows = 0
         self.brain = HarmonyBrain(key=key, genre=genre, lookahead_beats=lookahead_beats, bpm=bpm)
         self.performance = PerformanceHistory(self.history, make_event, MELODY_INSTR, self.beat_s, self.brain.on_note)
         self.human_notes = self.performance.notes
@@ -238,6 +247,8 @@ class Session:
 
     def add_human_notes(self, notes):
         self.performance.add(notes)
+        if self.first_human_beat is None and self.human_notes:
+            self.first_human_beat = min(onset for (onset, _, _) in self.human_notes)
 
     def update_human_notes(self, notes):
         self.performance.update(notes)
@@ -385,9 +396,21 @@ class Session:
             " (hit generation budget)" if latency_ms >= deadline_s * 1000.0 else "",
         )
 
-        # The arranger routes the model's actual notes. Empty successful output
-        # is an intentional rest, never an implicit request for synthetic backing.
-        notes_out = arranger.events(committed, self.beat_s, self.space)
+        # The arranger routes the model's actual notes. A single empty window after the model
+        # has heard enough of the human is a rest; before that, or twice in a row, it is filled
+        # with the key-only plan (see FILL_UNTIL_HEARD_BEATS).
+        if committed:
+            self.empty_windows = 0
+            notes_out = arranger.events(committed, self.beat_s, self.space)
+        else:
+            self.empty_windows += 1
+            heard_beats = now_beat - self.first_human_beat if self.first_human_beat is not None else 0.0
+            if heard_beats < FILL_UNTIL_HEARD_BEATS or self.empty_windows >= 2:
+                notes_out = arranger.failure_fallback(self.key, self.chord, start_beat, commit_end_beat, self.beat_s)
+                log.info("%s: empty window filled with key-only plan (%d notes; heard %.1f beats, %d empty in a row)",
+                         label, len(notes_out), heard_beats, self.empty_windows)
+            else:
+                notes_out = []
 
         prior_clipped = ops.pad(
             ops.clip(history_before, 0, int(TIME_RESOLUTION * start_s), clip_duration=False, seconds=False),
