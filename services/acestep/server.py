@@ -63,6 +63,20 @@ DIT_MODEL = os.environ.get("ACE_DIT_MODEL", "acestep-v15-xl-turbo")
 MODEL_OUTPUT_SR = 44100  # ACE-Step 1.5 renders at 44.1 kHz; we resample to 48 kHz for the client.
 TARGET_SR = 48000
 INFERENCE_STEPS = 8
+# Block engine v2 (feature flag, off by default until A/B-tested by ear):
+#  - every request spans at least MIN_GEN_SECONDS: ACE-Step's documented minimum is
+#    10 s (constants.DURATION_MIN) and the model was never trained on our ~7 s canvases.
+#    The extra tail is repainted with the block and discarded;
+#  - up to CONTEXT_MAX_SECONDS of already-played audio is kept as repaint context
+#    instead of a single bar, so the model hears the groove it is continuing;
+#  - one seed per session instead of a new one per block, and an explicit
+#    instrumental lyric so the model stops hallucinating vocal-like material.
+BLOCK_V2 = os.environ.get("ACE_BLOCK_V2", "0").lower() in ("1", "true", "yes")
+MIN_GEN_SECONDS = float(os.environ.get("ACE_MIN_GEN_SECONDS", "15"))
+CONTEXT_MAX_SECONDS = float(os.environ.get("ACE_CONTEXT_MAX_SECONDS", "12"))
+# Point at an already-running acestep-api instead of spawning one (lets a flagged test
+# instance share the GPU model with the live service).
+ACE_HTTP_BASE = os.environ.get("ACE_HTTP_BASE")
 # Chords named in the prompt; more than a bar or two of history just dilutes it.
 CHORD_PROMPT_MAX = 4
 
@@ -214,6 +228,7 @@ class GenParams:
     inference_steps: int
     guidance: float
     seed: int
+    lyrics: Optional[str] = None
     src_audio_path: Optional[str] = None
     track_classes: Optional[list[str]] = None
     repainting_start: Optional[float] = None
@@ -231,9 +246,12 @@ class AceStepModel:
     def __init__(self, model_dir: str):
         self.model_dir = model_dir
         self._http_proc: Optional[subprocess.Popen] = None
-        self._http_base = "http://127.0.0.1:8010"
+        self._http_base = ACE_HTTP_BASE or "http://127.0.0.1:8010"
 
     def load(self) -> None:
+        if ACE_HTTP_BASE:
+            log.info("reusing acestep-api at %s", ACE_HTTP_BASE)
+            return
         self._start_http_server()
 
     def _start_http_server(self) -> None:
@@ -317,6 +335,8 @@ class AceStepModel:
             "batch_size": 1,
             "audio_format": "wav",
         }
+        if params.lyrics is not None:
+            body["lyrics"] = params.lyrics
         if params.src_audio_path:
             body["src_audio_path"] = params.src_audio_path
         if params.track_classes:
@@ -390,6 +410,7 @@ class Session:
         self.prev_audio: Optional[np.ndarray] = None
         self._task: Optional[asyncio.Task] = None
         self._latest_seq = -1
+        self.seed: Optional[int] = None
 
     def cancel_inflight(self) -> None:
         if self._task and not self._task.done():
@@ -428,13 +449,30 @@ class Session:
         context_samples = 0
         source_path = None
         target_samples = round(duration * TARGET_SR)
+        # v2 repaints a longer silent tail than we keep, so the model always works on a
+        # canvas of at least MIN_GEN_SECONDS; the surplus is discarded below.
+        tail_samples = 0
+        if BLOCK_V2:
+            context_seconds = CONTEXT_MAX_SECONDS
+        else:
+            context_seconds = 240.0 / bpm
         if not needs_restart:
-            context = self.prev_audio[-round(240.0 / bpm * TARGET_SR):]
+            context = self.prev_audio[-round(context_seconds * TARGET_SR):]
             context_samples = len(context)
+        if BLOCK_V2:
+            tail_samples = max(0, round(MIN_GEN_SECONDS * TARGET_SR) - context_samples - target_samples)
+        if not needs_restart:
             source_path = _write_temp_wav(np.concatenate([
-                context, np.zeros((target_samples, 2), dtype=np.float32),
+                context, np.zeros((target_samples + tail_samples, 2), dtype=np.float32),
             ]))
         context_duration = context_samples / TARGET_SR
+        tail_duration = tail_samples / TARGET_SR
+        if BLOCK_V2:
+            if needs_restart or self.seed is None:
+                self.seed = creativity_to_seed(creativity, 0)
+            seed = self.seed
+        else:
+            seed = creativity_to_seed(creativity, seq)
         prompt = build_prompt(
             genre,
             instruments,
@@ -451,13 +489,14 @@ class Session:
             prompt=prompt,
             bpm=bpm,
             key_scale=key,
-            audio_duration=context_duration + duration,
+            audio_duration=context_duration + duration + tail_duration,
             inference_steps=INFERENCE_STEPS,
             guidance=density_to_guidance(creativity, density),
-            seed=creativity_to_seed(creativity, seq),
+            seed=seed,
             src_audio_path=source_path,
             repainting_start=context_duration if source_path else None,
-            repainting_end=context_duration + duration if source_path else None,
+            repainting_end=context_duration + duration + tail_duration if source_path else None,
+            lyrics="[Instrumental]" if BLOCK_V2 else None,
         )
 
         loop = asyncio.get_running_loop()
@@ -485,7 +524,11 @@ class Session:
 
         self.last_bpm = bpm
         self.last_key = key
-        self.prev_audio = audio.copy()
+        if BLOCK_V2 and self.prev_audio is not None:
+            keep = round(CONTEXT_MAX_SECONDS * TARGET_SR)
+            self.prev_audio = np.concatenate([self.prev_audio, audio])[-keep:]
+        else:
+            self.prev_audio = audio.copy()
 
         pcm = float_to_pcm16(audio)
         header = struct.pack("<I", seq)
