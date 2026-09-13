@@ -57,7 +57,7 @@ from arrangement import (  # noqa: E402
 from cached import cached_generate  # noqa: E402
 from brain import HarmonyBrain, sampling_for  # noqa: E402
 from performance_history import PerformanceHistory  # noqa: E402
-from instruments import resolve as resolve_instruments, TOGGLEABLE_PRESETS, DEFAULT_PRESETS  # noqa: E402,F401
+from instruments import resolve as resolve_instruments, resolve_groups, TOGGLEABLE_PRESETS, DEFAULT_PRESETS  # noqa: E402,F401
 from readiness import health_response  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -358,25 +358,36 @@ class Session:
             rtt_s = DEFAULT_RTT_S
         lead_s = min(start_beat - now_beat, commit_end_beat - start_beat) * self.beat_s
         deadline_s = max(DEADLINE_FLOOR_S, lead_s - rtt_s - DEADLINE_MARGIN_S)
+        # One sampling pass per selected preset, each masked to that preset's instruments
+        # and prompted with the same history. A single pass over the union locks onto the
+        # first instrument it happens to write (the history then keeps telling it "this is
+        # a cello line"), so any other tile the player switched on never joins.
+        groups = [g for g in (tuple(p for p in group if p in generation_instrs)
+                              for group in resolve_groups(self.instrument_names)) if g]
+        pass_deadline_s = deadline_s / max(1, len(groups))
+        start_tick = round(start_s * TIME_RESOLUTION)
+        commit_end_tick = round(commit_end_s * TIME_RESOLUTION)
         t0 = time.monotonic()
-        result = generate_duet(
-            self.model, start_s, end_s, history_before, generation_instrs, self.top_p, self.accomp_bias,
-            temperature=self.temperature,
-            deadline_s=deadline_s,
-            # The committed voice is monophonic and the app plays to a beat grid, so a
-            # sixteenth note is the shortest onset gap worth sampling.
-            min_interval_ticks=max(1, round(self.beat_s / 4.0 * TIME_RESOLUTION)),
-        )
+        accomp = []
+        tokens_generated = 0
+        result = []
+        for group in groups:
+            result = generate_duet(
+                self.model, start_s, end_s, history_before, group, self.top_p, self.accomp_bias,
+                temperature=self.temperature,
+                deadline_s=pass_deadline_s,
+                # The committed voice is monophonic and the app plays to a beat grid, so a
+                # sixteenth note is the shortest onset gap worth sampling.
+                min_interval_ticks=max(1, round(self.beat_s / 4.0 * TIME_RESOLUTION)),
+            )
+            if SAMPLER == "cached":
+                tokens_generated += getattr(self.model, "amt_sampled_tokens", 0)
+            accomp.extend((t, d, instr, p) for (t, d, instr, p) in parse_events(result) if instr in group)
         latency_ms = (time.monotonic() - t0) * 1000.0
 
         # Compare on the model's own tick grid: the window bounds are bar lines
         # here, and a float `start_s < t` comparison dropped any note landing
         # exactly on one.
-        start_tick = round(start_s * TIME_RESOLUTION)
-        commit_end_tick = round(commit_end_s * TIME_RESOLUTION)
-        accomp = [
-            (t, d, instr, p) for (t, d, instr, p) in parse_events(result) if instr in generation_instrs
-        ]
         raw_notes = [
             (t, d, instr, p) for (t, d, instr, p) in accomp
             if start_tick <= round(t * TIME_RESOLUTION) < commit_end_tick
@@ -416,8 +427,8 @@ class Session:
             ops.clip(history_before, 0, int(TIME_RESOLUTION * start_s), clip_duration=False, seconds=False),
             int(TIME_RESOLUTION * start_s),
         )
-        tokens_generated = (getattr(self.model, "amt_sampled_tokens", 0) if SAMPLER == "cached"
-                            else max(0, len(result) - len(prior_clipped)))
+        if SAMPLER != "cached":
+            tokens_generated = max(0, len(result) - len(prior_clipped))
         tokens_per_sec = (tokens_generated / (latency_ms / 1000.0)) if latency_ms > 0 else 0.0
 
         return {
