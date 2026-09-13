@@ -20,4 +20,13 @@ describe('continuous drone',()=>{
   const d=new Drone();d.setLevel(.5);d.setRoot(9);
   expect(m.frequency).toHaveBeenLastCalledWith(110,.3);
  });
+ it('setRegister shifts by fractional octaves with a short glide, clamped to ±2',()=>{
+  const d=new Drone();d.setLevel(.5);
+  d.setRegister(1);
+  expect(m.frequency).toHaveBeenLastCalledWith(expect.closeTo(130.813,2),.05);
+  d.setRegister(-1.5);
+  expect(m.frequency).toHaveBeenLastCalledWith(expect.closeTo(23.125,2),.05);
+  d.setRegister(99);
+  expect(m.frequency).toHaveBeenLastCalledWith(expect.closeTo(261.626,2),.05); // clamped to +2
+ });
 });

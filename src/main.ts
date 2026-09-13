@@ -836,16 +836,21 @@ const liveActions: LiveActions = {
     drone.setLevel(droneVolume);
     store.update({ droneVolume });
   },
-  setDroneOctave: value => {
-    const droneOctave = Number.isFinite(value) ? Math.min(2, Math.max(-2, Math.round(value))) : 0;
-    drone.setOctave(droneOctave);
-    store.update({ droneOctave });
+  setDroneRegister: value => {
+    const droneRegister = Number.isFinite(value) ? Math.min(2, Math.max(-2, value)) : 0;
+    drone.setRegister(droneRegister);
+    store.update({ droneRegister });
   },
   setNoiseVolume: value => {
     const noiseVolume = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
     whiteNoise.setEnabled(store.state.power === 'on' && !store.state.paused);
     whiteNoise.setLevel(noiseVolume);
     store.update({ noiseVolume });
+  },
+  setNoiseRegister: value => {
+    const noiseRegister = Number.isFinite(value) ? Math.min(2, Math.max(-2, value)) : 0;
+    whiteNoise.setRegister(noiseRegister);
+    store.update({ noiseRegister });
   },
   startSampleRecording: () => {
     if (!foundSound || foundSound.isRecording) return;
