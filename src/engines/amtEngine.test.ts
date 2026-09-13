@@ -1147,3 +1147,55 @@ it.each([false, true])('preserves later same-program backing in a four-beat phra
   expect((phrase[5] as AbortSignal).aborted).toBe(true);
   engine.stop();
 });
+
+describe('AmtEngine held input handoff', () => {
+  beforeEach(() => { vi.useFakeTimers(); FakeWebSocket.instances = []; });
+  afterEach(() => vi.useRealTimers());
+  function setup(replay = false) {
+    let now = 0;
+    let fire!: (event: import('../listener/performanceEvent').PerformanceEvent) => void;
+    const onset = { type: 'note_on' as const, id: 'held', source: 'mic' as const, midi: 69, velocity: .8, confidence: 1, timeSec: 0 };
+    const clock = new FakeClock();
+    const engine = new AmtEngine(new FakePlayers(), { onNote() {}, onPerformance(cb) { fire = cb; if (replay) cb(onset); } }, clock, () => now, () => now);
+    return { engine, clock, onset, fire: (e: typeof onset | import('../listener/performanceEvent').PerformanceEvent) => fire(e), setNow: (t: number) => { now = t; } };
+  }
+  for (const replay of [false, true]) it(`retains a note held across count-in (replayed=${replay}) and clips its release`, async () => {
+    const s = setup(replay);
+    await s.engine.start(120, 4);
+    const ws = startedSocket(); ws.open(); ws.receiveJson({ type: 'ready', performanceEvents: true });
+    if (!replay) s.fire(s.onset);
+    expect(ws.sent.filter((m: any) => m.type === 'notes')).toEqual([]);
+    s.setNow(4); s.clock.tick(0, 4);
+    expect(ws.sent).toContainEqual({ type: 'notes', notes: [expect.objectContaining({ id: 'held', beat: 0, pitch: 69, held: true })] });
+    s.setNow(5); s.fire({ ...s.onset, type: 'note_off', timeSec: 5, durationSec: 5 });
+    expect(ws.sent).toContainEqual({ type: 'note_updates', notes: [{ id: 'held', dur: 2, captureTimeSec: 5 }] });
+    s.engine.stop();
+  });
+  it('does not transmit notes released during count-in', async () => {
+    const s = setup(); await s.engine.start(120, 4);
+    const ws = startedSocket(); ws.open(); ws.receiveJson({ type: 'ready', performanceEvents: true });
+    s.fire(s.onset); s.setNow(2); s.fire({ ...s.onset, type: 'note_off', timeSec: 2, durationSec: 2 });
+    s.setNow(4); s.clock.tick(0, 4);
+    expect(ws.sent.filter((m: any) => m.type === 'notes' || m.type === 'note_updates')).toEqual([]);
+    s.engine.stop();
+  });
+  it('does not turn a transport lookahead callback into an early held onset', async () => {
+    const s = setup(); await s.engine.start(120, 4);
+    const ws = startedSocket(); ws.open(); ws.receiveJson({ type: 'ready', performanceEvents: true });
+    s.fire(s.onset); s.setNow(3.9); s.clock.tick(0, 4);
+    s.setNow(3.95); s.fire({ ...s.onset, type: 'note_off', timeSec: 3.95, durationSec: 3.95 });
+    s.setNow(4); s.engine.flushNotesForTest();
+    expect(ws.sent.filter((m: any) => m.type === 'notes' || m.type === 'note_updates')).toEqual([]);
+    s.engine.stop();
+  });
+  it('replays a still held note at the current beat when a connection resumes', async () => {
+    const s = setup(); await s.engine.start(120, 0);
+    const ws = startedSocket(); ws.open(); s.fire(s.onset);
+    s.setNow(2); ws.close(); await vi.advanceTimersByTimeAsync(500);
+    const resumed = startedSocket(); resumed.open(); resumed.receiveJson({ type: 'ready', performanceEvents: true });
+    expect(resumed.sent).toContainEqual({ type: 'notes', notes: [expect.objectContaining({ id: 'held', beat: 4, pitch: 69, held: true })] });
+    s.setNow(3); s.fire({ ...s.onset, type: 'note_off', timeSec: 3, durationSec: 3 });
+    expect(resumed.sent).toContainEqual({ type: 'note_updates', notes: [{ id: 'held', dur: 2, captureTimeSec: 3 }] });
+    s.engine.stop();
+  });
+});

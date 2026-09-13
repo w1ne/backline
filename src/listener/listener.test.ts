@@ -430,3 +430,49 @@ it('exports only explicit manual preferences, without exposing mutable key state
   listener.setOverride({bpm:undefined,key:undefined});
   expect(listener.manualOverrides).toEqual({bpmOverride:null,keyOverride:null});
 });
+
+it('hands currently held microphone notes to a new performance subscriber', async () => {
+  const mic = new Fake();
+  const listener = new Listener([mic], ['mic'], () => 10);
+  await listener.start();
+  mic.pitch?.({ midi: 69, cents: 0, stable: true });
+  const received: import('./performanceEvent').PerformanceEvent[] = [];
+  listener.onPerformance(e => received.push(e));
+  expect(received).toEqual([expect.objectContaining({ type: 'note_on', midi: 69, timeSec: 10 })]);
+  mic.pitch?.(null);
+  const later: unknown[] = [];
+  listener.onPerformance(e => later.push(e));
+  expect(later).toEqual([]);
+});
+
+it('sets the session tempo without creating a manual override', () => {
+  const listener = new Listener([]);
+  listener.setSessionTempo(100);
+  expect(listener.input.bpm).toBe(100);
+  expect(listener.manualOverrides.bpmOverride).toBeNull();
+  listener.setTempoMode('follow');
+  expect(listener.input.bpm).toBe(100);
+  listener.setOverride({ bpm: 120 });
+  listener.setSessionTempo(90);
+  expect(listener.input.bpm).toBe(120);
+});
+
+it('hands held MIDI notes to new subscribers and forgets released or stopped notes', async () => {
+  let fire!: (e: import('./performanceEvent').PerformanceEvent) => void;
+  const source: Source = { async start() {}, stop() {}, onPerformance(cb) { fire = cb; return () => {}; } };
+  const listener = new Listener([source], ['midi']);
+  await listener.start();
+  const event = { type: 'note_on' as const, id: 'midi-held', source: 'midi' as const, midi: 60, velocity: .8, confidence: 1, timeSec: 1 };
+  fire(event);
+  const events: unknown[] = [];
+  listener.onPerformance(e => events.push(e));
+  expect(events).toEqual([event]);
+  fire({ ...event, type: 'note_off', timeSec: 2, durationSec: 1 });
+  const released: unknown[] = [];
+  listener.onPerformance(e => released.push(e));
+  expect(released).toEqual([]);
+  fire(event); listener.stop();
+  const stopped: unknown[] = [];
+  listener.onPerformance(e => stopped.push(e));
+  expect(stopped).toEqual([]);
+});

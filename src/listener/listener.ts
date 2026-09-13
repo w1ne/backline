@@ -46,13 +46,19 @@ const LEVEL_EMIT_INTERVAL_SEC = 0.1;
 
 export class Listener {
   private performanceCbs = new Set<(e: PerformanceEvent) => void>();
+  private heldPerformance = new Map<string, PerformanceEvent>();
   private sourceDetaches: (() => void)[] = [];
   private micHeld?: PerformanceEvent;
   onPerformance(cb: (e: PerformanceEvent) => void): () => void {
     this.performanceCbs.add(cb);
+    for (const event of this.heldPerformance.values()) cb(event);
     return () => { this.performanceCbs.delete(cb); };
   }
-  private emitPerformance(e: PerformanceEvent): void { this.performanceCbs.forEach(cb => cb(e)); }
+  private emitPerformance(e: PerformanceEvent): void {
+    if (e.type === 'note_on') this.heldPerformance.set(e.id, e);
+    else this.heldPerformance.delete(e.id);
+    this.performanceCbs.forEach(cb => cb(e));
+  }
   private closeMic(timeSec: number): void {
     const e = this.micHeld;
     this.micHeld = undefined;
@@ -110,6 +116,13 @@ export class Listener {
     this.now = now;
     this.keyDet = new KeyDetector(tuning.key);
     this.chordDet = new ChordDetector(tuning.chord);
+  }
+
+  /** Adopt the running clock's tempo without pinning the user's manual controls. */
+  setSessionTempo(bpm: number): void {
+    this.frozenBpm = bpm;
+    this.followBpm = null;
+    this.follower = undefined;
   }
 
   setTempoMode(m: 'locked' | 'follow') {
@@ -231,6 +244,7 @@ export class Listener {
     this.closeMic(this.now());
     this.lastStableMidi = null;
     this.sourceDetaches.splice(0).forEach(detach => detach());
+    this.heldPerformance.clear();
   }
 
   /** Records a source that came up (or failed) after start(), e.g. a mic retried on the first tap. */

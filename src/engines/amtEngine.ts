@@ -177,6 +177,7 @@ export class AmtEngine implements BandEngine {
   private inputSession = 0;
   private phraseController = new AbortController();
   private heldNotes = new Set<string>();
+  private heldInput = new Map<string, { event: PerformanceEvent; audioTime: number; sentAt?: number }>();
   private legacyOnsetAt = -Infinity;
   private latestOnsetCapture = -Infinity;
 
@@ -217,6 +218,7 @@ export class AmtEngine implements BandEngine {
   async start(bpm: number, firstBarAt: number): Promise<void> {
     this.interruptPhrase();
     this.heldNotes.clear();
+    this.heldInput.clear();
     this.legacyOnsetAt = -Infinity;
     this.latestOnsetCapture = -Infinity;
     this.stopping = false;
@@ -283,8 +285,11 @@ export class AmtEngine implements BandEngine {
       this.latestCaptureTimeSec = e.timeSec;
       if (e.type === 'note_off') {
         this.heldNotes.delete(e.id);
-        if (e.durationSec !== undefined) {
-          this.releaseBuf.push({ id: e.id, dur: e.durationSec * this.bpm / 60, captureTimeSec: e.timeSec });
+        const held = this.heldInput.get(e.id);
+        this.heldInput.delete(e.id);
+        if (held?.sentAt !== undefined && e.durationSec !== undefined) {
+          const duration = Math.max(0, e.timeSec + inputOffset - held.sentAt);
+          this.releaseBuf.push({ id: e.id, dur: duration * this.bpm / 60, captureTimeSec: e.timeSec });
           this.flushNotes();
         }
         return;
@@ -292,10 +297,7 @@ export class AmtEngine implements BandEngine {
       this.latestOnsetCapture = e.timeSec;
       this.heldNotes.add(e.id);
       this.interruptPhrase();
-      const beat = ((e.timeSec + inputOffset - this.firstBarAt) * this.bpm) / 60;
-      if (beat < 0) return;
-      this.noteBuf.push({ id: e.id, beat, pitch: e.midi, dur: DEFAULT_NOTE_DUR_BEATS,
-        vel: e.velocity, source: e.source, confidence: e.confidence, captureTimeSec: e.timeSec, held: true });
+      this.heldInput.set(e.id, { event: e, audioTime: e.timeSec + inputOffset });
       this.flushNotes();
     }) || undefined : this.notes.onNote(n => {
       if (this.stopping || session !== this.inputSession) return;
@@ -372,7 +374,17 @@ export class AmtEngine implements BandEngine {
       });
       this.queueSet();
       this.flushSet();
-      if (resume) this.onStatus?.('Listening');
+      if (resume) {
+        // The new server has no held-note history. Seed only the notes still held now.
+        this.noteBuf = this.noteBuf.filter(n => !n.id || !this.heldInput.has(n.id));
+        this.releaseBuf = this.releaseBuf.filter(n => !this.heldInput.has(n.id));
+        for (const held of this.heldInput.values()) {
+          held.audioTime = Math.max(this.now(), this.firstBarAt);
+          held.sentAt = undefined;
+        }
+        this.flushNotes();
+        this.onStatus?.('Listening');
+      }
       this.onConnected?.();
     });
     ws.addEventListener('message', ev => { if (this.ws === ws && !this.stopping) this.onMessage(ev); });
@@ -415,6 +427,7 @@ export class AmtEngine implements BandEngine {
     this.pendingBpm = undefined;
     this.interruptPhrase();
     this.heldNotes.clear();
+    this.heldInput.clear();
     this.responseTimings.clear();
     this.timingFlushPending = false;
     this.onResponseTiming?.(null);
@@ -579,7 +592,22 @@ export class AmtEngine implements BandEngine {
     this.scheduleDue();
   }
 
+  /** Notes held through count-in enter at beat zero; released count-in notes never enter. */
+  private queueHeldInput(): void {
+    // Transport callbacks run ahead of audible time; wait for the actual count-in end.
+    if (this.now() < this.firstBarAt) return;
+    for (const held of this.heldInput.values()) {
+      if (held.sentAt !== undefined) continue;
+      const e = held.event;
+      held.sentAt = Math.max(held.audioTime, this.firstBarAt);
+      const beat = (held.sentAt - this.firstBarAt) * this.bpm / 60;
+      this.noteBuf.push({ id: e.id, beat, pitch: e.midi, dur: DEFAULT_NOTE_DUR_BEATS,
+        vel: e.velocity, source: e.source, confidence: e.confidence, captureTimeSec: e.timeSec, held: true });
+    }
+  }
+
   private flushNotes(): void {
+    this.queueHeldInput();
     // An unavailable socket must not retain an unbounded performance history.
     if (this.noteBuf.length > MAX_BUFFERED_NOTES) this.noteBuf.splice(0, this.noteBuf.length - MAX_BUFFERED_NOTES);
     if (this.releaseBuf.length > MAX_BUFFERED_NOTES) this.releaseBuf.splice(0, this.releaseBuf.length - MAX_BUFFERED_NOTES);
