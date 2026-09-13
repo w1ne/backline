@@ -108,3 +108,53 @@ class BlockV2Test(unittest.TestCase):
         # 4 blocks x 4 s = 16 s played, capped to CONTEXT_MAX_SECONDS
         self.assertEqual(session.prev_audio.shape[0], round(server.CONTEXT_MAX_SECONDS * server.TARGET_SR))
         self.assertEqual(requests[3].repainting_start, 12)
+
+
+class SongModeTest(unittest.TestCase):
+    def test_first_block_renders_a_segment_and_later_blocks_are_sliced(self):
+        requests, packets, sleeps = [], [], []
+
+        class Model:
+            def generate(self, params):
+                requests.append(params)
+                n = round(params.audio_duration * server.TARGET_SR)
+                audio = np.zeros((n, 2), dtype=np.float32)
+                audio[:, 0] = np.arange(n) / n  # ramp so slices are distinguishable
+                return audio
+
+        async def send_binary(packet):
+            packets.append(packet)
+
+        async def send_json(_):
+            pass
+
+        async def fake_sleep(seconds):
+            sleeps.append(seconds)
+
+        async def run():
+            session = server.Session(Model())
+            for seq in range(1, 11):  # 16-bar segment = 8 two-bar blocks, so block 9 re-renders
+                await session.handle_block(dict(seq=seq, bpm=120, bars=2, key='C major',
+                                                instruments=['drums', 'bass']), send_binary, send_json)
+            return session
+
+        with patch.object(server, 'SONG_MODE', True), patch.object(server, 'BLOCK_V2', True), \
+             patch.object(server, 'pace_sleep', fake_sleep), \
+             patch.object(server, '_write_temp_wav', return_value='/tmp/backline-test-source.wav'), \
+             patch.object(server.os, 'unlink'):
+            asyncio.run(run())
+
+        self.assertEqual([p.task_type for p in requests], ['text2music', 'repaint'])
+        self.assertEqual(requests[0].audio_duration, 32)          # 16 bars at 120 bpm
+        self.assertEqual(requests[1].repainting_start, server.CONTEXT_MAX_SECONDS)
+        self.assertEqual(requests[1].audio_duration, server.CONTEXT_MAX_SECONDS + 32)
+        self.assertEqual(requests[0].seed, requests[1].seed)
+        self.assertEqual(len(packets), 10)
+        for packet in packets:
+            self.assertEqual(len(packet), 4 + 4 * server.TARGET_SR * 2 * 2)
+        # consecutive slices of the same ramp: block 2 starts where block 1 ended
+        b1 = np.frombuffer(packets[0][4:], dtype='<i2')[::2]
+        b2 = np.frombuffer(packets[1][4:], dtype='<i2')[::2]
+        self.assertLess(b1.mean(), b2.mean())
+        self.assertLessEqual(abs(int(b2[0]) - int(b1[-1])), 2)
+        self.assertEqual(len(sleeps), 8)  # every sliced block was paced

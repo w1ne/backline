@@ -74,6 +74,18 @@ INFERENCE_STEPS = 8
 BLOCK_V2 = os.environ.get("ACE_BLOCK_V2", "0").lower() in ("1", "true", "yes")
 MIN_GEN_SECONDS = float(os.environ.get("ACE_MIN_GEN_SECONDS", "15"))
 CONTEXT_MAX_SECONDS = float(os.environ.get("ACE_CONTEXT_MAX_SECONDS", "12"))
+# Song mode (feature flag, off by default; implies the v2 canvas/context/seed rules): the
+# first block renders a whole SONG_SEGMENT_BARS segment in one pass (XL: ~2 s for a
+# minute of audio), later blocks are sliced from it and paced one block ahead of
+# playback, and when the segment runs out the next one is repainted with the last
+# CONTEXT_MAX_SECONDS as context. One coherent arrangement instead of a new 2-bar idea
+# every request; the client protocol (2-bar blocks) is unchanged.
+SONG_MODE = os.environ.get("ACE_SONG_MODE", "0").lower() in ("1", "true", "yes")
+SONG_SEGMENT_BARS = int(os.environ.get("ACE_SONG_SEGMENT_BARS", "16"))
+# how far ahead of the block's due time a sliced block may be sent
+SONG_PACE_LEAD_SECONDS = 1.5
+if SONG_MODE:
+    BLOCK_V2 = True
 # Point at an already-running acestep-api instead of spawning one (lets a flagged test
 # instance share the GPU model with the live service).
 ACE_HTTP_BASE = os.environ.get("ACE_HTTP_BASE")
@@ -416,6 +428,12 @@ class Session:
         self._task: Optional[asyncio.Task] = None
         self._latest_seq = -1
         self.seed: Optional[int] = None
+        # song mode: the pre-rendered segment being sliced, the read position, and the
+        # wall-clock moment its first block was due (for pacing).
+        self.song: Optional[np.ndarray] = None
+        self.song_pos = 0
+        self.song_t0 = 0.0
+        self.song_blocks_served = 0
 
     def cancel_inflight(self) -> None:
         if self._task and not self._task.done():
@@ -447,6 +465,9 @@ class Session:
 
         duration = bars * 240.0 / bpm
         needs_restart = bpm != self.last_bpm or key != self.last_key or self.prev_audio is None
+        if SONG_MODE:
+            await self._run_song_block(msg, seq, bpm, key, duration, needs_restart, send_binary, send_json)
+            return
         # `complete` adds tracks over source audio. Feeding its mix back repeatedly layers
         # instruments over the same passage. Instead preserve one bar of context and repaint
         # a NEW, silent two-bar interval; send only that new interval to the browser.
@@ -539,6 +560,97 @@ class Session:
         header = struct.pack("<I", seq)
         await send_binary(header + pcm)
         await send_json({"type": "done", "seq": seq, "ms": elapsed_ms})
+
+
+async def pace_sleep(seconds: float) -> None:
+    if seconds > 0:
+        await asyncio.sleep(seconds)
+
+
+async def _run_song_block(self: "Session", msg: dict, seq: int, bpm: int, key: str, duration: float,
+                          needs_restart: bool, send_binary, send_json) -> None:
+    target_samples = round(duration * TARGET_SR)
+    t0 = time.monotonic()
+    elapsed_ms = 0.0
+    if needs_restart:
+        self.song = None
+        self.prev_audio = None
+    if self.song is None or self.song_pos + target_samples > len(self.song):
+        # render the next segment: text2music on a fresh start, otherwise a repaint that
+        # continues the last CONTEXT_MAX_SECONDS of what the player already heard.
+        segment = SONG_SEGMENT_BARS * 240.0 / bpm
+        context_samples = 0
+        source_path = None
+        if self.prev_audio is not None:
+            context = self.prev_audio[-round(CONTEXT_MAX_SECONDS * TARGET_SR):]
+            context_samples = len(context)
+            source_path = _write_temp_wav(np.concatenate([
+                context, np.zeros((round(segment * TARGET_SR), 2), dtype=np.float32),
+            ]))
+        context_duration = context_samples / TARGET_SR
+        if self.seed is None or needs_restart:
+            self.seed = creativity_to_seed(float(msg.get("creativity", 0.5)), 0)
+        instruments = msg.get("instruments", ["drums", "bass"])
+        prompt = build_prompt(
+            msg.get("genre", "lofi"), instruments, exclude=msg.get("player_instrument"),
+            chords=[str(c) for c in (msg.get("chords") or [])],
+            intensity=float(msg.get("intensity", 0.5)), space=True,
+            density=float(msg.get("density", msg.get("intensity", 0.5))), fill=False,
+        )
+        params = GenParams(
+            task_type="text2music" if source_path is None else "repaint",
+            prompt=prompt, bpm=bpm, key_scale=key,
+            audio_duration=context_duration + segment,
+            inference_steps=INFERENCE_STEPS,
+            guidance=density_to_guidance(float(msg.get("creativity", 0.5)), 0.5),
+            seed=self.seed, src_audio_path=source_path,
+            repainting_start=context_duration if source_path else None,
+            repainting_end=context_duration + segment if source_path else None,
+            lyrics="[Instrumental]",
+        )
+        loop = asyncio.get_running_loop()
+
+        def generate():
+            try:
+                return self.model.generate(params)
+            finally:
+                if source_path:
+                    try:
+                        os.unlink(source_path)
+                    except FileNotFoundError:
+                        pass
+
+        audio = await loop.run_in_executor(None, generate)
+        audio = audio[context_samples:context_samples + round(segment * TARGET_SR)]
+        if len(audio) < target_samples:
+            raise RuntimeError("ACE returned a shorter segment than requested")
+        if seq != self._latest_seq:
+            return
+        self.song = audio
+        self.song_pos = 0
+        self.song_t0 = time.monotonic()
+        self.song_blocks_served = 0
+        elapsed_ms = (time.monotonic() - t0) * 1000.0
+    else:
+        # pacing: block k of the segment is due k*duration after the segment's first block
+        due = self.song_t0 + self.song_blocks_served * duration - SONG_PACE_LEAD_SECONDS
+        await pace_sleep(due - time.monotonic())
+        if seq != self._latest_seq:
+            return
+
+    block = self.song[self.song_pos:self.song_pos + target_samples]
+    self.song_pos += target_samples
+    self.song_blocks_served += 1
+    self.last_bpm = bpm
+    self.last_key = key
+    keep = round(CONTEXT_MAX_SECONDS * TARGET_SR)
+    self.prev_audio = block.copy() if self.prev_audio is None else np.concatenate([self.prev_audio, block])[-keep:]
+    header = struct.pack("<I", seq)
+    await send_binary(header + float_to_pcm16(block))
+    await send_json({"type": "done", "seq": seq, "ms": elapsed_ms})
+
+
+Session._run_song_block = _run_song_block
 
 
 def _write_temp_wav(audio: np.ndarray) -> str:
