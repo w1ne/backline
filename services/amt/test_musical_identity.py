@@ -124,6 +124,47 @@ class MusicalIdentityTests(unittest.TestCase):
         self.shape(obj, source=[])
         self.assertFalse(obj.response_applied)
 
+    def test_response_instrument_tracks_fresh_cached_and_empty_answers(self):
+        obj = self.identity()
+        self.assertIsNone(getattr(obj, 'response_instrument', 'missing'))
+        self.shape(obj)
+        self.assertEqual(obj.response_instrument, 25)
+        self.shape(obj)
+        self.assertEqual(obj.response_instrument, 25)
+        self.shape(obj, source=[])
+        self.assertIsNone(obj.response_instrument)
+        obj.reset()
+        self.assertIsNone(obj.response_instrument)
+
+    def test_dense_two_bar_call_keeps_its_sixteenth_note_rhythm(self):
+        phrase = [(i * .25, .2, 60 + i % 5) for i in range(32)]
+        obj = self.identity(phrase)
+        output = self.shape(obj)
+        self.assertEqual([n[0] for n in output if n[2] == 25], [(9 + i*.25)*.5 for i in range(8)])
+
+    def test_late_release_completes_phrase_with_actual_duration(self):
+        obj = MusicalIdentity()
+        meta = records(PHRASE)
+        meta['4']['held'] = True
+        obj.observe(PHRASE, meta, 9)
+        self.assertEqual(obj.phrase, ())
+        released = PHRASE[:-1] + [(7.5, 1.5, 65)]
+        obj.observe(released, records(released), 11)
+        self.assertEqual(obj.phrase[-1][1], 1.5)
+        self.assertNotEqual(self.shape(obj, now=11), generated(start=11))
+
+    def test_old_observation_cannot_clear_currently_held_note(self):
+        obj = self.identity()
+        obj.observe([(10, 1, 70)], records([(10, 1, 70)], held=True), 11)
+        obj.observe(PHRASE, records(PHRASE), 9)
+        self.assertEqual(self.shape(obj, now=11), generated(start=11))
+
+    def test_old_cue_cannot_replay_cached_answer_after_newer_cue(self):
+        obj = self.identity()
+        self.shape(obj)
+        self.shape(obj, now=10)
+        self.assertEqual(self.shape(obj, now=9), generated(start=9))
+
     def test_distinct_calls_survive_final_arranger_policy(self):
         from arrangement import Arranger
         arranger = Arranger(amount=.5, creativity=.2)

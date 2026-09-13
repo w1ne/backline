@@ -19,12 +19,15 @@ class MusicalIdentity:
 
     def reset(self):
         self.response_applied = False
+        self.response_instrument = None
         self.pending = {}
         self.phrase = ()
         self.latest_release = None
         self.held = False
         self._captured_through = -math.inf
         self._last_answer = -math.inf
+        self._observed_through = -math.inf
+        self._shaped_through = -math.inf
         self._cached_key = None
         self._cached_answer = ()
         self._cached_region = None
@@ -36,6 +39,9 @@ class MusicalIdentity:
         onsets in both bars, three notes, and a release gap. Dense/polyphonic calls
         are deliberately not collapsed into an invented top-note melody.
         """
+        if now_beat < max(self._observed_through, self._shaped_through):
+            return
+        self._observed_through = now_beat
         by_index = {r.get('note_index'): r for r in records.values()}
         self.held = any(r.get('held', False) and r.get('beat', math.inf) <= now_beat
                         for r in records.values())
@@ -89,11 +95,16 @@ class MusicalIdentity:
         an eight-beat cooldown, a real one-beat human release gap, and recent play.
         """
         self.response_applied = False
+        self.response_instrument = None
         original = list(notes)
+        if now_beat < max(self._observed_through, self._shaped_through):
+            return original
+        self._shaped_through = now_beat
         key = (hash(tuple(original)), start_beat, end_beat, beat_seconds, now_beat,
                creativity, section, self.phrase, self.latest_release, self.held)
         if key == self._cached_key:
             self.response_applied = True
+            self.response_instrument = self._cached_region[0]
             return self._replace(original, self._cached_answer, *self._cached_region)
         if (not original or not self.phrase or self.held or beat_seconds <= 0
                 or self.latest_release is None or not 1 <= now_beat - self.latest_release < 16
@@ -130,6 +141,7 @@ class MusicalIdentity:
         answer = [((start + t) * beat_seconds, d * beat_seconds, instrument, base + offset)
                   for (t, d, _), offset in zip(excerpt, intervals)]
         self.response_applied = True
+        self.response_instrument = instrument
         self._last_answer = now_beat
         self._cached_key, self._cached_answer = key, tuple(answer)
         self._cached_region = (instrument, start_s, end_s)
