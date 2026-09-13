@@ -80,6 +80,10 @@ export interface AppState {
   accompPresets: AccompPreset[];
   /** AMT: which accompaniment presets have an audible note right now, for the tiles' LEDs */
   accompActive: Partial<Record<AccompPreset, boolean>>;
+  /** the SAMPLE pad is actively capturing a found sound from the mic */
+  sampleRecording: boolean;
+  /** a found-sound clip has been captured and is ready to trigger */
+  sampleReady: boolean;
 }
 
 const defaults: AppState = {
@@ -130,6 +134,8 @@ const defaults: AppState = {
   midiInputs: [],
   accompPresets: ['strings'],
   accompActive: {},
+  sampleRecording: false,
+  sampleReady: false,
 };
 
 export class Store {

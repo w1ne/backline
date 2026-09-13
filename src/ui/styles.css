@@ -1990,3 +1990,14 @@ button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-v
 .inst .pad-btn.ambient {
   --c: var(--pink);
 }
+.inst .pad-btn.sample {
+  --c: var(--red);
+}
+/* actively capturing: pulse so it reads as "recording", not just "on" */
+.inst .pad-btn.sample.recording {
+  animation: sample-pulse 0.8s ease-in-out infinite;
+}
+@keyframes sample-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}

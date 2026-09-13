@@ -51,6 +51,12 @@ export interface LiveActions {
   setVoiceMonitor?(enabled: boolean): void;
   /** ms a toggled instrument spends showing "joining…"/"leaving…" before it settles */
   changeLatencyMs?: number;
+  /** SAMPLE pad: begin capturing a found sound from the mic */
+  startSampleRecording?(): void;
+  /** SAMPLE pad: stop capturing; the clip is ready to trigger once this settles */
+  stopSampleRecording?(): void;
+  /** SAMPLE pad: play the captured clip, snapped to the next beat when the band is running */
+  triggerSample?(): void;
 }
 
 const actionsRef = new WeakMap<HTMLElement, LiveActions>();
@@ -200,6 +206,16 @@ function skeleton(): string {
               </button>
             </div>`,
         ).join('')}
+      </div>
+      <div class="inst" id="sample-tile">
+        <div class="pad">
+          <button type="button" class="pad-btn sample" id="sample-btn"
+                  aria-label="Hold to record a found sound, tap to play it back">
+            <span class="dot"></span>
+            <span class="name">Sample</span>
+            <span class="st"><span class="st-text"></span></span>
+          </button>
+        </div>
       </div>
       <div class="row2">
         <div class="zone zone--pink knob-zone">
@@ -373,6 +389,35 @@ function wireControls(screen: HTMLElement, store: Store): void {
       actions().toggleAccompPreset?.(preset, !btn.classList.contains('on'));
     });
   });
+  const sampleBtn = screen.querySelector<HTMLButtonElement>('#sample-btn')!;
+  // Hold to (re-)record a found sound; a quick tap plays back a clip that's already there.
+  // A long-press threshold is only meaningful once a clip exists — with none yet, any press
+  // starts capturing straight away.
+  const SAMPLE_LONG_PRESS_MS = 350;
+  let sampleHoldTimer: ReturnType<typeof setTimeout> | undefined;
+  sampleBtn.addEventListener('pointerdown', e => {
+    sampleBtn.setPointerCapture(e.pointerId);
+    if (store.state.sampleReady) {
+      sampleHoldTimer = setTimeout(() => {
+        sampleHoldTimer = undefined;
+        actions().startSampleRecording?.();
+      }, SAMPLE_LONG_PRESS_MS);
+    } else {
+      actions().startSampleRecording?.();
+    }
+  });
+  const releaseSample = () => {
+    if (sampleHoldTimer) {
+      clearTimeout(sampleHoldTimer);
+      sampleHoldTimer = undefined;
+      actions().triggerSample?.();
+      return;
+    }
+    actions().stopSampleRecording?.();
+  };
+  sampleBtn.addEventListener('pointerup', releaseSample);
+  sampleBtn.addEventListener('pointercancel', releaseSample);
+
   screen.querySelector<HTMLButtonElement>('#record-midi')!.addEventListener('click', () => actions().toggleRecord?.());
   screen.querySelector<HTMLButtonElement>('#pause-band')!.addEventListener('click', () => actions().togglePause?.());
 
@@ -474,6 +519,7 @@ function update(screen: HTMLElement, s: AppState, changeLatencyMs: number): void
   updateHeader(screen, s);
   updateEngine(screen, s);
   updateAccompTiles(screen, s);
+  updateSampleTile(screen, s);
   updateReadouts(screen, s);
   updateMicMute(screen, s);
   updateVoiceMonitor(screen, s);
@@ -605,6 +651,15 @@ function updateAccompTiles(screen: HTMLElement, s: AppState): void {
     btn.setAttribute('aria-pressed', String(on));
     btn.querySelector<HTMLElement>('.st-text')!.textContent = !on ? 'off' : muted ? 'muted' : active ? 'playing' : 'ready';
   });
+}
+
+function updateSampleTile(screen: HTMLElement, s: AppState): void {
+  const btn = screen.querySelector<HTMLButtonElement>('#sample-btn')!;
+  btn.classList.toggle('recording', s.sampleRecording);
+  btn.classList.toggle('on', s.sampleReady);
+  btn.setAttribute('aria-pressed', String(s.sampleReady));
+  btn.querySelector<HTMLElement>('.st-text')!.textContent =
+    s.sampleRecording ? 'rec…' : s.sampleReady ? 'tap to play' : 'hold to record';
 }
 
 function updateHeader(screen: HTMLElement, s: AppState): void {
