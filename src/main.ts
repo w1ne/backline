@@ -917,12 +917,12 @@ store.update({}); // first render, which is what puts the canvas in the DOM
 // No power key: the band boots with the page. Audio stays suspended until the
 // first tap (browser autoplay policy); the LCD says so until then.
 if (!demo) {
+  void startArturiaControls(store, () => liveActions).catch(error => console.warn('Arturia controls:', error));
   power().catch(err => {
     store.update({ error: err instanceof Error ? err.message : String(err) });
   });
 }
 if (PI_EDITION && !demo) {
-  void startArturiaControls(store, () => liveActions).catch(error => console.warn('Arturia controls:', error));
   startDeviceRuntime(store, () => liveActions, async playing => {
     if (playing === (store.state.power === 'on')) return;
     Tone.getDestination().mute = !playing;
