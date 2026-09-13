@@ -132,6 +132,14 @@ body {
 .m-note { transform-origin: 50% 100%; }
 .m-pad { opacity: 1; }
 
+.keyboard-feedback {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+#keyboard-sound { color: var(--led); font-weight: 600; }
+
 .bar-top {
   display: flex;
   align-items: center;

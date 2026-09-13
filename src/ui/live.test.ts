@@ -3,6 +3,48 @@ import { describe, it, expect } from 'vitest';
 import { tileLabel, renderLive, accompPresetMuted } from './live';
 import { Store } from './state';
 import type { LiveActions } from './live';
+import { applyArturiaCommand, arturiaCommand } from '../device/arturia';
+import { applyRemoteStatus } from '../device/remote';
+
+describe('Arturia sound feedback', () => {
+  it('shows controller changes outside collapsed settings and mirrors them to the Pi remote', () => {
+    const store = new Store();
+    const remote = new Store();
+    const root = document.createElement('div');
+    const remoteRoot = document.createElement('div');
+    document.body.append(root);
+    const noop = () => {};
+    const actions: LiveActions = { wake: noop, toggle: noop, setGenre: noop, setEngine: noop,
+      setCreativity: noop, setSound: sound => store.update({ sound }),
+      setNoiseVolume: noiseVolume => store.update({ noiseVolume }),
+      setDroneVolume: droneVolume => store.update({ droneVolume }) };
+    store.update({ sound: 'grand' });
+    renderLive(root, store, actions);
+    const select = root.querySelector<HTMLSelectElement>('#sound')!;
+    select.focus();
+    const command = arturiaCommand('Minilab3 MIDI', [0xb0, 114, 65])!;
+    applyArturiaCommand(command, store.state, actions);
+    renderLive(root, store, actions);
+    expect(select.value).toBe('electric_piano_1');
+    const label = root.querySelector('#keyboard-sound')!;
+    expect(label?.textContent).toContain('Electric piano');
+    expect(label.closest('details')).toBeNull();
+    expect(root.querySelector('details.instrument-details')?.hasAttribute('open')).toBe(false);
+    for (const [cc, id, level] of [[86, 'noise', 127], [87, 'drone', 64]] as const) {
+      const slider = root.querySelector<HTMLInputElement>(`#${id}-volume`)!;
+      slider.focus();
+      applyArturiaCommand(arturiaCommand('Minilab3 MIDI', [0xb0, cc, level])!, store.state, actions);
+      renderLive(root, store, actions);
+      expect(Number(slider.value)).toBeCloseTo(level / 127);
+    }
+    expect(root.querySelector('#keyboard-levels')?.textContent).toBe('White noise 100% · Drone 50%');
+    applyRemoteStatus(remote, { online: true, state: store.state });
+    renderLive(remoteRoot, remote, { ...actions, playbackTarget: 'Pi' });
+    expect(remoteRoot.querySelector('#keyboard-sound')?.textContent).toBe(label.textContent);
+    expect(remoteRoot.querySelector('#keyboard-levels')?.textContent).toBe('White noise 100% · Drone 50%');
+    root.remove();
+  });
+});
 
 describe('tileLabel', () => {
   // Regression test for the bug where clicking an instrument tile "kept

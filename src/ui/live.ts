@@ -1,7 +1,7 @@
 import { GM_INSTRUMENTS } from '../players/gmInstruments';
 import { GENRES, INSTRUMENTS, ACCOMP_ROW } from '../types';
 import type { AccompPreset, Genre, Instrument, Key } from '../types';
-import { SOUNDS, SOUND_GROUPS, type MonitorSound } from '../players/soundCatalog';
+import { SOUNDS, SOUND_GROUPS, soundDef, type MonitorSound } from '../players/soundCatalog';
 import { keyName, mod12, NOTE_NAMES } from '../music/pitchClass';
 import { chordName } from '../music/chords';
 import { DEBUG } from '../debug';
@@ -161,6 +161,7 @@ function skeleton(): string {
         <span class="lcd" id="lcd"></span>
         <div class="bar-input">
           <p class="connection-line" id="input-status"></p>
+          <p class="connection-line keyboard-feedback" aria-live="polite" aria-atomic="true"><span id="keyboard-sound"></span><span id="keyboard-levels"></span></p>
           <p class="connection-line band-line"><span id="band-status" role="status"></span><span id="model-latency"></span></p>
           <button type="button" id="enable-audio" class="audio-start">Enable sound</button>
         </div>
@@ -555,20 +556,32 @@ function update(screen: HTMLElement, s: AppState, changeLatencyMs: number): void
   screen.querySelector<HTMLElement>('#engine-status')!.textContent = s.engineConnecting ? `${ENGINE_NAMES[s.engine]} · connecting…` : s.offlineEngines.includes(s.engine) ? `${ENGINE_NAMES[s.engine]} · offline` : '';
   for (const [id, value] of [['noise', s.noiseVolume], ['drone', s.droneVolume]] as const) {
     const input = screen.querySelector<HTMLInputElement>(`#${id}-volume`)!;
-    if (document.activeElement !== input) input.value = String(value);
+    syncInstrumentControl(input, String(value));
     screen.querySelector<HTMLElement>(`#${id}-value`)!.textContent = `${Math.round(value * 100)}%`;
   }
   for (const [id, value] of [['drone-register', s.droneRegister], ['noise-register', s.noiseRegister]] as const) {
     const input = screen.querySelector<HTMLInputElement>(`#${id}`)!;
-    if (document.activeElement !== input) input.value = String(value);
+    syncInstrumentControl(input, String(value));
     const rounded = Math.round(value * 10) / 10;
     screen.querySelector<HTMLElement>(`#${id}-value`)!.textContent = rounded > 0 ? `+${rounded}` : String(rounded);
   }
   const sound = screen.querySelector<HTMLSelectElement>('#sound')!;
-  if (document.activeElement !== sound) sound.value = s.sound;
+  syncInstrumentControl(sound, s.sound);
+  const soundLabel = `Keyboard · ${soundDef(s.sound).label}`;
+  const levels = `White noise ${Math.round(s.noiseVolume * 100)}% · Drone ${Math.round(s.droneVolume * 100)}%`;
+  for (const [id, text] of [['keyboard-sound', soundLabel], ['keyboard-levels', levels]]) {
+    const label = screen.querySelector<HTMLElement>(`#${id}`)!;
+    if (label.textContent !== text) label.textContent = text;
+  }
 
   const countInBtn = screen.querySelector<HTMLButtonElement>('#count-in-toggle')!;
   countInBtn.classList.toggle('on', s.countIn);
+}
+
+/** Hardware changes win even while focused; unchanged status leaves local edits alone. */
+function syncInstrumentControl(input: HTMLInputElement | HTMLSelectElement, value: string) {
+  if (input.dataset.stateValue !== value || document.activeElement !== input) input.value = value;
+  input.dataset.stateValue = value;
 }
 
 function mark(state: SourceState): string {
@@ -908,4 +921,3 @@ function presetLabel(p: string): string {
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
-
