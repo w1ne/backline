@@ -27,6 +27,18 @@ describe('MiniLab control mapping', () => {
     expect(arturiaCommand('Minilab3 MIDI',[0xc0,2])).toEqual({field:'sound',value:LOCAL_SOUNDS[2]});
     expect(arturiaCommand('Minilab3 MIDI',[0xc0,127])).toBeNull();
   });
+  it('maps two more knobs to the Register controls, -2..+2', () => {
+    expect(arturiaCommand('Minilab3 MIDI',[0xb0,88,0])).toEqual({field:'droneRegister',value:-2});
+    expect(arturiaCommand('Minilab3 MIDI',[0xb0,88,127])).toEqual({field:'droneRegister',value:2});
+    expect(arturiaCommand('Minilab3 MIDI',[0xb0,88,64])).toEqual({field:'droneRegister',value:expect.closeTo(0.0157,3)});
+    expect(arturiaCommand('Minilab3 MIDI',[0xb0,90,0])).toEqual({field:'noiseRegister',value:-2});
+    expect(arturiaCommand('Minilab3 MIDI',[0xb0,90,127])).toEqual({field:'noiseRegister',value:2});
+    const setDroneRegister = vi.fn(), setNoiseRegister = vi.fn();
+    applyArturiaCommand({field:'droneRegister',value:1.5}, {sound:'grand'}, {setDroneRegister} as never);
+    expect(setDroneRegister).toHaveBeenCalledWith(1.5);
+    applyArturiaCommand({field:'noiseRegister',value:-1}, {sound:'grand'}, {setNoiseRegister} as never);
+    expect(setNoiseRegister).toHaveBeenCalledWith(-1);
+  });
   it('does not rebuild an already selected instrument', () => {
     const setSound=vi.fn();
     applyArturiaCommand({field:'sound',value:'synth'}, {sound:'synth'}, {setSound} as never);
