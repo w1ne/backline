@@ -165,9 +165,10 @@ export class AceStepEngine implements BandEngine {
   private micCtx?: AudioContext;
   private micTap?: ScriptProcessorNode;
 
-  /** `micStream` hands back the live mic MediaStream (undefined until the mic is running);
-   *  its audio is streamed to the server so the band can follow what the player sings. */
-  constructor(private ctx: AudioContext, private micStream?: () => MediaStream | undefined) {}
+  /** `playerStreams` hands back what the player is producing right now -- the mic and the
+   *  keyboard sound -- as MediaStreams (undefined entries are skipped). They are mixed and
+   *  streamed to the server so the band can follow what is sung or played. */
+  constructor(private ctx: AudioContext, private playerStreams?: () => Array<MediaStream | undefined>) {}
 
   /** Sends the generated stream to the main output, the MORPH output, or both. */
   routeBand(route: MorphRoute, morphNode?: AudioNode): void {
@@ -240,9 +241,9 @@ export class AceStepEngine implements BandEngine {
    *  MediaStream gets its own small native AudioContext, opened at 16 kHz where the browser
    *  allows it so the frames need no resampling. */
   private startMicStream(): void {
-    const stream = this.micStream?.();
+    const streams = (this.playerStreams?.() ?? []).filter((s): s is MediaStream => !!s && s.getAudioTracks().length > 0);
     const Ctx = typeof AudioContext !== 'undefined' ? AudioContext : undefined;
-    if (!stream || this.micTap || !Ctx) return;
+    if (!streams.length || this.micTap || !Ctx) return;
     let micCtx: AudioContext;
     try {
       micCtx = new Ctx({ sampleRate: MIC_STREAM_RATE });
@@ -253,8 +254,9 @@ export class AceStepEngine implements BandEngine {
       void micCtx.close();
       return;
     }
-    const src = micCtx.createMediaStreamSource(stream);
     const tap = micCtx.createScriptProcessor(MIC_PROCESSOR_SIZE, 1, 1);
+    const mix = micCtx.createGain();
+    for (const s of streams) micCtx.createMediaStreamSource(s).connect(mix);
     // a muted sink keeps the processor alive without feeding the mic to the speakers
     const sink = micCtx.createGain();
     sink.gain.value = 0;
@@ -262,7 +264,7 @@ export class AceStepEngine implements BandEngine {
       if (this.ws?.readyState !== WebSocket.OPEN) return;
       this.ws.send(encodeMicFrame(ev.inputBuffer.getChannelData(0), micCtx.sampleRate));
     };
-    src.connect(tap);
+    mix.connect(tap);
     tap.connect(sink);
     sink.connect(micCtx.destination);
     void micCtx.resume();
