@@ -240,7 +240,7 @@ function skeleton(): string {
               </span>
               <span class="engine-led" data-engine-led="patterns"></span>
             </button>
-            <button type="button" class="engine-key" id="engine-acestep" data-engine="acestep" hidden>
+            <button type="button" class="engine-key" id="engine-acestep" data-engine="acestep">
               <span class="engine-key-text">
                 <span class="engine-key-name">ACE-Step</span>
               </span>

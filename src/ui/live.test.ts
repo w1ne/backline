@@ -163,6 +163,14 @@ describe('engine and genre controls while power is off', () => {
     expect(store.state.genre).toBe('funk');
   });
 
+  it('offers ACE-Step and AMT as selectable models and keeps Patterns as the hidden fallback', () => {
+    const root = setup();
+    renderLive(root, store, actions);
+    expect(root.querySelector<HTMLButtonElement>('#engine-acestep')!.hidden).toBe(false);
+    expect(root.querySelector<HTMLButtonElement>('#engine-amt')!.hidden).toBe(false);
+    expect(root.querySelector<HTMLButtonElement>('#engine-patterns')!.hidden).toBe(true);
+  });
+
   it('flags ACE/AMT as offline in the switch but keeps them clickable', () => {
     const root = setup();
     store.update({ offlineEngines: ['acestep', 'amt'] });
