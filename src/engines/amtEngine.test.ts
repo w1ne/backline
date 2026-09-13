@@ -139,6 +139,50 @@ describe('AmtEngine', () => {
     engine.stop();
   });
 
+  it('runs local drums through a Bandleader: form, humanize and the amount all apply', async () => {
+    const { engine, clock, players } = mk();
+    const sections: { bar: number; section: string; shouldStop: boolean }[] = [];
+    engine.onForm = (bar, form) => sections.push({ bar, section: form.section, shouldStop: form.shouldStop });
+    engine.setEnabled('drums', true);
+    engine.setAmount(0.5);
+    await engine.start(120, 0);
+    clock.tick(0, 1); clock.tick(1, 3); clock.tick(2, 5);
+    expect(sections).toEqual([
+      { bar: 0, section: 'intro', shouldStop: false },
+      { bar: 1, section: 'intro', shouldStop: false },
+      { bar: 2, section: 'groove', shouldStop: false },
+    ]);
+    const drums = players.calls.filter(c => c.i === 'drums');
+    expect(drums.map(c => c.barStart)).toEqual([1, 3, 5]);
+    const events = drums.flatMap(c => c.events);
+    // humanized: not every hit sits exactly on the sixteenth grid
+    expect(events.some(e => Math.abs(e.time - Math.round(e.time * 4) / 4) > 1e-9)).toBe(true);
+    // the manual amount still scales what reaches the players (FakePlayers has no bus)
+    expect(Math.max(...events.map(e => e.velocity))).toBeLessThanOrEqual(0.5 * 1.1);
+    engine.setAmount(0);
+    clock.tick(3, 7);
+    expect(players.calls.filter(c => c.i === 'drums')).toHaveLength(3);
+    engine.stop();
+  });
+
+  it('local drums play the ending bar and report shouldStop after four silent bars', async () => {
+    const { engine, clock } = mk();
+    const seen: string[] = [];
+    engine.onForm = (_bar, form) => seen.push(form.shouldStop ? 'stop' : form.section);
+    engine.setEnabled('drums', true);
+    await engine.start(120, 0);
+    clock.tick(0, 1); clock.tick(1, 3);
+    engine.set({ dynamics: { intensity: 0, space: true, fillDue: false, silenceBeats: 16 } });
+    clock.tick(2, 5);
+    expect(seen).toEqual(['intro', 'intro', 'stop']);
+    // a restart begins a new song
+    engine.stop();
+    await engine.start(120, 10);
+    clock.tick(0, 11);
+    expect(seen[3]).toBe('intro');
+    engine.stop();
+  });
+
   it('sends manual amount to AMT and updates already scheduled audio through the bus', async () => {
     const { engine, players } = mk();
     const setBandAmount = vi.fn();
