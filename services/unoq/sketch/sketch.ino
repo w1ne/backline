@@ -2,7 +2,12 @@
 // `beat(bpm, energy, mode, flags, sinceBarMs)` whenever the band changes; this sketch keeps
 // its own beat clock and renders at ~40 fps so the pulse never depends on polling.
 #include <Arduino_RouterBridge.h>
-#include <Arduino_LED_Matrix.h>
+
+// The matrix driver lives in the board firmware; these are the symbols it exports
+// (the Arduino_LED_Matrix library is a thin wrapper over them and is absent on older cores).
+extern "C" void matrixBegin(void);
+extern "C" void matrixSetGrayscaleBits(uint8_t bits);
+extern "C" void matrixGrayscaleWrite(uint8_t* buf);
 
 #define ROWS 8
 #define COLS 13
@@ -12,7 +17,6 @@ enum Mode { OFFLINE = 0, LISTEN = 1, PLAY = 2 };
 #define FLAG_FILL 1
 #define FLAG_ANSWER 2
 
-Arduino_LED_Matrix matrix;
 uint8_t frame[ROWS * COLS];
 
 // Shared with the RPC callback; read once per frame.
@@ -49,6 +53,8 @@ const char* HEART_L[] = {
   "....XXXXX....",
   "......X......",
 };
+
+bool ping() { return true; }
 
 bool beat(float bpm, float energy, int mode, int flags, int sinceBarMs) {
   g_bpm = bpm;
@@ -128,20 +134,27 @@ void render() {
       break;
     }
   }
-  matrix.draw(frame);
+  matrixGrayscaleWrite(frame);
 }
 
 void setup() {
   Bridge.begin();
-  Monitor.begin(115200);
-  matrix.begin();
-  matrix.setGrayscaleBits(3);
-  Bridge.provide("beat", beat);
+  matrixBegin();
+  matrixSetGrayscaleBits(3);
   clearFrame();
-  matrix.draw(frame);
+  matrixGrayscaleWrite(frame);
 }
 
+// The router may not be ready to take registrations the instant setup() runs after a
+// flash, so keep offering them until it accepts.
+bool provided = false;
+unsigned long lastProvide = 0;
+
 void loop() {
+  if (!provided && millis() - lastProvide > 500) {
+    lastProvide = millis();
+    provided = Bridge.provide("ping", ping) && Bridge.provide("beat", beat);
+  }
   render();
   delay(25);
 }
