@@ -4,6 +4,8 @@ A band in the browser that plays along with you. Hum, sing, play into the mic or
 
 Live: https://www.duetai.art
 
+![duet.ai in the browser: tempo and key readout, note timeline, instrument tiles, creativity and band amount knobs, style and tempo controls](docs/images/app.png)
+
 ## Run locally
 
 macOS or Linux, Node 18+:
