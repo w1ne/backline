@@ -33,6 +33,13 @@ describe("isAllowedOrigin", () => {
 
   it("rejects a foreign origin and a missing one", () => {
     expect(isAllowedOrigin("https://evil.example", env)).toBe(false);
+  });
+  it("accepts Pages branch previews by host suffix, https only", () => {
+    const e = { ...env, ALLOWED_ORIGIN_SUFFIXES: ".backline-88n.pages.dev" } as typeof env;
+    expect(isAllowedOrigin("https://feat-x.backline-88n.pages.dev", e)).toBe(true);
+    expect(isAllowedOrigin("http://feat-x.backline-88n.pages.dev", e)).toBe(false);
+    expect(isAllowedOrigin("https://evil.example/.backline-88n.pages.dev", e)).toBe(false);
+    expect(isAllowedOrigin("https://backline-88n.pages.dev", e)).toBe(false);
     expect(isAllowedOrigin(null, env)).toBe(false);
   });
 });

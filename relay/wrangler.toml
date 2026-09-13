@@ -15,4 +15,5 @@ workers_dev = true
 
 [vars]
 ALLOWED_ORIGINS = "https://duetai.art,https://www.duetai.art,https://soundofthe.world,https://www.soundofthe.world,https://shylenko.com,http://127.0.0.1:8088,http://localhost:8088"
+ALLOWED_ORIGIN_SUFFIXES = ".backline-88n.pages.dev"
 REPO = "w1ne/backline"
