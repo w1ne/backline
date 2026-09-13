@@ -103,6 +103,19 @@ class ArrangementTest(unittest.TestCase):
         self.assertEqual(bass_pitch(None, 'A minor'), 45)
         self.assertIsNone(bass_pitch(None, None))
 
+    def test_bass_pitch_follows_a_slash_chords_own_bass_note(self):
+        # "C/G": the client played a C major triad over a G bass -- the model's own
+        # fallback bass note should land on G (43), not the chord's root C (36).
+        self.assertEqual(bass_pitch('C/G', 'C major'), 43)
+        self.assertEqual(bass_pitch('Am/C', 'A minor'), 36)
+        # A chord with no slash is unaffected.
+        self.assertEqual(bass_pitch('C', 'C major'), 36)
+
+    def test_harmony_classes_keeps_the_chords_own_root_despite_a_slash_bass(self):
+        # The chord tones of "C/G" are still C-E-G -- a slash bass changes what's in the
+        # bass, not the chord's own upper-structure tones.
+        self.assertEqual(harmony_classes('C major', 'C/G'), harmony_classes('C major', 'C'))
+
 
 class WildCreativityTests(unittest.TestCase):
     """A creativity zone above 0.8 unlocks scale tones on strong beats, a

@@ -1,8 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ rampTo: vi.fn(), noise: vi.fn() }));
 vi.mock('tone', () => ({
-  Gain: class { gain = {rampTo:mocks.rampTo}; toDestination(){return this;} dispose(){} },
+  Gain: class { gain = {rampTo:mocks.rampTo}; toDestination(){return this;} connect(){return this;} disconnect(){return this;} dispose(){} },
   Noise: class { constructor(type:string){mocks.noise(type);} connect(){return this;} start(){return this;} dispose(){} },
+  connect: (src:{connect:(d:unknown)=>unknown},dst:unknown)=>src.connect(dst),
 }));
 import { WhiteNoise } from './whiteNoise';
 describe('white noise volume', () => {

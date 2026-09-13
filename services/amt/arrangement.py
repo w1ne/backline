@@ -126,13 +126,27 @@ def early_entry_plan(key, chord, start_beat, end_beat):
     return notes
 
 
+def _letter_root(text):
+    """Root pitch class (0-11) from a leading note letter, or None -- ignores anything
+    after it (a quality suffix, a slash bass), so it always reads a chord's own root."""
+    match = re.match(r'^([A-G])([#b]?)', text or '')
+    if not match:
+        return None
+    root = {'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11}[match[1]]
+    return root + {'': 0, '#': 1, 'b': -1}[match[2]]
+
+
 def bass_pitch(chord, key):
+    """MIDI pitch for the bass to play: a slash chord's own bass note (e.g. "C/G" -> G,
+    the note actually sounding underneath) when the chord names one, else the chord's
+    root, else the key's."""
     for harmony in (chord, key):
-        match = re.match(r'^([A-G])([#b]?)', harmony or '')
-        if match:
-            root = {'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11}[match[1]]
-            root += {'': 0, '#': 1, 'b': -1}[match[2]]
-            return 36 + root % 12
+        if not harmony:
+            continue
+        bass_text = harmony.rsplit('/', 1)[-1] if '/' in harmony else harmony
+        pc = _letter_root(bass_text)
+        if pc is not None:
+            return 36 + pc % 12
     return None
 
 
@@ -141,8 +155,10 @@ def harmony_classes(key, chord=None):
     match = re.match(r'^([A-G])([#b]?)(.*)$', harmony or '')
     if not match:
         return set()
-    root = bass_pitch(harmony, None) % 12
-    quality = match[3].strip().lower()
+    # The chord's own root for building its tones -- a slash bass changes what's in the
+    # bass, not what the chord itself is, so this must not follow bass_pitch's slash.
+    root = _letter_root(harmony) % 12
+    quality = match[3].split('/')[0].strip().lower()
     minor = quality.startswith('min') or (quality.startswith('m') and not quality.startswith('maj'))
     if chord:
         intervals = [0,3,7] if minor else [0,4,7]

@@ -9,4 +9,10 @@ describe('scales', () => {
     expect(degreeToMidi(c, -1, 4)).toBe(59);
   });
   it('names', () => { expect(keyName({ root: 9, mode: 'minor' })).toBe('A min'); });
+  it('Dorian raises the 6th relative to natural minor', () => {
+    expect(scaleOf({ root: 0, mode: 'dorian' })).toEqual([0, 2, 3, 5, 7, 9, 10]);
+  });
+  it('Mixolydian flattens the 7th relative to major', () => {
+    expect(scaleOf({ root: 0, mode: 'mixolydian' })).toEqual([0, 2, 4, 5, 7, 9, 10]);
+  });
 });

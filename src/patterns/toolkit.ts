@@ -52,10 +52,20 @@ function chromaticNudge(note: number, ctx: BarContext) {
   return note;
 }
 
+/** Like `chordDegreeToMidi`, but the root-degree hit (0) lands on a slash chord's actual bass
+ *  note when it has one -- the nearest instance of that pitch class to where the root would
+ *  have sat -- so a played inversion is heard in the bass line, not just the display. */
+function bassDegreeToMidi(key: Key, chord: Chord, degree: number, octave: number): number {
+  const note = chordDegreeToMidi(key, chord, degree, octave);
+  if (degree !== 0 || chord.bass == null) return note;
+  const diff = (((chord.bass - chord.root) % 12) + 12) % 12;
+  return note + (diff > 6 ? diff - 12 : diff);
+}
+
 export function bassPattern(shape: { t: number; degree: number; p: number; dur?: number }[], octave: number): Pattern {
   return { nextBar(ctx) {
     return shape.filter(s => fires(s, ctx)).map(s =>
-      ev(s.t, chromaticNudge(chordDegreeToMidi(ctx.key, chordAt(ctx, s.t), s.degree, octave), ctx), s.dur ?? 0.5, 0.85, ctx));
+      ev(s.t, chromaticNudge(bassDegreeToMidi(ctx.key, chordAt(ctx, s.t), s.degree, octave), ctx), s.dur ?? 0.5, 0.85, ctx));
   } };
 }
 

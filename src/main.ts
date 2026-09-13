@@ -440,6 +440,15 @@ async function power() {
   planSection = null;
   await players.init();
   audioReady = true;
+  // Route the utility voices through the band's own master chain (reverb bus, pre-limiter
+  // input) instead of the raw destination, so they can't clip independently of the band and
+  // sit in the same room as everything else.
+  const busReverb = players.reverbBus();
+  const busInput = players.preLimiterInput();
+  if (busReverb && busInput) {
+    whiteNoise.connectTo(busReverb, busInput);
+    drone.connectTo(busReverb, busInput);
+  }
   whiteNoise.setEnabled(true);
   drone.setEnabled(true);
   const ctx = players.rawContext();
@@ -480,7 +489,7 @@ async function power() {
     else performanceGuard.noteOff(e.id);
   });
   listener.setMicMuted(store.state.micMuted);
-  monitor = new MidiMonitor(players.rawContext(), store.state.sound);
+  monitor = new MidiMonitor(players.rawContext(), store.state.sound, players.reverbBus(), players.preLimiterInput());
   const activeMonitor = monitor;
   monitor.start().then(() => PI_EDITION ? activeMonitor.preload(LOCAL_SOUNDS) : undefined)
     .catch(error => store.update({ error: `Keyboard sound: ${String(error)}` }));
@@ -793,6 +802,11 @@ store.subscribe(s => {
       drone.setEnabled(store.state.power === 'on' && !store.state.paused);
       drone.setLevel(droneVolume);
       store.update({ droneVolume });
+    },
+    setDroneOctave: value => {
+      const droneOctave = Number.isFinite(value) ? Math.min(2, Math.max(-2, Math.round(value))) : 0;
+      drone.setOctave(droneOctave);
+      store.update({ droneOctave });
     },
     setNoiseVolume: value => {
       const noiseVolume = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
