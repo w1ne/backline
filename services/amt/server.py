@@ -25,6 +25,7 @@ import json
 import logging
 import os
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Optional
@@ -541,10 +542,32 @@ def apply_session_message(session, msg):
         session.set_controls(msg)
 
 
+def _is_fatal_cuda_error(error: BaseException) -> bool:
+    text = str(error)
+    return isinstance(error, RuntimeError) and ("CUDA" in text or "device-side assert" in text)
+
+
+def die_after_cuda_error(error: BaseException):
+    """A device-side assert (or any CUDA error) poisons the context: every later kernel fails
+    while /health keeps saying ok and each session gets an error instead of a plan. Turn
+    /health red and exit; the tmux supervisor loop (run-amt.sh) restarts the process in
+    seconds and nginx routes new connections to the other processes meanwhile."""
+    global _model, _load_error
+    log.critical("fatal CUDA error, exiting so the supervisor restarts the process: %s", error)
+    _model = None
+    _load_error = error
+    threading.Timer(1.0, os._exit, [3]).start()
+
+
 def generate_session_plan(session, msg):
-    if msg["type"] == "bar":
-        return session.generate_next_bar_plan(int(msg.get("bar", 0)))
-    return session.generate_tick_plan(float(msg.get("beat", 0.0)), rtt_ms=msg.get("rttMs"))
+    try:
+        if msg["type"] == "bar":
+            return session.generate_next_bar_plan(int(msg.get("bar", 0)))
+        return session.generate_tick_plan(float(msg.get("beat", 0.0)), rtt_ms=msg.get("rttMs"))
+    except RuntimeError as error:
+        if _is_fatal_cuda_error(error):
+            die_after_cuda_error(error)
+        raise
 
 
 # Admission control. One process serializes every session's sampling behind

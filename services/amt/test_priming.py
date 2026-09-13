@@ -47,3 +47,15 @@ class PrimingTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class LongSessionPrompt(unittest.TestCase):
+    def test_prime_moves_with_the_history_so_the_prompt_fits_the_time_vocab(self):
+        # 400 s into a session, a prime at time zero would put the window 400 s past the
+        # prompt's oldest event -- four times what the model's time tokens can express.
+        history = priming.make_event(398.0, 0.5, 0, 60) + priming.make_event(399.0, 0.5, 0, 62)
+        tokens, shift = priming.build_prompt(history, (40,), 'C major', 'lofi', 'Am', 400., 402., .5)
+        self.assertEqual(shift, 0.0)
+        times = [(tok - priming.TIME_OFFSET) / priming.TIME_RESOLUTION for tok in tokens[::3]]
+        self.assertLess(402. - min(times), 100.)
+        self.assertTrue(all(t < 398. for t, _, i, _ in priming.parse_events(tokens) if i == 40))
