@@ -14,7 +14,10 @@ Team: [Andrii Shylenko](https://github.com/w1ne), [Fabian Schuller](https://gith
 [Aboutsue](https://github.com/Aboutsue).
 
 Live app: https://www.duetai.art
-Demo video: (link)
+Demo video: https://github.com/w1ne/duet.ai/releases/download/hackathon-2026-demo/duetai-demo.mp4
+Submission text: [docs/hackathon-submission.md](docs/hackathon-submission.md)
+
+![duet.ai screenshot](docs/media/screenshot.jpg)
 
 ## Two editions
 
