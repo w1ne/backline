@@ -48,9 +48,9 @@ describe("handleAceStep", () => {
     expect(await resp.text()).toBe("acestep upstream not configured");
   });
 
-  it("returns 429 on the twenty-first upgrade from one IP within a minute", async () => {
+  it("returns 429 on the 121st upgrade from one IP within a minute", async () => {
     const env = baseEnv(); // 503 means the request passed the gate
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 120; i++) {
       const resp = await handleAceStep(upgradeRequest(), env);
       expect(resp.status).toBe(503);
     }
