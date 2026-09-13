@@ -215,7 +215,7 @@ class Arranger:
         groups = {program: group for program, group in groups.items()
                   if any(start <= n[0] < end and n[1] > 0 for n in group)}
         melodic = sorted((p for p in groups if role_for_instrument(p) != 'bass'),
-                         key=lambda p: (role_for_instrument(p) != 'lead', p))
+                         key=lambda p: (p != phrase_instrument, role_for_instrument(p) != 'lead', p))
         bass = sorted(p for p in groups if role_for_instrument(p) == 'bass')
         if self.section == 'breakdown':
             palette = (melodic or bass)[:1]

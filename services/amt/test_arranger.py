@@ -88,3 +88,15 @@ def test_phrase_rhythm_and_count_do_not_depend_on_creativity():
         rhythms.append([(n[0], n[1]) for n in arranged])
     assert rhythms[0] == rhythms[1] == rhythms[2]
     assert len(rhythms[0]) == 3
+
+
+def test_breakdown_keeps_the_actual_phrase_voice_from_unsorted_model_output():
+    from musical_identity import MusicalIdentity
+    identity = MusicalIdentity()
+    identity.observe([(0,.5,60),(1,.5,64),(4,.5,67),(7,.5,64)], {}, 9)
+    raw = [(4.5,.5,41,72),(4.5,.5,40,60)]
+    shaped = identity.shape(raw,9,11,.5,9,.3,'breakdown')
+    assert identity.response_instrument == 41
+    final = Arranger(amount=1, section='breakdown').constrain(
+        shaped,4.5,5.5,.5,phrase_instrument=identity.response_instrument)
+    assert final and {n[2] for n in final} == {41}

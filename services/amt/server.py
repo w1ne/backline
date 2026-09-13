@@ -382,7 +382,7 @@ class Session:
         """A plan with the chord in force from the window start and the current section.
         `chord`/`chordFrom`/`section` are optional: an old client ignores them."""
         plan = {"type": "plan", "fromBeat": from_beat, "toBeat": to_beat, "notes": notes, "section": self.section}
-        if self.phrase_response and notes:
+        if self.phrase_response and any(n.get("gmInstr") == self.identity.response_instrument for n in notes):
             plan["phraseResponse"] = True
             plan["phraseInstrument"] = self.identity.response_instrument
         if self.chord:
