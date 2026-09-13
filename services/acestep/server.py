@@ -77,6 +77,11 @@ CONTEXT_MAX_SECONDS = float(os.environ.get("ACE_CONTEXT_MAX_SECONDS", "12"))
 # Point at an already-running acestep-api instead of spawning one (lets a flagged test
 # instance share the GPU model with the live service).
 ACE_HTTP_BASE = os.environ.get("ACE_HTTP_BASE")
+# Block source wavs go to RAM: a full container disk broke tempfile lookup on the pod
+# (1.5 TB RAM there). Must be set before the first tempfile call, and acestep-api
+# validates src_audio_path against *its* tempfile.gettempdir(), so it inherits this.
+if os.path.isdir("/dev/shm") and "TMPDIR" not in os.environ:
+    os.environ["TMPDIR"] = "/dev/shm"
 # Chords named in the prompt; more than a bar or two of history just dilutes it.
 CHORD_PROMPT_MAX = 4
 
@@ -267,9 +272,9 @@ class AceStepModel:
         # cost ~2 s of every block, and on a big GPU acestep-api auto-downloads
         # the 8 GB lm-4B for it -- which filled the 40 GB pod disk to 100%.
         env.setdefault("ACESTEP_INIT_LLM", "false")
-        # A full disk also breaks tempfile lookup; the pod has 1.5 TB of RAM.
-        if os.path.isdir("/dev/shm"):
-            env.setdefault("TMPDIR", "/dev/shm")
+        # acestep-api only accepts src/reference audio paths inside ITS temp dir, so the
+        # subprocess must inherit exactly the TMPDIR this process writes block wavs to
+        # (set process-wide at import below).
         # Invoke the venv's acestep-api binary directly rather than "uv run
         # acestep-api": "uv run" re-syncs the environment against
         # pyproject.toml/uv.lock on every invocation, which silently reverts
