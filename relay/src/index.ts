@@ -442,15 +442,20 @@ export async function handleAmt(req: Request, env: Env): Promise<Response> {
   return proxyWebSocket(upstreamUrl, AMT_KEEPALIVE_MS);
 }
 
-/** GET <origin>/health on an upstream given as its ws(s):// URL; false on any error or after 3 s. */
-async function upstreamHealthy(upstream: string | undefined): Promise<boolean> {
-  if (!upstream) return false;
+export type UpstreamState = "ok" | "loading" | "down";
+
+/** GET <origin>/health on an upstream given as its ws(s):// URL. "ok" on a 2xx; "loading" on a
+ *  503 (the service is up but its model is not ready yet, so wait rather than restart); "down"
+ *  on anything else, an error, or after 3 s. */
+export async function upstreamState(upstream: string | undefined): Promise<UpstreamState> {
+  if (!upstream) return "down";
   try {
     const origin = new URL(upstream.replace(/^wss:\/\//, "https://").replace(/^ws:\/\//, "http://")).origin;
     const res = await fetch(origin + "/health", { signal: AbortSignal.timeout(3000) });
-    return res.ok;
+    if (res.ok) return "ok";
+    return res.status === 503 ? "loading" : "down";
   } catch {
-    return false;
+    return "down";
   }
 }
 
@@ -462,11 +467,14 @@ export default {
       // The app probes this cross-origin to light the engine LEDs. The relay being up says
       // nothing about the GPU pod behind it, so each upstream is probed too (3 s budget);
       // a stopped pod must show as an offline engine, not as a band that silently went generic.
-      const [amt, acestep] = await Promise.all([
-        upstreamHealthy(env.AMT_UPSTREAM),
-        upstreamHealthy(env.ACESTEP_UPSTREAM),
+      const [amtState, acestepState] = await Promise.all([
+        upstreamState(env.AMT_UPSTREAM),
+        upstreamState(env.ACESTEP_UPSTREAM),
       ]);
-      return new Response(JSON.stringify({ relay: "ok", amt, acestep, lyria: !!env.GEMINI_API_KEY }), {
+      // `amt`/`acestep` stay booleans for the app; the states let the watchdog and smoke tell a
+      // pod that is still loading its model from one that is gone.
+      const amt = amtState === "ok", acestep = acestepState === "ok";
+      return new Response(JSON.stringify({ relay: "ok", amt, acestep, amtState, acestepState, lyria: !!env.GEMINI_API_KEY }), {
         status: 200,
         headers: { ...corsHeaders(req, env), "content-type": "application/json" },
       });

@@ -1,3 +1,5 @@
+import { DEFAULT_TUNING } from './tuning';
+
 /**
  * Spectral-flux onset detection.
  *
@@ -82,10 +84,10 @@ export class OnsetDetector {
   constructor(o: OnsetOptions = {}) {
     this.gap = o.minGapSec ?? 0.08;
     this.windowSec = o.medianWindowSec ?? 1;
-    this.mult = o.mult ?? 2.5;
-    this.delta = o.delta ?? 0.12;
+    this.mult = o.mult ?? DEFAULT_TUNING.onset.mult;
+    this.delta = o.delta ?? DEFAULT_TUNING.onset.delta;
     this.look = o.lookaheadHops ?? 3;
-    this.quantile = o.quantile ?? 0.75;
+    this.quantile = o.quantile ?? DEFAULT_TUNING.onset.quantile;
     this.sampleRate = o.sampleRate ?? 48000;
   }
 

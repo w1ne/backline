@@ -4,7 +4,7 @@ import type { AccompPreset, BandState, Chord, Instrument, Key, NoteEvent } from 
 import { IDLE_DYNAMICS } from '../types';
 import { chordName, parseChordName } from '../listener/chordDetector';
 import type { FormResult, Section } from '../band/form';
-import type { BandEngine } from './engine';
+import type { BandEngine, EngineStatusStats } from './engine';
 import { ToneClock } from '../band/clock';
 import type { ClockLike } from '../band/clockTypes';
 import { Bandleader, type PlayersLike } from '../band/bandleader';
@@ -81,7 +81,7 @@ export class AmtEngine implements BandEngine {
   onError?: (msg: string) => void;
   onFirstBlock?: () => void;
   onConnected?: () => void;
-  onStatus?: (message: string, latencyMs?: number) => void;
+  onStatus?: (message: string, latencyMs?: number, stats?: EngineStatusStats) => void;
   onResponseTiming?: (estimatedMs: number | null) => void;
   private lastResponseCapture = -Infinity;
   private lastResponseEstimate = Infinity;
@@ -128,7 +128,16 @@ export class AmtEngine implements BandEngine {
   private cueId = 0;
   private latestCaptureTimeSec?: number;
   private releaseBuf: { id: string; dur: number; captureTimeSec: number }[] = [];
+  /** Timer fallback for the half-bar cue, only for a clock without `onHalfBar`. */
   private halfBarTimer?: ReturnType<typeof setTimeout>;
+  /** Wall-clock send time of each cue still awaiting its plan, by cueId. */
+  private cueSentAt = new Map<number, number>();
+  /** cueId of the last plan received, so the following `status` can be matched to its cue. */
+  private lastPlanCueId?: number;
+  /** Last measured client<->server hop (cue-to-plan minus the server's own request age), ms.
+   *  Sent with every tick so the server can size its generation deadline; undefined until
+   *  the first plan has come back. */
+  private rttMs?: number;
 
   private noteBuf: { beat: number; pitch: number; dur: number; vel: number; id?: string; source?: string; confidence?: number; captureTimeSec?: number; held?: boolean }[] = [];
   private noteFlushTimer?: ReturnType<typeof setInterval>;
@@ -198,6 +207,9 @@ export class AmtEngine implements BandEngine {
     this.pending = [];
     this.scheduled.clear();
     this.tooLate = 0;
+    this.cueSentAt.clear();
+    this.lastPlanCueId = undefined;
+    this.rttMs = undefined;
     // A fresh socket means a fresh server session, so nothing has been told to it yet.
     this.lastSetPayload = undefined;
     this.lastSetAt = 0;
@@ -237,15 +249,23 @@ export class AmtEngine implements BandEngine {
       this.bar = bar;
       this.onBar?.(bar);
       this.cue(bar, bar * BEATS_PER_BAR);
-      // The second half-bar cue: one bar of lead time for the model, a half bar of commit.
-      if (this.halfBarTimer !== undefined) clearTimeout(this.halfBarTimer);
-      const halfBarAt = time + (COMMIT_BEATS * 60) / this.bpm;
-      this.halfBarTimer = setTimeout(() => {
-        this.halfBarTimer = undefined;
-        if (this.stopping) return;
-        this.cue(bar, bar * BEATS_PER_BAR + COMMIT_BEATS);
-      }, Math.max(0, (halfBarAt - this.now()) * 1000));
+      // The second half-bar cue: one bar of lead time for the model, a half bar of commit. It
+      // comes from the clock's transport (see onHalfBar below); the timer is only for a clock
+      // without one, and a browser clamps it to a second in a background tab.
+      if (!this.clock.onHalfBar) {
+        if (this.halfBarTimer !== undefined) clearTimeout(this.halfBarTimer);
+        const halfBarAt = time + (COMMIT_BEATS * 60) / this.bpm;
+        this.halfBarTimer = setTimeout(() => {
+          this.halfBarTimer = undefined;
+          if (this.stopping) return;
+          this.cue(bar, bar * BEATS_PER_BAR + COMMIT_BEATS);
+        }, Math.max(0, (halfBarAt - this.now()) * 1000));
+      }
       this.drumClock.fire(bar, time);
+    });
+    this.clock.onHalfBar?.(bar => {
+      if (this.stopping) return;
+      this.cue(bar, bar * BEATS_PER_BAR + COMMIT_BEATS);
     });
     this.drums.start(bpm, firstBarAt);
     this.clock.start(bpm, firstBarAt);
@@ -443,7 +463,15 @@ export class AmtEngine implements BandEngine {
     if (!msg) return;
     this.flushSet();
     this.flushNotes();
-    if (this.sendRaw(JSON.stringify({ ...msg, cueId: ++this.cueId, latestCaptureTimeSec: this.latestCaptureTimeSec })) && this.responseTimer === undefined) {
+    const cueId = ++this.cueId;
+    const sent = this.sendRaw(JSON.stringify({ ...msg, cueId, latestCaptureTimeSec: this.latestCaptureTimeSec,
+      ...(this.rttMs !== undefined ? { rttMs: this.rttMs } : {}) }));
+    if (sent) {
+      this.cueSentAt.set(cueId, Date.now());
+      // A cue whose plan never came (superseded server-side) must not pin memory for the set.
+      for (const id of this.cueSentAt.keys()) if (id < cueId - 8) this.cueSentAt.delete(id);
+    }
+    if (sent && this.responseTimer === undefined) {
       this.responseTimer = setTimeout(() => {
         this.responseTimer = undefined;
         this.onError?.('AMT: model response timed out');
@@ -548,6 +576,19 @@ export class AmtEngine implements BandEngine {
     });
   }
 
+  /** The hop for the plan that just arrived: wall time from its cue to now, minus the time
+   *  the server itself held the request. The `status` frame follows its `plan`, which carries
+   *  the cueId, so this runs on the status. */
+  private measureRtt(serverMs: number): void {
+    if (this.lastPlanCueId === undefined) return;
+    const sentAt = this.cueSentAt.get(this.lastPlanCueId);
+    this.cueSentAt.delete(this.lastPlanCueId);
+    this.lastPlanCueId = undefined;
+    if (sentAt === undefined) return;
+    const hop = Date.now() - sentAt - serverMs;
+    if (Number.isFinite(hop)) this.rttMs = Math.max(0, Math.round(hop));
+  }
+
   /** Keeps the dedupe key set from growing for the length of the session. */
   private pruneScheduled(): void {
     const cutoff = this.currentBeat() - DEDUPE_WINDOW_BEATS;
@@ -589,9 +630,13 @@ export class AmtEngine implements BandEngine {
       clearTimeout(this.responseTimer); this.responseTimer = undefined;
     }
     if (msg.type === 'status' && typeof msg.latencyMs === 'number') {
-      this.onStatus?.('', msg.latencyMs);
+      const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+      const requestAgeMs = num(msg.requestAgeMs);
+      this.measureRtt(requestAgeMs ?? msg.latencyMs);
+      this.onStatus?.('', msg.latencyMs, { tooLate: this.tooLate, queueLatencyMs: num(msg.queueLatencyMs), requestAgeMs });
     }
     if (msg.type === 'plan') {
+      this.lastPlanCueId = typeof msg.cueId === 'number' ? msg.cueId : undefined;
       const notes = Array.isArray(msg.notes) ? (msg.notes as PlanNote[]).filter(n =>
         n && ['keys','bass','lead'].includes(n.voice) && Number.isFinite(n.beat) && n.beat >= 0 &&
         Number.isInteger(n.pitch) && n.pitch >= 0 && n.pitch <= 127 &&

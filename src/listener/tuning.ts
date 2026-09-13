@@ -48,6 +48,15 @@ export interface KeyTuning {
   coverMargin: number;
 }
 
+/** OnsetDetector (src/listener/onset.ts) */
+export interface OnsetTuning {
+  /** threshold = median × mult + delta */
+  mult: number;
+  delta: number;
+  /** quantile of the flux history the threshold is built on */
+  quantile: number;
+}
+
 /** ChordDetector melody path (src/listener/chordDetector.ts) */
 export interface ChordTuning {
   /** a pitch class must carry this share of the window's energy to count as a chord tone somebody played */
@@ -66,6 +75,7 @@ export interface ListenerTuning {
   voiceProfile: VoiceProfileTuning;
   key: KeyTuning;
   chord: ChordTuning;
+  onset: OnsetTuning;
 }
 
 export const DEFAULT_TUNING: ListenerTuning = {
@@ -74,4 +84,5 @@ export const DEFAULT_TUNING: ListenerTuning = {
   voiceProfile: { holdFrames: 3, minClarity: 0.7, minAgree: 2 },
   key: { earlyNotes: 5, earlyConfidence: 0.7, fullNotes: 8, confidence: 0.6, coverMinSustainSec: 2, coverMin: 0.85, coverMargin: 0.08 },
   chord: { templateMinShare: 0.1, melodyWindowMul: 1.5, melodySwitchMargin: 0.15, melodyMinCoverage: 0.5 },
+  onset: { mult: 2.5, delta: 0.12, quantile: 0.75 },
 };

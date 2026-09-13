@@ -1,9 +1,10 @@
 """Runs on the UNO Q's Linux side. Polls the duet.ai pedal and drives the sketch's `beat` RPC.
 
-The pedal is reached at 127.0.0.1:8088 through `adb reverse` set up by the Pi
+The pedal is reached through the container's host-gateway alias (msgpack-rpc-router) and `adb reverse` set up by the Pi
 (services/pi/unoq-sync.sh); DUET_STATUS_URL overrides that for a Wi-Fi setup."""
 import json
 import os
+import threading
 import time
 from urllib.request import urlopen
 
@@ -11,7 +12,7 @@ from arduino.app_utils import App, Bridge
 
 import hearts
 
-STATUS_URL = os.environ.get('DUET_STATUS_URL', 'http://127.0.0.1:8088/api/status')
+STATUS_URL = os.environ.get('DUET_STATUS_URL', 'http://msgpack-rpc-router:8088/api/status')
 sender = hearts.Sender(Bridge.call)
 offline = {'online': False}
 
@@ -34,4 +35,11 @@ def loop():
     time.sleep(0.2)
 
 
-App.run(user_loop=loop)
+def forever():
+    while True:
+        loop()
+
+
+# Older app_utils (board image 0.1.x) has no user_loop; App.run() only blocks the main thread.
+threading.Thread(target=forever, daemon=True).start()
+App.run()

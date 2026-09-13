@@ -40,9 +40,9 @@ def session_class(generate):
     node = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'Session')
     namespace = dict(Arranger=Arranger, HarmonyBrain=HarmonyBrain, PerformanceHistory=PerformanceHistory,
                      sampling_for=sampling_for, plan_window=plan_window, ACCOMP_BIAS=2,
-                     PLAN_LOOKAHEAD_BEATS=4., BEATS_PER_BAR=4., CONTEXT_BEATS=16.,
+                     PLAN_LOOKAHEAD_BEATS=4., BEATS_PER_BAR=4., CONTEXT_BEATS=16., FILL_UNTIL_HEARD_BEATS=8.,
                      DEFAULT_PRESETS=('strings',), MELODY_INSTR=0, TIME_OFFSET=0,
-                     TIME_RESOLUTION=100, GENERATION_BUDGET=.8, SAMPLER='cached',
+                     TIME_RESOLUTION=100, DEFAULT_RTT_S=.25, DEADLINE_MARGIN_S=.15, DEADLINE_FLOOR_S=.1, SAMPLER='cached',
                      make_event=encode, AccompanimentCommitter=Committer,
                      resolve_instruments=lambda names: tuple(p for name in names for p in PRESETS.get(name, ())),
                      resolve_groups=lambda names: [PRESETS[name] for name in names if name in PRESETS],
@@ -56,20 +56,55 @@ def session_class(generate):
 class SessionPolicyTests(unittest.TestCase):
     def setUp(self):
         self.calls = []
+        self.kwargs = []
         self.model_notes = []
 
         def generate(*args, **kwargs):
             self.calls.append(args)
+            self.kwargs.append(kwargs)
             return self.model_notes
 
         self.session = session_class(generate)(SimpleNamespace())
         self.session.reset(120, 2, 2, 0, .95, instrument_names=['guitar', 'strings'], key='C major')
         self.session.add_human_notes([{'id': 'n1', 'beat': 0, 'pitch': 60, 'held': True}])
 
-    def test_successful_empty_model_output_is_rest(self):
-        out = self.session.generate_tick_plan(2)
+    def test_single_empty_window_is_rest_two_in_a_row_are_filled(self):
+        # Ten beats of the singer heard (note at 0, cue at 10): one empty window is a rest ...
+        out = self.session.generate_tick_plan(10)
         self.assertEqual(out['plan']['notes'], [])
-        self.assertEqual([c[4] for c in self.calls], [(24,), (40, 41, 42)])
+        self.assertEqual([c[4] for c in self.calls], [(24,), (40, 41, 42)])  # one pass per preset
+        # ... a second empty window in a row is filled with the key-only plan, routed by role.
+        out = self.session.generate_tick_plan(12)
+        notes = out['plan']['notes']
+        self.assertTrue(notes)
+        self.assertEqual({n['voice'] for n in notes}, {'keys', 'bass'})
+        self.assertTrue(all(14 <= n['beat'] < 16 for n in notes))
+        # A window the model does fill resets the streak, so the next empty one is a rest again.
+        self.model_notes = [(8.0, .5, 40, 60)]  # 8.0 s = beat 16, inside the [16, 18) window
+        self.assertEqual(len(self.session.generate_tick_plan(14)['plan']['notes']), 1)
+        self.model_notes = []
+        self.assertEqual(self.session.generate_tick_plan(16)['plan']['notes'], [])
+
+    def test_empty_window_is_filled_while_fewer_than_eight_beats_heard(self):
+        out = self.session.generate_tick_plan(2)  # two beats since the first note
+        self.assertTrue(out['plan']['notes'])
+        self.assertEqual(len(self.calls), 2)
+
+    def test_fill_obeys_muted_roles(self):
+        self.session.set_controls({'enabledRoles': {'keys': False, 'bass': True, 'lead': True}})
+        notes = self.session.generate_tick_plan(2)['plan']['notes']
+        self.assertTrue(notes)
+        self.assertEqual({n['voice'] for n in notes}, {'bass'})
+
+    def test_deadline_is_window_minus_rtt_minus_margin(self):
+        # 120 bpm, lookahead 2: the plan's first note is due 1.0 s after the cue. Two presets are
+        # selected, so each sampling pass gets half of what is left.
+        self.session.generate_tick_plan(2)
+        self.assertAlmostEqual(self.kwargs[0]['deadline_s'], (1.0 - .25 - .15) / 2)  # default 250 ms rtt
+        self.session.generate_tick_plan(4, rtt_ms=100)
+        self.assertAlmostEqual(self.kwargs[2]['deadline_s'], (1.0 - .1 - .15) / 2)
+        self.session.generate_tick_plan(6, rtt_ms=5000)
+        self.assertAlmostEqual(self.kwargs[4]['deadline_s'], .1 / 2)  # never below the floor
 
     def test_each_selected_preset_gets_its_own_masked_pass(self):
         self.session.set_controls({'accompInstruments': ['strings', 'sax', 'guitar']})

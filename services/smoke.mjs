@@ -23,6 +23,8 @@ const CHORD_ACCURACY_MIN = 0.4;
 
 const failures = [];
 const rows = [];
+/** Set when the AMT pod answers but its model is still loading; exits 2 rather than 1. */
+let notReady = false;
 
 function check(label, ok, detail) {
   rows.push({ label, ok, detail });
@@ -39,8 +41,11 @@ async function checkHealth() {
     return;
   }
   check('relay health', body.relay === 'ok', `relay=${body.relay}`);
-  check('amt health', body.amt === true, `amt=${body.amt}`);
-  check('acestep health', body.acestep === true, `acestep=${body.acestep}`);
+  check('amt health', body.amt === true, `amt=${body.amt}${body.amtState ? ` (${body.amtState})` : ''}`);
+  check('acestep health', body.acestep === true, `acestep=${body.acestep}${body.acestepState ? ` (${body.acestepState})` : ''}`);
+  // A 503 from the pod (relayed as amtState "loading") is the model still loading after a
+  // restart: not ready, but not broken. Reported separately so a caller can wait instead of alarm.
+  if (body.amt !== true && body.amtState === 'loading') notReady = true;
 }
 
 async function checkClip(clip) {
@@ -92,6 +97,10 @@ async function main() {
 
   if (failures.length) {
     console.error('');
+    if (notReady) {
+      console.error('SMOKE NOT READY: amt is still loading its model (503); wait and re-run');
+      process.exit(2);
+    }
     console.error(`SMOKE FAILED (${failures.length} failure${failures.length > 1 ? 's' : ''}):`);
     console.error(`  ${failures[0]}`);
     for (const f of failures.slice(1)) console.error(`  ${f}`);

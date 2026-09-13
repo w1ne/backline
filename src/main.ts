@@ -293,7 +293,7 @@ function setBandBpm(b: BandEngine, bpm: number): void {
 function makeBand(engine: EngineChoice): BandEngine {
   playbackActivity.clear();
   accompActivity.clear();
-  store.update({activeParts: {}, accompActive: {}, modelLatencyMs:null, responseLatencyMs:null, accompanimentStatus: 'Listening'});
+  store.update({activeParts: {}, accompActive: {}, modelLatencyMs:null, responseLatencyMs:null, queueLatencyMs:null, requestAgeMs:null, tooLate:0, accompanimentStatus: 'Listening'});
   if (engine === 'lyria') return new LyriaEngine(players.rawContext());
   if (engine === 'acestep') return new AceStepEngine(players.rawContext());
   if (engine === 'amt') return new AmtEngine(players, listener!, undefined, undefined, undefined, () => outputLatencyMs(players.rawContext()));
@@ -322,10 +322,11 @@ function wireBand(b: BandEngine): void {
   };
   b.onForm = onForm;
   b.onError = msg => store.update({ error: msg, accompanimentStatus: 'Reconnecting' });
-  b.onStatus = (message, latencyMs) => {
+  b.onStatus = (message, latencyMs, stats) => {
     if (band !== b) return;
     store.update({ ...(message ? {accompanimentStatus:message} : {}),
-      ...(latencyMs !== undefined ? {modelLatencyMs:latencyMs} : {}) });
+      ...(latencyMs !== undefined ? {modelLatencyMs:latencyMs} : {}),
+      ...(stats ? {tooLate: stats.tooLate, queueLatencyMs: stats.queueLatencyMs ?? null, requestAgeMs: stats.requestAgeMs ?? null} : {}) });
   };
   b.onResponseTiming = responseLatencyMs => {
     if (band === b) store.update({ responseLatencyMs });
