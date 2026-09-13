@@ -90,7 +90,47 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  position: relative;
+  overflow: hidden;
+  --mascot-w: clamp(96px, 14vw, 130px);
+  padding-right: calc(var(--mascot-w) + 12px);
 }
+
+.bar > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* the dancing mascot lives behind the header content */
+.bar > .mascot {
+  position: absolute;
+  z-index: 0;
+  right: 6px;
+  bottom: 0;
+  height: min(100% - 4px, 150px);
+  width: auto;
+  aspect-ratio: 140 / 130;
+  pointer-events: none;
+  opacity: 0.92;
+  transform-origin: 50% 100%;
+}
+
+@media (max-width: 600px) {
+  .bar { --mascot-w: 84px; }
+  .bar > .mascot { height: 110px; }
+}
+
+.mascot svg { display: block; overflow: visible; }
+.m-body, .m-head, .m-arm, .m-leg, .m-wing, .m-note, .m-eyes, .m-pad, .m-box { transform-box: fill-box; }
+.m-body { transform-origin: 50% 100%; }
+.m-head { transform-origin: 80% 90%; }
+.m-arm { transform-origin: 100% 0%; }
+.m-leg { transform-origin: 50% 0%; }
+.m-wing-f { transform-origin: 0% 100%; }
+.m-wing-b { transform-origin: 100% 100%; }
+.m-box { transform-origin: 50% 100%; }
+.m-note { transform-origin: 50% 100%; }
+.m-pad { opacity: 1; }
 
 .bar-top {
   display: flex;
@@ -1434,7 +1474,108 @@ body {
 /* ---------- motion ---------- */
 
 @media (prefers-reduced-motion: no-preference) {
-  /* 1 — beat LEDs, and a 2% breath on the live pads at the top of every bar */
+  /* 0 — the mascot: slow idle sway, and a full dance on the beat once tempo is locked */
+  .mascot .m-body { animation: m-idle 2.4s ease-in-out infinite; }
+  .mascot .m-head { animation: m-idle-head 2.4s ease-in-out infinite; }
+  .mascot .m-note { animation: m-note 2.4s ease-in-out infinite; }
+  .mascot .m-eyes { animation: m-blink 4.5s step-end infinite; }
+
+  .mascot .m-wing-f { animation: m-flap-idle 2.4s ease-in-out infinite; }
+  .mascot .m-wing-b { animation: m-flap-idle-b 2.4s ease-in-out infinite; }
+
+  .bar.run .mascot .m-body {
+    animation: m-bounce calc(var(--beat, 0.5s) * 2) ease-in-out infinite;
+  }
+  .bar.run .mascot .m-head {
+    animation: m-headbang var(--beat, 0.5s) ease-in-out infinite;
+  }
+  .bar.run .mascot .m-wing-f {
+    animation: m-flap var(--beat, 0.5s) ease-in-out infinite;
+  }
+  .bar.run .mascot .m-wing-b {
+    animation: m-flap-b var(--beat, 0.5s) ease-in-out infinite;
+  }
+  .bar.run .mascot .m-arm {
+    animation: m-tap var(--beat, 0.5s) ease-in-out infinite;
+  }
+  .bar.run .mascot .m-box {
+    animation: m-boxbump var(--beat, 0.5s) ease-out infinite;
+  }
+  .bar.run .mascot .m-leg-l {
+    animation: m-kick var(--beat, 0.5s) ease-in-out infinite;
+  }
+  .bar.run .mascot .m-leg-r {
+    animation: m-kick var(--beat, 0.5s) ease-in-out infinite;
+    animation-delay: calc(var(--beat, 0.5s) * -0.5);
+  }
+  .bar.run .mascot .m-note {
+    animation: m-note var(--beat, 0.5s) ease-in-out infinite;
+  }
+  /* the six sampler pads light up one per eighth note across the bar */
+  .bar.run .mascot .m-pad {
+    animation: m-pad calc(var(--beat, 0.5s) * 4) step-end infinite;
+    animation-delay: calc(var(--beat, 0.5s) * 4 * var(--s, 0) / 6);
+  }
+
+  @keyframes m-flap-idle {
+    0%, 100% { transform: rotate(0deg); }
+    50% { transform: rotate(-6deg); }
+  }
+  @keyframes m-flap-idle-b {
+    0%, 100% { transform: rotate(0deg); }
+    50% { transform: rotate(6deg); }
+  }
+  @keyframes m-flap {
+    0%, 100% { transform: rotate(4deg); }
+    50% { transform: rotate(-22deg); }
+  }
+  @keyframes m-flap-b {
+    0%, 100% { transform: rotate(-4deg); }
+    50% { transform: rotate(22deg); }
+  }
+  @keyframes m-tap {
+    0%, 100% { transform: rotate(-12deg); }
+    50% { transform: rotate(6deg); }
+  }
+  @keyframes m-boxbump {
+    0% { transform: scale(1.08); }
+    40%, 100% { transform: scale(1); }
+  }
+  @keyframes m-pad {
+    0% { fill: #ffd400; }
+    16.6%, 100% { fill: #f3ecd2; }
+  }
+  @keyframes m-idle {
+    0%, 100% { transform: translateY(0) rotate(-1.5deg); }
+    50% { transform: translateY(-3px) rotate(1.5deg); }
+  }
+  @keyframes m-idle-head {
+    0%, 100% { transform: rotate(2deg); }
+    50% { transform: rotate(-2deg); }
+  }
+  @keyframes m-bounce {
+    0%, 100% { transform: translateY(0) scaleX(1) scaleY(1) rotate(-6deg); }
+    25% { transform: translateY(-12px) scaleX(0.94) scaleY(1.06) rotate(0deg); }
+    50% { transform: translateY(0) scaleX(1.06) scaleY(0.94) rotate(6deg); }
+    75% { transform: translateY(-12px) scaleX(0.94) scaleY(1.06) rotate(0deg); }
+  }
+  @keyframes m-headbang {
+    0%, 100% { transform: rotate(-7deg) translateY(0); }
+    50% { transform: rotate(7deg) translateY(2px); }
+  }
+  @keyframes m-note {
+    0%, 100% { transform: translateY(0) rotate(-12deg); opacity: 1; }
+    50% { transform: translateY(-6px) rotate(12deg); opacity: 0.8; }
+  }
+  @keyframes m-kick {
+    0%, 100% { transform: rotate(0deg) translateY(0); }
+    50% { transform: rotate(-18deg) translateY(-3px); }
+  }
+  @keyframes m-blink {
+    0%, 92%, 100% { transform: scaleY(1); }
+    94%, 98% { transform: scaleY(0.1); }
+  }
+
   .beats.run i {
     animation: beatled calc(var(--beat, 0.5s) * 4) linear infinite;
     animation-delay: calc(var(--beat, 0.5s) * var(--n, 0));
@@ -1715,7 +1856,7 @@ body {
   }
 
   .bar {
-    padding: 10px 16px;
+    padding: 10px calc(var(--mascot-w) + 12px) 10px 16px;
     gap: 6px;
   }
 
