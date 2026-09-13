@@ -190,3 +190,18 @@ imports to isolate whether it's dependency-version or app-code related).
 The block-generation pipeline underneath (`/release_task` + `/query_result`,
 exercised directly and via `AceStepModel.generate()`) is fully verified;
 only the WebSocket transport layer needs a follow-up pass.
+
+## DiT model: XL-turbo (bf16)
+
+`server.py` launches acestep-api with `ACESTEP_CONFIG_PATH=acestep-v15-xl-turbo`
+(override with `ACE_DIT_MODEL`) and `ACESTEP_INIT_LLM=false`. Measured on the
+L40S, 4.8 s block, 8 steps: XL 1.22 s vs 2B turbo 1.6 s, and XL sounds clearly
+fuller. The HF repo `ACE-Step/acestep-v15-xl-turbo` is 20 GB of fp32 shards,
+which does not fit next to the other checkpoints on the 40 GB pod disk, so
+`xl_bf16.py` downloads each shard into `/dev/shm`, casts to bf16 and writes only
+the 9.3 GB result. Never let acestep-api download it itself.
+
+The 5Hz LM is off on purpose: it only rewrote the caption (bpm/key are given by
+the player), cost ~2 s per block, and on a >40 GB GPU acestep-api auto-pulls the
+8 GB `acestep-5Hz-lm-4B` for it, which filled the disk to 100% on 2026-09-13
+and took the live services down until the watchdog restarted them.
