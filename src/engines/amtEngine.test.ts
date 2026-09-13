@@ -917,3 +917,28 @@ describe('AmtEngine round-trip estimate', () => {
     }
   });
 });
+
+it.each([false, true])('preserves later same-program backing in a four-beat phrase plan (explicit bounds: %s)', async explicit => {
+  const players = new FakePlayers();
+  const schedule = vi.spyOn(players, 'scheduleAccompaniment');
+  const notes = new FakeNoteSource();
+  const engine = new AmtEngine(players, notes, new FakeClock(), () => 0, () => 0);
+  engine.setEnabled('lead', true);
+  await engine.start(120, 0);
+  startedSocket().receiveJson({type:'plan',fromBeat:4,toBeat:8,phraseResponse:true,phraseInstrument:24,
+    ...(explicit ? {phraseFromBeat:4,phraseToBeat:5} : {}),
+    notes:[
+      {voice:'lead',gmInstr:24,beat:4,pitch:60,dur:1,vel:.8},
+      {voice:'lead',gmInstr:24,beat:explicit ? 5 : 6,pitch:64,dur:1,vel:.5},
+    ],
+  });
+  expect(schedule).toHaveBeenCalledTimes(2);
+  const phrase = schedule.mock.calls[0] as unknown as unknown[];
+  const backing = schedule.mock.calls[1] as unknown as unknown[];
+  expect((phrase[1] as NoteEvent[]).map(n => n.note)).toEqual([60]);
+  expect((backing[1] as NoteEvent[]).map(n => n.note)).toEqual([64]);
+  expect(backing[5]).toBeUndefined();
+  notes.fire({midi:62,velocity:.8,timeSec:.2});
+  expect((phrase[5] as AbortSignal).aborted).toBe(true);
+  engine.stop();
+});

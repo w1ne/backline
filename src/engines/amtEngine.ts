@@ -650,9 +650,17 @@ export class AmtEngine implements BandEngine {
         Number.isInteger(n.pitch) && n.pitch >= 0 && n.pitch <= 127 &&
         Number.isFinite(n.dur) && n.dur > 0 && Number.isFinite(n.vel) && n.vel >= 0 && n.vel <= 1) : [];
       if (!notes.length) this.onStatus?.('Listening · resting');
+      // Legacy full-bar plans replace only their first two beats with an answer.
+      // New servers identify the exact shaped interval explicitly.
+      const phraseFrom = typeof msg.phraseFromBeat === 'number' && Number.isFinite(msg.phraseFromBeat)
+        ? msg.phraseFromBeat : typeof msg.fromBeat === 'number' && Number.isFinite(msg.fromBeat)
+          ? msg.fromBeat : Math.min(...notes.map(n => n.beat));
+      const phraseTo = typeof msg.phraseToBeat === 'number' && Number.isFinite(msg.phraseToBeat)
+        ? msg.phraseToBeat : Math.min(phraseFrom + COMMIT_BEATS,
+          typeof msg.toBeat === 'number' && Number.isFinite(msg.toBeat) ? msg.toBeat : Infinity);
       for (const n of notes) {
         const phrase = msg.phraseResponse === true && Number.isInteger(msg.phraseInstrument)
-          && n.gmInstr === msg.phraseInstrument;
+          && n.gmInstr === msg.phraseInstrument && n.beat >= phraseFrom && n.beat < phraseTo;
         // Legacy listeners have no release lifecycle; retain a short onset guard.
         // A cancellable GM sampler is required for remembered responses.
         const stalePhrase = this.latestOnsetCapture > -Infinity
