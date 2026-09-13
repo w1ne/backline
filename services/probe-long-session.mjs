@@ -1,11 +1,12 @@
 // Long-session AMT probe: drive one session for BEATS beats and report, per 16-beat segment,
 // how many plans came back and how many carried notes. Catches the ~100 s cliff (model time
 // vocabulary) that the 8-bar smoke never reaches.
-//   node services/probe-long-session.mjs [ws-url] [beats] [bpm]
+//   node services/probe-long-session.mjs [ws-url] [beats] [bpm] [presets, default keys,strings]
 import WebSocket from 'ws';
 const WS_URL = process.argv[2] ?? 'wss://backline-relay.shylenkoa.workers.dev/amt';
 const BEATS = Number(process.argv[3] ?? 320);
 const BPM = Number(process.argv[4] ?? 120);
+const PRESETS = (process.argv[5] ?? 'keys,strings').split(',');  // what a default UI session sends
 const sleep = ms => new Promise(r => setTimeout(r, Math.max(0, ms)));
 const ws = new WebSocket(WS_URL, { headers: { Origin: 'https://www.duetai.art' } });
 const plans = []; const errors = []; let closed = null; const tickAt = new Map(); const lat = [];
@@ -14,7 +15,7 @@ ws.on('message', raw => { const m = JSON.parse(raw.toString());
 ws.on('close', (c, r) => { closed = `${c} ${r}`; });
 await new Promise((res, rej) => { ws.on('open', res); ws.on('error', rej); });
 const set = { type: 'set', bpm: BPM, key: 'A minor', creativity: 0.3, amount: 1, enabledRoles: { keys: true, bass: true, lead: false } };
-ws.send(JSON.stringify({ type: 'start', bpm: BPM, key: 'A minor', genre: 'lofi', lookaheadBeats: 2, commitBeats: 2, listenBeats: 8 }));
+ws.send(JSON.stringify({ type: 'start', bpm: BPM, key: 'A minor', genre: 'lofi', lookaheadBeats: 2, commitBeats: 2, listenBeats: 8, accompInstruments: PRESETS }));
 ws.send(JSON.stringify(set));
 const scale = [57, 59, 60, 62, 64, 65, 67, 69];
 let t = Date.now();
