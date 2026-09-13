@@ -478,6 +478,7 @@ async function power() {
   listener.setMicMuted(store.state.micMuted);
   monitor = new MidiMonitor(players.rawContext(), store.state.sound);
   const activeMonitor = monitor;
+  activeMonitor.onError = error => store.update({ error: `Keyboard sound: ${String(error)}` });
   monitor.start().then(() => PI_EDITION ? activeMonitor.preload(LOCAL_SOUNDS) : undefined)
     .catch(error => store.update({ error: `Keyboard sound: ${String(error)}` }));
   band = makeBand(engine);

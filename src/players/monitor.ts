@@ -1,4 +1,5 @@
 import * as Tone from 'tone';
+import { midiInputOptions } from '../listener/midiSource';
 import { PI_EDITION } from '../device/profile';
 import { LOCAL_SOUNDS } from '../device/arturia';
 import { ElectricPiano, Mellotron, Soundfont, SplendidGrandPiano } from 'smplr';
@@ -68,6 +69,7 @@ function synth(id = 'synth'): Voice {
  * with no sound of its own (e.g. an Arturia Minilab) is audible next to the band.
  */
 export class MidiMonitor {
+  onError?: (error: unknown) => void;
   private voice?: Voice;
   private voices = new Map<string, Voice>();
   private selection = 0;
@@ -84,13 +86,10 @@ export class MidiMonitor {
 
   async start() {
     const lifecycle = this.lifecycle;
-    await this.setSound(this.sound);
-    if (lifecycle !== this.lifecycle) return;
-    // iOS Safari has no Web MIDI: the sound still loads for the on-screen keys,
-    // there is just no controller to listen to.
+    // A singer without a controller needs no keyboard samples. Explicit sound changes
+    // and Pi preloading still use setSound/preload independently.
     if (typeof navigator.requestMIDIAccess !== 'function') return;
-    // A denied Web MIDI permission is no reason to alarm a singer: the sound is loaded,
-    // there is simply no controller to listen to.
+    // A denied Web MIDI permission simply means there is no controller to monitor.
     try { this.access = await navigator.requestMIDIAccess(); }
     catch { return; }
     if (lifecycle !== this.lifecycle) return;
@@ -110,9 +109,15 @@ export class MidiMonitor {
       const port = e.port;
       if (port && port.type === 'input' && port.state === 'connected') {
         (port as MIDIInput).addEventListener('midimessage', this.handler!);
+        if (midiInputOptions([port as MIDIInput]).length) {
+          void this.setSound(this.sound).catch(error => this.onError?.(error));
+        }
       }
     };
     this.access.addEventListener('statechange', this.stateHandler);
+    const inputs: MIDIInput[] = [];
+    this.access.inputs.forEach(input => inputs.push(input));
+    if (midiInputOptions(inputs).length) await this.setSound(this.sound);
   }
 
   private load(sound: MonitorSound): Voice {

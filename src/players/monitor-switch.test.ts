@@ -33,11 +33,12 @@ it('retains the current voice on a failed load and does not activate after stop'
   const stops = m.instruments[2].stop.mock.calls.length;
   monitor.stop(); expect(m.instruments[2].stop).toHaveBeenCalledTimes(stops);
 });
-it('starts without Web MIDI (iOS Safari): the voice loads and no error is thrown', async () => {
+it('starts without Web MIDI without fetching unused keyboard samples', async () => {
   vi.stubGlobal('navigator', {});
   try {
     const monitor = new MidiMonitor({destination:{}} as AudioContext, 'grand');
-    const started = monitor.start(); m.instruments[0].resolve();
+    const started = monitor.start();
+    expect(m.instruments).toHaveLength(0);
     await expect(started).resolves.toBeUndefined();
     monitor.stop();
   } finally {
@@ -48,10 +49,64 @@ it('treats a denied Web MIDI permission as no controller, not an error', async (
   vi.stubGlobal('navigator', { requestMIDIAccess: () => Promise.reject(new DOMException('nope', 'NotAllowedError')) });
   try {
     const monitor = new MidiMonitor({destination:{}} as AudioContext, 'grand');
-    const started = monitor.start(); m.instruments[0].resolve();
+    const started = monitor.start();
+    expect(m.instruments).toHaveLength(0);
     await expect(started).resolves.toBeUndefined();
     monitor.stop();
   } finally {
     vi.unstubAllGlobals();
   }
+});
+
+it('loads the keyboard voice on real input hotplug and reports active load failures', async () => {
+  const access = new EventTarget() as EventTarget & { inputs: Map<string, EventTarget> };
+  access.inputs = new Map();
+  vi.stubGlobal('navigator', { requestMIDIAccess: async () => access });
+  try {
+    const monitor = new MidiMonitor({destination:{}} as AudioContext, 'grand');
+    const onError = vi.fn(); monitor.onError = onError;
+    await monitor.start();
+    expect(m.instruments).toHaveLength(0);
+    const port = Object.assign(new EventTarget(), { id: 'keys', name: 'Keyboard', type: 'input', state: 'connected' });
+    access.inputs.set('keys', port);
+    access.dispatchEvent(Object.assign(new Event('statechange'), { port }));
+    expect(m.instruments).toHaveLength(1);
+    m.instruments[0].resolve(); await Promise.resolve(); await Promise.resolve();
+    port.dispatchEvent(Object.assign(new Event('midimessage'), { data: new Uint8Array([0x90, 60, 100]) }));
+    expect(m.instruments[0].start).toHaveBeenCalled();
+    monitor.stop();
+    access.inputs.clear();
+    await monitor.start();
+    access.inputs.set('keys', port);
+    access.dispatchEvent(Object.assign(new Event('statechange'), { port }));
+    m.instruments[1].reject(); await Promise.resolve(); await Promise.resolve();
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'offline' }));
+    monitor.stop();
+  } finally { vi.unstubAllGlobals(); }
+});
+it('preloads for an attached keyboard and surfaces its sample failure', async () => {
+  const port = Object.assign(new EventTarget(), { id: 'keys', name: 'Keyboard', type: 'input', state: 'connected' });
+  const access = Object.assign(new EventTarget(), { inputs: new Map([['keys', port]]) });
+  vi.stubGlobal('navigator', { requestMIDIAccess: async () => access });
+  try {
+    const monitor = new MidiMonitor({destination:{}} as AudioContext, 'grand');
+    const started = monitor.start();
+    const failure = expect(started).rejects.toThrow('offline');
+    await Promise.resolve();
+    expect(m.instruments).toHaveLength(1);
+    m.instruments[0].reject(); await failure;
+    monitor.stop();
+  } finally { vi.unstubAllGlobals(); }
+});
+it('does not fetch keyboard samples for an ALSA MIDI Through port', async () => {
+  const port = Object.assign(new EventTarget(), { id: 'through', name: 'Midi Through Port-0', type: 'input', state: 'connected' });
+  const access = Object.assign(new EventTarget(), { inputs: new Map([['through', port]]) });
+  vi.stubGlobal('navigator', { requestMIDIAccess: async () => access });
+  try {
+    const monitor = new MidiMonitor({destination:{}} as AudioContext, 'grand');
+    await monitor.start();
+    access.dispatchEvent(Object.assign(new Event('statechange'), { port }));
+    expect(m.instruments).toHaveLength(0);
+    monitor.stop();
+  } finally { vi.unstubAllGlobals(); }
 });
