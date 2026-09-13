@@ -1,5 +1,9 @@
 """Needs the `anticipation` package (pod venv): python -m unittest test_priming"""
+import sys
 import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "bench" / "amt"))
 
 try:
     import anticipation  # noqa: F401
