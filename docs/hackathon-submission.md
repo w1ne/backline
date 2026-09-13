@@ -30,3 +30,14 @@ Voice listener tested on real singing (MIR-1K: 92 % pitch accuracy, tempo from v
 
 ## Stack
 TypeScript, Vite, Tone.js, Cloudflare Workers, RunPod L40S, Python services for ACE-Step and AMT, Raspberry Pi on the LYDIA.
+
+## Why it is technically hard
+
+1. Real-time audio understanding in the browser. Pitch (McLeod/NSDF), onsets, tempo and key are computed from a raw microphone stream in a Web Audio worker. A solo voice has no beat, so tempo comes from an autocorrelation tempogram of the spectral flux with a log-Gaussian prior and octave folding. Measured on 110 MIR-1K songs: 62 % within 8 % of the true tempo, versus 44–47 % for librosa and 40 % for madmom. Pitch accuracy 92 %, note F1 0.68, key locked on 19 of 24 test songs.
+2. Chord following from monophonic input. A singer gives one note at a time. A harmoniser over diatonic triads with hysteresis and a tonic tie-break turns a 1.5-bar window of sung pitches into a chord, and the band changes chord on the downbeat.
+3. Four generative engines behind one interface, all live: rule-based patterns (Tone.js), Google Lyria RealTime (streamed PCM over WebSocket), ACE-Step 1.5 XL-turbo (4B DiT, 2-bar blocks generated in 1.2 s on an L40S), and the Anticipatory Music Transformer (symbolic, note-following). Each engine has a different latency and control model; the app keeps them on one musical clock.
+4. Scheduling under deadline. Every note is scheduled against the AudioContext clock, corrected for output latency, with a tempo-aware deadline. The GPU pod returns a plan every half bar (about 220 ms p50 with five instruments, one masked sampling pass per instrument). Late plans are dropped and counted, not played late.
+5. One "brain" on the GPU. The AMT service owns chord, section and dynamics (intensity, space, fills), so all engines play the same song form.
+6. Infrastructure. A Cloudflare Worker relay holds the API key and pod addresses, gates on origin, rate limits, proxies WebSockets (including a binary-frame bug workaround), and reports per-engine health. Pod bootstrap, watchdog, and a smoke test through the relay are scripted.
+7. Same code on a pedal. The LYDIA edition runs on a Raspberry Pi with ALSA audio, an LCD, knobs and footswitches, and updates itself from a rolling GitHub release every 2 minutes with no Node or git on the device.
+8. Measured, not guessed. Benches for pitch, tempo, real-voice key clash and empty-plan rate are in the repo and run in CI. The key-clash gate rejected two changes during the hackathon.
