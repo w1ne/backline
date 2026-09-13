@@ -243,6 +243,7 @@ export class AmtEngine implements BandEngine {
         lookaheadBeats: LOOKAHEAD_BEATS,
         commitBeats: COMMIT_BEATS,
         listenBeats: LISTEN_BEATS,
+        phraseResponses: true,
         enabledRoles: { keys: this.state.enabled.keys, bass: this.state.enabled.bass, lead: this.state.enabled.lead },
         accompInstruments: this.effectiveAccompPresets,
         accompBias: this.accompBias,

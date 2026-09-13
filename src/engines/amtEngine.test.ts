@@ -245,7 +245,7 @@ describe('AmtEngine', () => {
     engine.stop();vi.useRealTimers();
   });
 
-  it('sends a start message with lookahead/commit/listen beats on open', async () => {
+  it('advertises cancellable phrase responses with timing configuration on open', async () => {
     const { engine } = mk();
     engine.set({ genre: 'jazz', key: { root: 9, mode: 'minor' }, creativity: 0.4 });
     await engine.start(100, 0);
@@ -259,6 +259,7 @@ describe('AmtEngine', () => {
       lookaheadBeats: 2,
       commitBeats: 2,
       listenBeats: 8,
+      phraseResponses: true,
     });
   });
 
