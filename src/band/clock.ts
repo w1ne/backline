@@ -4,12 +4,17 @@ import type { ClockLike } from './clockTypes';
 
 export class ToneClock implements ClockLike {
   private cb?: (bar: number, t: number) => void;
+  private halfCb?: (bar: number, t: number) => void;
   private id?: number;
+  private halfId?: number;
   private bar = 0;
   private pendingBpm?: number;
   bpm = 0;
   onBar(cb: (bar: number, t: number) => void) {
     this.cb = cb;
+  }
+  onHalfBar(cb: (bar: number, t: number) => void) {
+    this.halfCb = cb;
   }
   start(bpm: number, firstBarAt: number) {
     const T = Tone.getTransport();
@@ -31,12 +36,18 @@ export class ToneClock implements ClockLike {
       '1m',
       0,
     );
+    // Half a measure after every downbeat, on the same transport as the bar callback, so a
+    // mid-bar cue is not at the mercy of a setTimeout (clamped to a second in a hidden tab).
+    // `this.bar` was already advanced by the bar callback, so the current bar is one less.
+    this.halfId = T.scheduleRepeat((time) => this.halfCb?.(this.bar - 1, time), '1m', '2n');
     T.start(Math.max(firstBarAt, Tone.now() + 0.05));
   }
   stop() {
     const T = Tone.getTransport();
     if (this.id !== undefined) T.clear(this.id);
     this.id = undefined;
+    if (this.halfId !== undefined) T.clear(this.halfId);
+    this.halfId = undefined;
     this.pendingBpm = undefined;
     T.stop();
     T.cancel();

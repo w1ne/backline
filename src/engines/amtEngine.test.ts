@@ -15,14 +15,21 @@ class FakeClock implements ClockLike {
   stop() {
     this.stopped = true;
   }
+  halfCb?: (bar: number, t: number) => void;
   onBar(cb: (bar: number, t: number) => void) {
     this.cb = cb;
+  }
+  onHalfBar(cb: (bar: number, t: number) => void) {
+    this.halfCb = cb;
   }
   setBpm(bpm: number) {
     this.bpm = bpm;
   }
   tick(bar: number, t: number) {
     this.cb?.(bar, t);
+  }
+  halfTick(bar: number, t: number) {
+    this.halfCb?.(bar, t);
   }
 }
 
@@ -261,15 +268,18 @@ describe('AmtEngine', () => {
       now = 2;
       clock.tick(1, 2);
       expect(cues(ws)).toEqual([{ type: 'tick', beat: 4, cueId: 1 }]);
-      vi.advanceTimersByTime(999);
+      // The half-bar cue comes from the clock's transport, never from a timer: a background
+      // tab clamps timers to a second, the Transport keeps time.
+      vi.advanceTimersByTime(5000);
       expect(cues(ws)).toHaveLength(1);
-      vi.advanceTimersByTime(2);
+      now = 3;
+      clock.halfTick(1, 3);
       expect(cues(ws)).toEqual([{ type: 'tick', beat: 4, cueId: 1 }, { type: 'tick', beat: 6, cueId: 2 }]);
       now = 4;
       clock.tick(2, 4);
       expect(cues(ws).at(-1)).toEqual({ type: 'tick', beat: 8, cueId: 3 });
       engine.stop();
-      vi.advanceTimersByTime(5000);
+      clock.halfTick(2, 5);
       expect(cues(ws)).toHaveLength(3); // no half-bar cue after stop
     } finally {
       vi.useRealTimers();
@@ -304,7 +314,7 @@ describe('AmtEngine', () => {
       now = 2;
       clock.tick(1, 2);
       notes.fire({ midi: 62, velocity: 0.8, timeSec: 2.5 });
-      vi.advanceTimersByTime(1001);
+      clock.halfTick(1, 3);
       expect(ws.sent.slice(-2).map((m: any) => m.type)).toEqual(['notes', 'tick']);
       engine.stop();
     } finally {
@@ -811,5 +821,34 @@ describe('AmtEngine status numbers', () => {
     ws.receiveJson({ type: 'status', latencyMs: 120, queueLatencyMs: 5.5, requestAgeMs: 130 });
     expect(status).toHaveBeenLastCalledWith('', 120, { tooLate: 1, queueLatencyMs: 5.5, requestAgeMs: 130 });
     engine.stop();
+  });
+});
+
+describe('AmtEngine round-trip estimate', () => {
+  beforeEach(() => { FakeWebSocket.instances = []; });
+
+  it('sends the last measured cue-to-plan hop (minus the server-side age) as rttMs on the next tick', async () => {
+    vi.useFakeTimers();
+    try {
+      const clock = new FakeClock();
+      const engine = new AmtEngine(new FakePlayers(), new FakeNoteSource(), clock, () => 0, () => 0);
+      await engine.start(120, 0);
+      const ws = startedSocket(); ws.open();
+      ws.receiveJson({ type: 'ready', tick: true });
+      clock.tick(1, 2);
+      const first = ws.sent.filter((m: any) => m.type === 'tick').at(-1) as any;
+      expect(first.cueId).toBe(1);
+      expect(first.rttMs).toBeUndefined(); // nothing measured yet
+      vi.advanceTimersByTime(300);
+      ws.receiveJson({ type: 'plan', cueId: 1, notes: [] });
+      ws.receiveJson({ type: 'status', latencyMs: 100, requestAgeMs: 120 });
+      clock.halfTick(1, 3);
+      const second = ws.sent.filter((m: any) => m.type === 'tick').at(-1) as any;
+      expect(second.cueId).toBe(2);
+      expect(second.rttMs).toBe(180);
+      engine.stop();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

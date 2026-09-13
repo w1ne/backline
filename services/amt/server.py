@@ -67,8 +67,13 @@ if SAMPLER == "cached":
     generate_duet = cached_generate
 
 MODEL_NAME = os.environ.get("AMT_MODEL", "stanford-crfm/music-small-800k")
-# Fraction of the committed window's own duration that generation may spend in wall time.
-GENERATION_BUDGET = 0.8
+# The generation deadline is what is left of the lead time between the cue and the plan's first
+# note once the client<->server hop (`tick.rttMs`, measured by the client; this default until it
+# has) and a fixed margin for the client's own scheduling are taken off. It used to be a fixed
+# 0.8 of the window, which at 120 bpm left 10 ms for the hop and at 140 bpm less than nothing.
+DEFAULT_RTT_S = 0.25
+DEADLINE_MARGIN_S = 0.15
+DEADLINE_FLOOR_S = 0.1
 # Beats of past music kept as context for the next window. generate_duet() prompts the model
 # with the whole prior token stream, so an unpruned session makes every bar's prompt longer
 # than the last and per-bar latency climbs linearly with the length of the take (measured in
@@ -234,11 +239,12 @@ class Session:
         """An old client's `bar` cue: the plan for the whole of bar `bar + 1`."""
         return self.generate_plan(bar * BEATS_PER_BAR, BEATS_PER_BAR, label=f"bar {bar}")
 
-    def generate_tick_plan(self, beat: float) -> dict:
-        """A `tick` cue at `beat` (every `commit_beats`): the plan for the half bar one bar ahead."""
-        return self.generate_plan(beat, self.commit_beats, label=f"tick {beat:g}")
+    def generate_tick_plan(self, beat: float, rtt_ms=None) -> dict:
+        """A `tick` cue at `beat` (every `commit_beats`): the plan for the half bar one bar ahead.
+        `rtt_ms` is the client's last measured cue-to-plan hop, if it has one."""
+        return self.generate_plan(beat, self.commit_beats, label=f"tick {beat:g}", rtt_ms=rtt_ms)
 
-    def generate_plan(self, now_beat: float, span_beats: float, label: str = "") -> dict:
+    def generate_plan(self, now_beat: float, span_beats: float, label: str = "", rtt_ms=None) -> dict:
         """Generate the accompaniment plan for the `span_beats` window starting
         `self.lookahead_beats` past the cue at `now_beat` (4/4 assumed -- matches
         the app's Players.schedule bar granularity).
@@ -297,10 +303,18 @@ class Session:
 
         history_before = list(self.history)
         human_in_context = sum(1 for (onset_beat, _, _) in self.human_notes if onset_beat <= start_beat)
-        # The plan is asked for one bar before its first note is due, and the next cue arrives
-        # after `span_beats`. Spend at most most of the committed window's own duration, so a
-        # half-bar tick gets half the budget of a bar and the queue never falls behind the cues.
-        deadline_s = GENERATION_BUDGET * (commit_end_beat - start_beat) * self.beat_s
+        # Tempo-aware deadline: the plan is due at `start_beat`, so spend what is left of the lead
+        # time after the hop back to the client and its scheduling margin. The next cue arrives
+        # after `span_beats`, so the lead time is also capped at the window's own length to keep
+        # the queue from falling behind the cues.
+        try:
+            rtt_s = float(rtt_ms) / 1000.0 if rtt_ms is not None else DEFAULT_RTT_S
+        except (TypeError, ValueError):
+            rtt_s = DEFAULT_RTT_S
+        if not (0.0 <= rtt_s < 60.0):
+            rtt_s = DEFAULT_RTT_S
+        lead_s = min(start_beat - now_beat, commit_end_beat - start_beat) * self.beat_s
+        deadline_s = max(DEADLINE_FLOOR_S, lead_s - rtt_s - DEADLINE_MARGIN_S)
         t0 = time.monotonic()
         result = generate_duet(
             self.model, start_s, end_s, history_before, generation_instrs, self.top_p, self.accomp_bias,
@@ -390,7 +404,7 @@ def apply_session_message(session, msg):
 def generate_session_plan(session, msg):
     if msg["type"] == "bar":
         return session.generate_next_bar_plan(int(msg.get("bar", 0)))
-    return session.generate_tick_plan(float(msg.get("beat", 0.0)))
+    return session.generate_tick_plan(float(msg.get("beat", 0.0)), rtt_ms=msg.get("rttMs"))
 
 
 @app.websocket("/ws")

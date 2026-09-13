@@ -39,7 +39,7 @@ def session_class(generate):
                      sampling_for=sampling_for, plan_window=plan_window, ACCOMP_BIAS=2,
                      PLAN_LOOKAHEAD_BEATS=4., BEATS_PER_BAR=4., CONTEXT_BEATS=16.,
                      DEFAULT_PRESETS=('strings',), MELODY_INSTR=0, TIME_OFFSET=0,
-                     TIME_RESOLUTION=100, GENERATION_BUDGET=.8, SAMPLER='cached',
+                     TIME_RESOLUTION=100, DEFAULT_RTT_S=.25, DEADLINE_MARGIN_S=.15, DEADLINE_FLOOR_S=.1, SAMPLER='cached',
                      make_event=encode, AccompanimentCommitter=Committer,
                      resolve_instruments=lambda names: tuple(p for name in names for p in {'strings': (40, 41, 42), 'guitar': (24,)}.get(name, ())),
                      generate_duet=generate, parse_events=lambda result: result,
@@ -52,10 +52,12 @@ def session_class(generate):
 class SessionPolicyTests(unittest.TestCase):
     def setUp(self):
         self.calls = []
+        self.kwargs = []
         self.model_notes = []
 
         def generate(*args, **kwargs):
             self.calls.append(args)
+            self.kwargs.append(kwargs)
             return self.model_notes
 
         self.session = session_class(generate)(SimpleNamespace())
@@ -66,6 +68,15 @@ class SessionPolicyTests(unittest.TestCase):
         out = self.session.generate_tick_plan(2)
         self.assertEqual(out['plan']['notes'], [])
         self.assertEqual(len(self.calls), 1)
+
+    def test_deadline_is_window_minus_rtt_minus_margin(self):
+        # 120 bpm, lookahead 2: the plan's first note is due 1.0 s after the cue.
+        self.session.generate_tick_plan(2)
+        self.assertAlmostEqual(self.kwargs[0]['deadline_s'], 1.0 - .25 - .15)  # default 250 ms rtt
+        self.session.generate_tick_plan(4, rtt_ms=100)
+        self.assertAlmostEqual(self.kwargs[1]['deadline_s'], 1.0 - .1 - .15)
+        self.session.generate_tick_plan(6, rtt_ms=5000)
+        self.assertAlmostEqual(self.kwargs[2]['deadline_s'], .1)  # never below the floor
 
     def test_listening_and_zero_amount_do_not_generate_or_fill(self):
         self.session.listen_beats = 20
