@@ -1,9 +1,13 @@
 import { describe, it, expect, vi } from 'vitest';
+import * as Tone from 'tone';
+vi.mock('tone', async importOriginal => ({
+  ...await importOriginal<typeof import('tone')>(), connect: vi.fn(),
+}));
 const sf = vi.hoisted(() => ({ instruments: [] as any[] }));
 vi.mock('smplr', () => ({
-  Soundfont: () => {
+  Soundfont: (_ctx: unknown, options: unknown) => {
     let resolveReady!: () => void;
-    const inst = { ready: new Promise<void>(r => { resolveReady = r; }), start: vi.fn(), resolveReady: () => resolveReady() };
+    const inst = { options, stop: vi.fn(), ready: new Promise<void>(r => { resolveReady = r; }), start: vi.fn(), resolveReady: () => resolveReady() };
     sf.instruments.push(inst);
     return inst;
   },
@@ -155,6 +159,7 @@ describe('Players.schedule', () => {
 
 /** A node that records what it was wired to, standing in for a Tone.Gain / Volume. */
 class FakeNode {
+  gain = { rampTo: vi.fn() };
   connected: unknown[] = [];
   disconnects = 0;
   connect(dest: unknown) {
@@ -174,6 +179,7 @@ function withFakeBusses(players: Players) {
   const out = new FakeNode();
   const busses = { drums: new FakeNode(), bass: new FakeNode(), keys: new FakeNode(), lead: new FakeNode() };
   Object.assign(players as unknown as Record<string, unknown>, { out, busses });
+  vi.spyOn(players, 'rawContext').mockReturnValue({ createGain: () => new FakeNode() } as unknown as AudioContext);
   return { out, busses };
 }
 
@@ -181,6 +187,7 @@ describe('Players.scheduleAccompaniment', () => {
   it('does not start notes before the soundfont is ready, then plays every kept note once it is', async () => {
     sf.instruments.length = 0;
     const players = new Players();
+    withFakeBusses(players);
     const now = 100;
     players.scheduleAccompaniment(65, [{ time: 0, note: 60, duration: 1, velocity: 0.5 }], now + 1, 120);
 
@@ -196,6 +203,7 @@ describe('Players.scheduleAccompaniment', () => {
   it('reuses the same soundfont voice for repeated calls with the same GM program', () => {
     sf.instruments.length = 0;
     const players = new Players();
+    withFakeBusses(players);
     players.scheduleAccompaniment(65, [{ time: 0, note: 60, duration: 1, velocity: 0.5 }], 100, 120);
     players.scheduleAccompaniment(65, [{ time: 1, note: 62, duration: 1, velocity: 0.5 }], 100, 120);
     expect(sf.instruments).toHaveLength(1);
@@ -203,6 +211,7 @@ describe('Players.scheduleAccompaniment', () => {
 
   it('ignores an unknown GM program instead of throwing', () => {
     const players = new Players();
+    withFakeBusses(players);
     expect(() => players.scheduleAccompaniment(999, [{ time: 0, note: 60, duration: 1, velocity: 0.5 }], 100, 120)).not.toThrow();
   });
 });
@@ -271,3 +280,206 @@ describe('Players.route', () => {
     players.setBandAmount(0);
     expect(ramps).toEqual(Array.from({length:4}, () => [0,.03]));
  });
+
+
+describe('GM role buses and asynchronous playback', () => {
+  it.each([[24, 'lead'], [42, 'bass'], [65, 'keys']] as const)(
+    'routes GM %i to %s and reports its real role only once ready', async (program, role) => {
+      sf.instruments.length = 0;
+      const players = new Players();
+      const { busses } = withFakeBusses(players);
+      const scheduled = vi.fn();
+      const accomp = vi.fn();
+      players.onSchedule = scheduled;
+      players.onAccompSchedule = accomp;
+      players.setBandAmount(.3);
+      players.scheduleAccompaniment(program, [{ time: 0, note: 60, duration: 1, velocity: .8 }], 100, 120);
+      const voice = sf.instruments[0];
+      expect(voice.options.destination).toBeDefined();
+      expect(Tone.connect).toHaveBeenCalledWith(voice.options.destination, busses[role]);
+      expect(scheduled).not.toHaveBeenCalled();
+      voice.resolveReady();
+      await voice.ready;
+      expect(voice.start).toHaveBeenCalledWith(expect.objectContaining({ velocity: 102 }));
+      expect(scheduled).toHaveBeenCalledWith(role, expect.any(Array), 100, 120);
+      expect(accomp).toHaveBeenCalledWith(program, expect.any(Array), 100, 120);
+      expect(busses[role].gain.rampTo).toHaveBeenLastCalledWith(.3, .03);
+    },
+  );
+
+  it('keys mute does not silence guitar, and role gain survives later amount changes', async () => {
+    sf.instruments.length = 0;
+    const players = new Players();
+    const { busses } = withFakeBusses(players);
+    players.setEnabled('keys', false);
+    players.setBandAmount(.4);
+    expect(busses.keys.gain.rampTo).toHaveBeenLastCalledWith(0, .03);
+    expect(busses.lead.gain.rampTo).toHaveBeenLastCalledWith(.4, .03);
+    players.scheduleAccompaniment(24, [{ time: 0, note: 60, duration: 1, velocity: .8 }], 100, 120);
+    const voice = sf.instruments[0];
+    voice.resolveReady();
+    await voice.ready;
+    expect(voice.start).toHaveBeenCalledTimes(1);
+    players.setEnabled('lead', false);
+    expect(busses.lead.gain.rampTo).toHaveBeenLastCalledWith(0, .03);
+  });
+
+  it.each(['muted', 'zero', 'cancelled'] as const)('does not start or report notes after becoming %s while loading', async reason => {
+    sf.instruments.length = 0;
+    const players = new Players();
+    withFakeBusses(players);
+    players.onSchedule = vi.fn();
+    players.onAccompSchedule = vi.fn();
+    players.scheduleAccompaniment(24, [{ time: 0, note: 60, duration: 1, velocity: .8 }], 100, 120);
+    const voice = sf.instruments[0];
+    if (reason === 'muted') players.setEnabled('lead', false);
+    if (reason === 'zero') players.setBandAmount(0);
+    if (reason === 'cancelled') players.cancelScheduled();
+    voice.resolveReady();
+    await voice.ready;
+    expect(voice.start).not.toHaveBeenCalled();
+    expect(players.onSchedule).not.toHaveBeenCalled();
+    expect(players.onAccompSchedule).not.toHaveBeenCalled();
+  });
+});
+
+
+it('drops notes that become stale while the soundfont loads', async () => {
+  sf.instruments.length = 0;
+  const players = new Players();
+  withFakeBusses(players);
+  const context = vi.spyOn(Tone, 'getContext');
+  context.mockReturnValue({ currentTime: 99 } as ReturnType<typeof Tone.getContext>);
+  try {
+    players.onSchedule = vi.fn();
+    players.scheduleAccompaniment(24, [{ time: 0, note: 60, duration: 1, velocity: .8 }], 100, 120);
+    context.mockReturnValue({ currentTime: 101 } as ReturnType<typeof Tone.getContext>);
+    const voice = sf.instruments[0];
+    voice.resolveReady();
+    await voice.ready;
+    expect(voice.start).not.toHaveBeenCalled();
+    expect(players.onSchedule).not.toHaveBeenCalled();
+    expect(players.dropped).toBe(1);
+  } finally {
+    context.mockRestore();
+  }
+});
+
+it('cancels GM notes already handed to the sampler without needing a local SoundSet', async () => {
+  sf.instruments.length = 0;
+  const players = new Players();
+  withFakeBusses(players);
+  players.scheduleAccompaniment(42, [{ time: 0, note: 48, duration: 4, velocity: .8 }], 100, 120);
+  const voice = sf.instruments[0];
+  voice.resolveReady();
+  await voice.ready;
+  expect(voice.start).toHaveBeenCalledTimes(1);
+  players.cancelScheduled();
+  expect(voice.stop).toHaveBeenCalledTimes(1);
+});
+
+
+it('confirms only accepted nonzero events after sample readiness', async () => {
+  sf.instruments.length = 0;
+  const players = new Players();
+  withFakeBusses(players);
+  const confirmed = vi.fn();
+  const audible = { time: 0, note: 60, duration: 1, velocity: .8 };
+  players.scheduleAccompaniment(24, [audible, {...audible,note:62,velocity:0}], 100, 120, confirmed);
+  expect(confirmed).not.toHaveBeenCalled();
+  const voice = sf.instruments[0];
+  voice.resolveReady(); await voice.ready;
+  expect(confirmed).toHaveBeenCalledWith([audible]);
+  expect(voice.start).toHaveBeenCalledTimes(1);
+});
+
+it('does not confirm notes dropped as stale during sample loading', async () => {
+  sf.instruments.length = 0;
+  const players = new Players();
+  withFakeBusses(players);
+  const context = vi.spyOn(Tone, 'getContext');
+  context.mockReturnValue({ currentTime: 99 } as ReturnType<typeof Tone.getContext>);
+  try {
+    const confirmed = vi.fn();
+    players.scheduleAccompaniment(24, [{time:0,note:60,duration:1,velocity:.8}], 100, 120, confirmed);
+    context.mockReturnValue({ currentTime: 101 } as ReturnType<typeof Tone.getContext>);
+    const voice = sf.instruments[0];
+    voice.resolveReady(); await voice.ready;
+    expect(confirmed).not.toHaveBeenCalled();
+  } finally { context.mockRestore(); }
+});
+
+it('does not publish AMT response timing when a real Players sampler finishes loading too late', async () => {
+  const { AmtEngine } = await import('../engines/amtEngine');
+  sf.instruments.length = 0;
+  class Socket {
+    static OPEN = 1;
+    readyState = 1;
+    listeners = new Map<string, (event: any) => void>();
+    addEventListener(type: string, callback: (event: any) => void) { this.listeners.set(type, callback); }
+    send() {}
+    close() {}
+    constructor() { socket = this; }
+  }
+  let socket!: Socket;
+  vi.stubGlobal('WebSocket', Socket);
+  const players = new Players();
+  withFakeBusses(players);
+  const context = vi.spyOn(Tone, 'getContext');
+  context.mockReturnValue({ currentTime: 10 } as ReturnType<typeof Tone.getContext>);
+  const clock = { bpm: 120, onBar: vi.fn(), start: vi.fn(), stop: vi.fn(), setBpm: vi.fn() };
+  const engine = new AmtEngine(players, { onNote: () => undefined }, clock, () => Tone.getContext().currentTime, () => 100);
+  try {
+    engine.setEnabled('lead', true);
+    await engine.start(120, 10);
+    const timing = vi.fn(); engine.onResponseTiming = timing;
+    socket.listeners.get('message')?.({data:JSON.stringify({type:'plan',latestCaptureTimeSec:100,notes:[
+      {voice:'lead',gmInstr:24,beat:2,pitch:60,dur:1,vel:.8},
+    ]})});
+    expect(sf.instruments).toHaveLength(1);
+    context.mockReturnValue({ currentTime: 13 } as ReturnType<typeof Tone.getContext>);
+    const voice = sf.instruments[0];
+    voice.resolveReady(); await voice.ready; await Promise.resolve();
+    expect(voice.start).not.toHaveBeenCalled();
+    expect(timing).not.toHaveBeenCalled();
+  } finally {
+    engine.stop();
+    context.mockRestore();
+    vi.unstubAllGlobals();
+  }
+});
+
+it('cancels GM events still queued inside the sampler, not just active sound sources', async () => {
+  sf.instruments.length = 0;
+  const players = new Players();
+  withFakeBusses(players);
+  players.scheduleAccompaniment(24, [{time:0,note:60,duration:2,velocity:.8}], 100, 120);
+  const voice = sf.instruments[0];
+  let queued = false;
+  const cancelQueued = vi.fn(() => { queued = false; });
+  // smplr.stop() only stops active BufferVoices. Its start() return value also
+  // removes future events from the internal scheduler before sources exist.
+  voice.start.mockImplementation(() => { queued = true; return cancelQueued; });
+  voice.resolveReady(); await voice.ready;
+  expect(queued).toBe(true);
+  players.cancelScheduled();
+  expect(cancelQueued).toHaveBeenCalledOnce();
+  expect(queued).toBe(false);
+  players.cancelScheduled();
+  expect(cancelQueued).toHaveBeenCalledOnce();
+});
+
+it('forgets completed GM handles instead of retaining one cancellation per note forever', async () => {
+  sf.instruments.length = 0;
+  const players = new Players();
+  withFakeBusses(players);
+  players.scheduleAccompaniment(24, [{time:0,note:60,duration:2,velocity:.8}], 100, 120);
+  const voice = sf.instruments[0];
+  const cancelQueued = vi.fn();
+  let ended!: () => void;
+  voice.start.mockImplementation((event: {onEnded:()=>void}) => {ended=event.onEnded;return cancelQueued;});
+  voice.resolveReady(); await voice.ready;
+  ended();
+  players.cancelScheduled();
+  expect(cancelQueued).not.toHaveBeenCalled();
+});

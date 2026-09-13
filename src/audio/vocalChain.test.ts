@@ -95,3 +95,42 @@ describe('VocalChain', () => {
     expect(VOCAL_COMPRESSOR).toEqual({ threshold: -20, ratio: 2.5, attack: 0.005, release: 0.12 });
   });
 });
+
+/** A native AudioNode throws on targeted disconnect of a missing edge; disconnect()
+ * without a target, as MicSource.stop uses, removes all current graph edges. */
+function nativeMicNode() {
+  const destinations = new Set<unknown>();
+  return {
+    destinations,
+    connect: vi.fn((destination: unknown) => { destinations.add(destination); }),
+    disconnect: vi.fn((destination?: unknown) => {
+      if (destination === undefined) { destinations.clear(); return; }
+      if (!destinations.delete(destination)) throw new DOMException('The given destination is not connected', 'InvalidAccessError');
+    }),
+  };
+}
+
+it('finishes vocal teardown when the listener already disconnected its shared microphone source', () => {
+  const mic = nativeMicNode();
+  const chain = new VocalChain(mic as unknown as never, fakeInputNode(), fakeInputNode());
+  const filter = mic.connect.mock.calls[0][0] as {dispose:ReturnType<typeof vi.fn>};
+  chain.setEnabled(true);
+  mic.disconnect();
+  expect(() => chain.dispose()).not.toThrow();
+  expect(chain.isEnabled()).toBe(false);
+  expect(filter.dispose).toHaveBeenCalledOnce();
+});
+
+it('vocal teardown owns only its graph edge and is idempotent across repeated power-off', () => {
+  const mic = nativeMicNode();
+  const listenerAnalysis = {};
+  mic.connect(listenerAnalysis);
+  const chain = new VocalChain(mic as unknown as never, fakeInputNode(), fakeInputNode());
+  const filter = mic.connect.mock.calls[1][0] as {dispose:ReturnType<typeof vi.fn>};
+  chain.dispose();
+  expect(() => chain.dispose()).not.toThrow();
+  expect(filter.dispose).toHaveBeenCalledOnce();
+  expect(mic.destinations).toEqual(new Set([listenerAnalysis]));
+  chain.setEnabled(true);
+  expect(chain.isEnabled()).toBe(false);
+});

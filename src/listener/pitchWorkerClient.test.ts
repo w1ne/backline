@@ -1,0 +1,36 @@
+import { it, expect, vi } from 'vitest';
+import { PitchWorkerClient, type PitchJob } from './pitchWorkerClient';
+it('bounds work to one running and latest pending frame, preserving capture time', () => {
+  const worker = { onmessage: null as null | ((e: unknown) => void), onerror: null, postMessage: vi.fn(), terminate: vi.fn() };
+  const callback = vi.fn();
+  const client = new PitchWorkerClient(worker as unknown as Worker, callback);
+  const frame = (timeSec: number): PitchJob => ({ samples: new Float32Array(4096), sampleRate: 48000, timeSec });
+  for (let i = 0; i < 100; i++) client.submit(frame(i));
+  expect(worker.postMessage).toHaveBeenCalledTimes(1);
+  worker.onmessage!({ data: { pitch: null, timeSec: 0 } });
+  expect(callback).toHaveBeenCalledWith(null, 0);
+  expect(worker.postMessage).toHaveBeenCalledTimes(2);
+  expect(worker.postMessage.mock.calls[1][0].timeSec).toBe(99);
+  const stale = worker.onmessage!;
+  client.stop();
+  stale({ data: { pitch: null, timeSec: 99 } });
+  client.submit(frame(100));
+  expect(callback).toHaveBeenCalledTimes(1);
+  expect(worker.terminate).toHaveBeenCalledTimes(1);
+  expect(worker.postMessage).toHaveBeenCalledTimes(2);
+});
+
+it('reports worker errors once, drops queued work and ignores late results', () => {
+  const worker = { onmessage: null as null | ((e: unknown) => void), onerror: null as null | (() => void), postMessage: vi.fn(), terminate: vi.fn() };
+  const pitch = vi.fn(); const failure = vi.fn();
+  const client = new PitchWorkerClient(worker as unknown as Worker, pitch, failure);
+  client.submit({ samples: new Float32Array(4), sampleRate: 48000, timeSec: 1 });
+  client.submit({ samples: new Float32Array(4), sampleRate: 48000, timeSec: 2 });
+  const late = worker.onmessage!; const error = worker.onerror!;
+  error(); error(); late({ data: { pitch: null, timeSec: 1 } });
+  expect(failure).toHaveBeenCalledTimes(1);
+  expect(pitch).toHaveBeenCalledTimes(1);
+  expect(pitch.mock.calls[0][0]).toBeNull();
+  expect(worker.terminate).toHaveBeenCalledTimes(1);
+  expect(worker.postMessage).toHaveBeenCalledTimes(1);
+});

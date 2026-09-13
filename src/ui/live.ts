@@ -1,3 +1,4 @@
+import { GM_INSTRUMENTS } from '../players/gmInstruments';
 import { GENRES, INSTRUMENTS, ACCOMP_ROW } from '../types';
 import type { AccompPreset, Genre, Instrument } from '../types';
 import { SOUNDS, SOUND_GROUPS, type MonitorSound } from '../players/soundCatalog';
@@ -95,6 +96,7 @@ export function renderLive(root: HTMLElement, store: Store, actions: LiveActions
 function skeleton(): string {
   return `
     <div class="screen" data-live>
+      <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
       <div class="bar">
         <div class="bar-top">
           <h1 class="logo">duet<i>.ai</i></h1>
@@ -427,6 +429,7 @@ function wireKnob(screen: HTMLElement, input: HTMLInputElement, knobSel: string)
 
 function update(screen: HTMLElement, s: AppState, changeLatencyMs: number): void {
   updatePower(screen, s);
+  updateToast(screen, s);
   updateHeader(screen, s);
   updateEngine(screen, s);
   updateAccompTiles(screen, s);
@@ -449,7 +452,7 @@ function update(screen: HTMLElement, s: AppState, changeLatencyMs: number): void
   rec.setAttribute('aria-pressed', String(s.recording));
   screen.querySelector<HTMLElement>('#record-label')!.textContent = s.recording ? 'Save' : 'Rec';
   rec.title = s.recording ? 'Recording… tap to save the MIDI' : 'Tap to record you + the band, tap again to save the MIDI';
-  screen.querySelector<HTMLElement>('#model-latency')!.textContent = s.modelLatencyMs == null ? '' : `${Math.round(s.modelLatencyMs)} ms`;
+  screen.querySelector<HTMLElement>('#model-latency')!.textContent = [s.responseLatencyMs == null ? '' : `Response ≈${Math.round(s.responseLatencyMs)} ms`, s.modelLatencyMs == null ? '' : `Model ${Math.round(s.modelLatencyMs)} ms`].filter(Boolean).join(' · ');
   screen.querySelector<HTMLElement>('#output-latency')!.textContent = s.outputLatencyMs == null ? '' : `Output latency: ${Math.round(s.outputLatencyMs)} ms`;
   screen.querySelector<HTMLElement>('#engine-status')!.textContent = s.engineConnecting ? `${ENGINE_NAMES[s.engine]} · connecting…` : s.offlineEngines.includes(s.engine) ? `${ENGINE_NAMES[s.engine]} · offline` : '';
   for (const [id, value] of [['noise', s.noiseVolume], ['drone', s.droneVolume]] as const) {
@@ -498,6 +501,12 @@ function lcdText(s: AppState): string {
   return `LISTENING · MIC ${mark(s.sources.mic)} ${midiLabel(s)} · ${s.input.onsets}/12${guess}`;
 }
 
+function updateToast(screen: HTMLElement, s: AppState): void {
+  const toast = screen.querySelector<HTMLElement>('#toast')!;
+  if (s.toast) toast.textContent = s.toast; // keep the last message visible through the hide transition
+  toast.hidden = !s.toast;
+}
+
 function updatePower(screen: HTMLElement, s: AppState): void {
   const on = s.power === 'on';
   screen.classList.toggle('powered', on);
@@ -528,6 +537,10 @@ function updateEngine(screen: HTMLElement, s: AppState): void {
   });
 }
 
+export function accompPresetMuted(preset: AccompPreset, enabled: Record<Instrument, boolean>): boolean {
+  return !Object.values(GM_INSTRUMENTS).some(gm => gm.presets.includes(preset) && enabled[gm.role]);
+}
+
 function updateAccompTiles(screen: HTMLElement, s: AppState): void {
   const row = screen.querySelector<HTMLElement>('#accomp-tiles')!;
   row.hidden = s.engine !== 'amt';
@@ -535,11 +548,12 @@ function updateAccompTiles(screen: HTMLElement, s: AppState): void {
   screen.querySelectorAll<HTMLButtonElement>('#accomp-tiles button[data-preset]').forEach(btn => {
     const preset = btn.dataset.preset as AccompPreset;
     const on = s.accompPresets.includes(preset);
-    const active = on && !!s.accompActive[preset];
+    const muted = accompPresetMuted(preset, s.enabled);
+    const active = on && !muted && !!s.accompActive[preset];
     btn.classList.toggle('on', on);
     btn.classList.toggle('active', active);
     btn.setAttribute('aria-pressed', String(on));
-    btn.querySelector<HTMLElement>('.st-text')!.textContent = !on ? 'off' : active ? 'playing' : 'ready';
+    btn.querySelector<HTMLElement>('.st-text')!.textContent = !on ? 'off' : muted ? 'muted' : active ? 'playing' : 'ready';
   });
 }
 

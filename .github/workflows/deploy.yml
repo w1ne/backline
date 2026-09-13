@@ -2,6 +2,23 @@ name: deploy
 on: { push: { branches: [main] } }
 permissions: { contents: read, pages: write, id-token: write }
 jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - name: Cache MIR-1K subset
+        id: mir1k-cache
+        uses: actions/cache@v4
+        with:
+          path: bench/realvoice/data
+          key: mir1k-subset-v1
+      - name: Fetch MIR-1K subset (best effort)
+        if: steps.mir1k-cache.outputs.cache-hit != 'true'
+        run: bash bench/realvoice/fetch.sh
+      - run: npm run bench:gate
   build:
     runs-on: ubuntu-latest
     steps:
@@ -10,12 +27,14 @@ jobs:
         with: { node-version: 20, cache: npm }
       - run: npm ci
       - run: npm --prefix relay ci && npm --prefix relay run typecheck
+      - run: python3 -m pip install pytest
+      - run: python3 -m pytest services/amt -q
       - run: npm test
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with: { path: dist }
   deploy:
-    needs: build
+    needs: [build, gate]
     runs-on: ubuntu-latest
     environment: { name: github-pages }
     steps:
@@ -24,7 +43,7 @@ jobs:
   # soundofthe.world serves the app from the site root, so it needs its own
   # build with base "/" — the GitHub Pages one above is based at /backline/.
   pages:
-    needs: build
+    needs: [build, gate]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

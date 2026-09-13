@@ -11,6 +11,7 @@ export interface AppState {
   power: 'off' | 'on';
   accompanimentStatus: string;
   modelLatencyMs: number | null;
+  responseLatencyMs: number | null;
   activeParts: Partial<Record<Instrument, boolean>>;
   sources: SourceStatus;
   genre: Genre;
@@ -42,8 +43,11 @@ export interface AppState {
   error: string | null;
   /** the Record button is armed: notes are being collected for the MIDI download */
   recording: boolean;
-  /** the band is held: no scheduling, listener keeps running */
+  /** the band is held: no scheduling, the ambient drone/noise beds are muted, and mic/MIDI
+   *  input is ignored until the performer lets the band play again */
   paused: boolean;
+  /** a self-dismissing notice shown in the LCD-styled toast, or null when none is showing */
+  toast: string | null;
   loops: number;
   loopsUpdatedAt: number | undefined;
   /** engines the /health probe found unreachable at page load; still selectable, just flagged in the UI */
@@ -78,6 +82,7 @@ const defaults: AppState = {
   power: 'off',
   accompanimentStatus: 'Listening',
   modelLatencyMs: null,
+  responseLatencyMs: null,
   activeParts: {},
   sources: { mic: 'off', midi: 'off' },
   genre: 'lofi',
@@ -101,6 +106,7 @@ const defaults: AppState = {
   error: null,
   recording: false,
   paused: false,
+  toast: null,
   loops: 0,
   loopsUpdatedAt: undefined,
   offlineEngines: [],

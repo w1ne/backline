@@ -1,5 +1,6 @@
 import type { Chord, ChordQuality, Key } from '../types';
 import { scaleOf } from '../music/scales';
+import { DEFAULT_TUNING, type ChordTuning } from './tuning';
 
 /** Semitone offsets from the chord root, per quality. */
 export const QUALITY_TONES: Record<ChordQuality, number[]> = {
@@ -158,6 +159,11 @@ export class ChordDetector {
   private current: ChordReading | null = null;
   /** last chord chosen by the melody harmonizer, kept for its hysteresis */
   private melody: Chord | null = null;
+  private tuning: ChordTuning;
+
+  constructor(tuning: ChordTuning = DEFAULT_TUNING.chord) {
+    this.tuning = tuning;
+  }
 
   addNote(midi: number, timeSec: number, weight = 1): void {
     if (midi < 0) return;
@@ -187,15 +193,15 @@ export class ChordDetector {
     // with three pitch classes that each carry real weight is a chord somebody played; a
     // sparser one is a line, harmonized within the key over the last full bar.
     const total = w.reduce((a, b) => a + b, 0);
-    const voiced = w.filter(v => v >= total * TEMPLATE_MIN_SHARE).length;
+    const voiced = w.filter(v => v >= total * this.tuning.templateMinShare).length;
     if (mode === 'melody' || voiced < 3) {
       if (!key) return null;
       // flat over the bar: the root a singer opens the bar on must count as much as the last note
       // a bar and a half of fading memory: long enough to hold the root a singer opened on,
       // short enough that the previous bar's chord has faded by the second half of this one
-      const wm = pitchClassWeights(this.notes, nowSec, this.windowSec * MELODY_WINDOW_MUL);
+      const wm = pitchClassWeights(this.notes, nowSec, this.windowSec * this.tuning.melodyWindowMul);
       const held = this.melody ?? (this.current && { root: this.current.root, quality: this.current.quality });
-      this.melody = harmonizeMelody(wm, key, held);
+      this.melody = harmonizeMelody(wm, key, held, this.tuning);
       return this.melody;
     }
     const best = bestChord(w);
@@ -215,7 +221,7 @@ export class ChordDetector {
     if (this.current) return { root: this.current.root, quality: this.current.quality };
     if (!key) return null;
     // A single voice never fills a triad template, so harmonize the melody instead.
-    this.melody = harmonizeMelody(w, key, this.melody);
+    this.melody = harmonizeMelody(w, key, this.melody, this.tuning);
     return this.melody;
   }
 
@@ -226,16 +232,8 @@ export class ChordDetector {
   }
 }
 
-/** A pitch class must carry this share of the window's energy to count as a chord tone somebody played. */
-export const TEMPLATE_MIN_SHARE = 0.1;
-
-/** Harmonizer memory as a multiple of the chord window (two beats). */
-const MELODY_WINDOW_MUL = 1.5;
-
-/** A rival must cover this much more of the sung energy than the held chord to replace it. */
-const MELODY_SWITCH_MARGIN = 0.15;
-/** Below this coverage no diatonic triad explains the melody; the held chord (or tonic) stays. */
-const MELODY_MIN_COVERAGE = 0.5;
+/** A pitch class must carry this share of the window's energy to count as a chord tone somebody played (DEFAULT_TUNING.chord). */
+export const TEMPLATE_MIN_SHARE = DEFAULT_TUNING.chord.templateMinShare;
 
 /** The six diatonic triads of `key` the band may sit on, tonic first, then by harmonic weight. */
 export function diatonicTriads(key: Key): Chord[] {
@@ -254,7 +252,7 @@ export function diatonicTriads(key: Key): Chord[] {
  * covers clearly more, and ties fall to the tonic, so a lone note that fits three chords does
  * not make the band lurch. Nothing sung yet: the tonic.
  */
-export function harmonizeMelody(weights: number[], key: Key, held: Chord | null): Chord {
+export function harmonizeMelody(weights: number[], key: Key, held: Chord | null, tuning: ChordTuning = DEFAULT_TUNING.chord): Chord {
   const total = weights.reduce((a, b) => a + b, 0);
   const candidates = diatonicTriads(key);
   const tonic = candidates[0];
@@ -268,8 +266,8 @@ export function harmonizeMelody(weights: number[], key: Key, held: Chord | null)
     const cov = coverage(c), score = cov + rootSung(c);
     if (score > bestScore + 1e-9) { best = c; bestCov = cov; bestScore = score; }
   }
-  if (bestCov < MELODY_MIN_COVERAGE) return held ?? tonic;
-  if (held && !sameChord(held, best) && bestCov - coverage(held) < MELODY_SWITCH_MARGIN) return held;
+  if (bestCov < tuning.melodyMinCoverage) return held ?? tonic;
+  if (held && !sameChord(held, best) && bestCov - coverage(held) < tuning.melodySwitchMargin) return held;
   return best;
 }
 

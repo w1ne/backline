@@ -166,3 +166,77 @@ def fill_silent_window(notes_out, key, chord, start_beat, end_beat):
     plan = early_entry_plan(key, chord, start_beat, end_beat)
     return plan if plan else notes_out
 
+
+
+ROLES = ('keys', 'bass', 'lead')
+
+
+def role_for_instrument(program):
+    """Keep the instrument's musical role consistent in generation and playback."""
+    if 24 <= program <= 31:
+        return 'lead'
+    if 32 <= program <= 39 or program == 42:  # bass programs and ensemble cello
+        return 'bass'
+    return 'keys'
+
+
+class Arranger:
+    """The sole policy boundary from model events to playable accompaniment.
+
+    No normal path manufactures events: silence from a successful model call is a
+    rest. A caller must explicitly request failure_fallback after service failure.
+    """
+    def __init__(self, amount=.5, creativity=.3, enabled_roles=None):
+        self.amount = max(0., min(1., float(amount)))
+        self.creativity = max(0., min(1., float(creativity)))
+        self.enabled_roles = {role: True for role in ROLES}
+        if enabled_roles:
+            self.enabled_roles.update({role: bool(value) for role, value in enabled_roles.items() if role in ROLES})
+
+    def generation_instruments(self, programs):
+        if self.amount == 0:
+            return ()
+        return tuple(p for p in programs if self.enabled_roles[role_for_instrument(p)])
+
+    def constrain(self, notes, start, end, beat_seconds, space=False, time_resolution=100, key=None, chord=None):
+        """Return constrained model tuples; independent instruments may coexist."""
+        if self.amount == 0:
+            return []
+        groups = {}
+        for note in notes:
+            if self.enabled_roles[role_for_instrument(note[2])]:
+                groups.setdefault(note[2], []).append(note)
+        out = []
+        for group in groups.values():
+            shaped = shape_notes(group, start, end, beat_seconds, space, time_resolution,
+                                 key, chord, self.creativity, self.amount)
+            # Creativity can loosen the grid, but never override the amount's
+            # presence budget. Apply the amount spacing even in the wild zone.
+            gap = beat_seconds * (2. if self.amount < .25 else 1. if self.amount < .7 else .25)
+            previous = None
+            for note in shaped:
+                if previous is None or note[0] - previous >= gap - 1e-8:
+                    out.append(note)
+                    previous = note[0]
+        return sorted(out)
+
+    def events(self, notes, beat_seconds, space=False):
+        """Route already committed notes without adding pitches or losing GM identity."""
+        if self.amount == 0:
+            return []
+        velocity = .65 if space else .5
+        return [{'beat': t / beat_seconds, 'dur': d / beat_seconds, 'pitch': p,
+                 'voice': role_for_instrument(instr), 'gmInstr': instr, 'vel': velocity}
+                for t, d, instr, p in notes if self.enabled_roles[role_for_instrument(instr)]]
+
+    def arrange(self, notes, start, end, beat_seconds, **kwargs):
+        return self.events(self.constrain(notes, start, end, beat_seconds, **kwargs),
+                           beat_seconds, kwargs.get('space', False))
+
+    def failure_fallback(self, key, chord, start_beat, end_beat, beat_seconds):
+        """An opt-in degraded plan, constrained exactly like generated notes."""
+        programs = {'keys': 4, 'bass': 33}
+        raw = [(n['beat'] * beat_seconds, n['dur'] * beat_seconds, programs[n['voice']], n['pitch'])
+               for n in early_entry_plan(key, chord, start_beat, end_beat)]
+        return self.arrange(raw, start_beat * beat_seconds, end_beat * beat_seconds,
+                            beat_seconds, key=key, chord=chord)

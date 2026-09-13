@@ -3,7 +3,7 @@ import re
 import pytest
 
 from bench_harmony import ARPEGGIO, BEATS_PER_BAR, BPM, HALF_BAR, arpeggio_events, run, score
-from brain import HarmonyBrain, sampling_for
+from brain import PREDICTOR, HarmonyBrain, sampling_for
 from harmony import chord_name
 from form import ENDING_SILENCE_BEATS
 
@@ -32,13 +32,13 @@ def _chord(name):
     return Chord(NAMES.index(root), "min" if quality else "maj")
 
 
-def live_replay(lookahead, bars=16, genre="lofi", client_chord="Am"):
+def live_replay(lookahead, bars=16, genre="lofi", client_chord="Am", predictor=PREDICTOR):
     """The message sequence bench/streammuse/tools/tick_latency.mjs sends for the `arpeggio`
     clip, as server.py hands it to the brain: `start` (key, genre, lookaheadBeats), `set`
     (chord Am), every note as a `notes` message carrying its onset beat but arriving
     DETECTION_LATENCY_S later, and a `tick` every two beats. Returns the tool's own
     "chord at bar start" line (latest plan whose chordFrom <= bar start; Am before any)."""
-    brain = HarmonyBrain(key="A minor", genre=genre, lookahead_beats=lookahead, bpm=BPM)
+    brain = HarmonyBrain(key="A minor", genre=genre, lookahead_beats=lookahead, bpm=BPM, predictor=predictor)
     brain.set_controls({"key": "A minor", "chord": client_chord, "creativity": 0.3})
     events = arpeggio_events(ARPEGGIO * (bars // len(ARPEGGIO)))
     fed = 0
@@ -63,38 +63,65 @@ def live_replay(lookahead, bars=16, genre="lofi", client_chord="Am"):
 class TestLiveReplay:
     """What the relay run scores must be what the brain scores on the same messages."""
 
-    def test_arpeggio_live_sequence_lookahead_2(self):
+    def test_arpeggio_live_sequence_lookahead_2_table(self):
+        """The relay run that produced this line ran the table predictor."""
         truth = [chord_name(c) for c in ARPEGGIO] * 2
-        at_start = live_replay(2.0)
+        at_start = live_replay(2.0, predictor="table")
         hits = sum(a == t for a, t in zip(at_start, truth))
         assert at_start[:8] == ["Am", "Am", "G", "F", "Am", "F", "Em", "Am"], at_start
         assert hits / len(truth) >= 0.5, (hits, at_start)
 
+    def test_arpeggio_live_sequence_lookahead_2_hmm(self):
+        """The HMM predictor on the same messages. Bar 1 is the client chord for both
+        predictors; the hmm lands F C G on bars 2-4 where the table lands G F Am, and loses bars 6-7
+        to the corpus preferring i -> VI and (i, iv) -> i over this clip's Dm and Em. 7/16 here
+        against the table's 8/16; HARMONY_BENCH.md has it ahead at every lookahead on average."""
+        truth = [chord_name(c) for c in ARPEGGIO] * 2
+        at_start = live_replay(2.0, predictor="hmm")
+        assert at_start[:8] == ["Am", "Am", "C", "G", "Am", "F", "Am", "G"], at_start
+        assert sum(a == t for a, t in zip(at_start, truth)) == 7, at_start
+
     def test_lookahead_4_is_the_relay_run_before_the_fix(self):
         """server.py planned one bar ahead whatever `lookaheadBeats` said; this is the line the
         relay reported at both settings (3/8), so the bug was the server, not the brain."""
-        assert live_replay(4.0)[:8] == ["Am", "Am", "G", "Am", "Am", "Am", "G", "Am"]
+        assert live_replay(4.0, predictor="table")[:8] == ["Am", "Am", "G", "Am", "Am", "Am", "G", "Am"]
+
+    def test_lookahead_4_hmm(self):
+        truth = [chord_name(c) for c in ARPEGGIO] * 2
+        at_start = live_replay(4.0, predictor="hmm")
+        assert at_start[:8] == ["Am", "Am", "C", "G", "Am", "F", "C", "G"], at_start
+        assert sum(a == t for a, t in zip(at_start, truth)) / len(truth) >= 0.5
 
     def test_first_bar_is_the_client_chord(self):
         """Bar 1 is Am not F on either lookahead: the `set.chord` rule holds until four notes,
         and the tick before bar 1 has heard two."""
-        assert live_replay(2.0, client_chord=None)[1] == "F"
-        assert live_replay(2.0)[1] == "Am"
+        for predictor in ("table", "hmm"):
+            assert live_replay(2.0, client_chord=None, predictor=predictor)[1] == "F"
+            assert live_replay(2.0, predictor=predictor)[1] == "Am"
 
 
 class TestChordDecision:
+    @pytest.mark.parametrize("predictor", ["table", "hmm"])
     @pytest.mark.parametrize("lookahead", [0.0, 2.0, 4.0])
-    def test_arpeggio_bar_start_accuracy_at_least_half(self, lookahead):
-        brain = HarmonyBrain(key="A minor", lookahead_beats=lookahead, bpm=BPM)
+    def test_arpeggio_bar_start_accuracy_at_least_half(self, lookahead, predictor):
+        brain = HarmonyBrain(key="A minor", lookahead_beats=lookahead, bpm=BPM, predictor=predictor)
         s = score(replay(brain), ARPEGGIO)
         assert s["bar_start"] >= 0.5, s["names"]
 
-    def test_onset_timestamps_decide_like_the_bench_arrival_replay(self):
+    def test_hmm_beats_the_table_on_the_arpeggio(self):
+        for lookahead in (0.0, 4.0):
+            hmm = HarmonyBrain(key="A minor", lookahead_beats=lookahead, bpm=BPM, predictor="hmm")
+            table = HarmonyBrain(key="A minor", lookahead_beats=lookahead, bpm=BPM, predictor="table")
+            assert score(replay(hmm), ARPEGGIO)["bar_start"] > score(replay(table), ARPEGGIO)["bar_start"]
+
+    @pytest.mark.parametrize("predictor", ["table", "hmm"])
+    @pytest.mark.parametrize("lookahead", [0.0, 2.0, 4.0])
+    def test_onset_timestamps_decide_like_the_bench_arrival_replay(self, lookahead, predictor):
         """The brain ticks the harmonizer DETECTION_LATENCY_S behind the cue, so onset-stamped
         notes weigh exactly as the bench's arrival-stamped ones: same chords at every bar start."""
-        brain = HarmonyBrain(key="A minor", lookahead_beats=0.0, bpm=BPM)
+        brain = HarmonyBrain(key="A minor", lookahead_beats=lookahead, bpm=BPM, predictor=predictor)
         ours = score(replay(brain), ARPEGGIO)["names"]
-        bench = score(run(ARPEGGIO, use_predictor=True, lookahead=0.0), ARPEGGIO)["names"]
+        bench = score(run(ARPEGGIO, use_predictor=predictor, lookahead=lookahead), ARPEGGIO)["names"]
         assert ours == bench
 
     def test_chord_from_is_the_window_start(self):

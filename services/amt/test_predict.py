@@ -145,3 +145,118 @@ class TestDecide:
         r = reading((9, 'min'), [9, 0, 4, 0])
         chord, source = decide(A_MINOR, None, r, [Chord(9, 'min')], r.coverage, downbeat=False)
         assert chord == Chord(9, 'min') and source == HEARD
+
+
+class TestLearned:
+    """data/transitions.json, fitted by fit_transitions.py from Chordonomicon."""
+
+    def test_fitted_matrices_are_small_and_sum_to_one(self):
+        import os
+        from predict import LEARNED_PATH, learned
+        data = learned()
+        assert data is not None and os.path.getsize(LEARNED_PATH) < 16_000
+        for mode in ('major', 'minor'):
+            md = data['modes'][mode]
+            assert len(md['degrees']) == 6 and md['transitions'] > 100_000
+            for i, row in enumerate(md['first']):
+                assert row[i] == 0 and sum(row) == pytest.approx(1.0, abs=2e-3)
+            for rows in md['second']:
+                for i, row in enumerate(rows):
+                    assert row[i] == 0 and sum(row) == pytest.approx(1.0, abs=2e-3)
+        for g in data['genre_map'].values():
+            assert g in data['genres']
+
+    def test_learned_rows_are_diatonic_and_never_stay(self):
+        from predict import learned_first, learned_second
+        for key in (C_MAJOR, A_MINOR):
+            triads = set(diatonic_triads(key))
+            for deg, row in learned_first(key, 'jazz').items():
+                assert deg not in row and sum(row.values()) == pytest.approx(1.0, abs=2e-3)
+                assert all(degree_chord(key, d) in triads for d in row)
+            row = learned_second(key, 4, 0, 'rock')
+            assert 0 not in row and sum(row.values()) == pytest.approx(1.0)
+
+    def test_common_moves_are_learned(self):
+        from predict import learned_first, learned_second
+        major = learned_first(C_MAJOR)
+        assert max(major[4], key=major[4].get) == 0        # V -> I
+        assert max(major[1], key=major[1].get) == 4        # ii -> V
+        minor = learned_first(A_MINOR)
+        assert max(minor[6], key=minor[6].get) == 0        # VII -> i
+        after_iv_v = learned_second(A_MINOR, 3, 4)
+        assert max(after_iv_v, key=after_iv_v.get) == 0    # iv v -> i
+
+
+class TestHmm:
+    def cov(self, key, *pcs):
+        from predict import emission_vector
+        return emission_vector(reading((0, 'maj'), pcs), key)
+
+    def test_viterbi_follows_clear_evidence_across_a_bar_line(self):
+        from predict import viterbi
+        am, f = self.cov(A_MINOR, 9, 0, 4), self.cov(A_MINOR, 5, 9, 0)
+        # two half bars of Am, then two of F; the last emission ends on a downbeat
+        assert viterbi(A_MINOR, None, [am, am, f, f], downbeat=True) == [0, 0, 5, 5]
+
+    def test_viterbi_holds_through_a_silent_half_bar(self):
+        from predict import viterbi
+        am, silent = self.cov(A_MINOR, 9, 0, 4), [0.0] * 6
+        assert viterbi(A_MINOR, None, [am, silent, am, silent]) == [0, 0, 0, 0]
+
+    def test_predict_next_hmm_uses_the_decoded_pair(self):
+        from predict import predict_next_hmm
+        am, f = self.cov(A_MINOR, 9, 0, 4), self.cov(A_MINOR, 5, 9, 0)
+        # decoded Am -> F: the second-order row (i, VI) -> III
+        assert predict_next_hmm(A_MINOR, None, [], [am, am, f, f]) == Chord(0, 'maj')
+        # only F in view: the first-order VI row -> VII
+        assert predict_next_hmm(A_MINOR, None, [], [f, f, f, f]) == Chord(7, 'maj')
+
+    def test_predict_next_hmm_without_emissions_reads_recent_chords(self):
+        from predict import predict_next_hmm
+        assert predict_next_hmm(C_MAJOR, None, [Chord(2, 'min'), Chord(7)], None) == Chord(0)  # ii V -> I
+        assert predict_next_hmm(C_MAJOR, None, [], None) != Chord(0)
+
+    def test_predict_next_hmm_never_returns_the_chord_in_force(self):
+        from predict import predict_next_hmm
+        for key in (C_MAJOR, A_MINOR):
+            for c in diatonic_triads(key):
+                assert predict_next_hmm(key, 'rock', [c], None) != c
+
+    def test_hmm_reading_replaces_a_lagging_harmonizer_chord(self):
+        from predict import hmm_reading
+        am, f = self.cov(A_MINOR, 9, 0, 4), self.cov(A_MINOR, 5, 9, 0)
+        r = reading((9, 'min'), [5, 9, 0])
+        assert hmm_reading(A_MINOR, None, r, [], [am, am, f, f]).chord == Chord(5, 'maj')
+
+    def test_predict_ahead_walks_the_chain_and_stops_at_a_rejected_push(self):
+        from predict import predict_ahead_hmm
+        am, f = self.cov(A_MINOR, 9, 0, 4), self.cov(A_MINOR, 5, 9, 0)
+        Am, F = Chord(9, 'min'), Chord(5, 'maj')
+        # mid-bar on F after Am: one bar line ahead lands on III
+        assert predict_ahead_hmm(A_MINOR, None, [Am, F], None, [am, am, f, f], False, F, 1) == Chord(0)
+        # the band pushed F off Am and was pulled back: the walk holds Am
+        recent = [Am, F, Am, Am]
+        sources = [HEARD, PREDICTED, HEARD, HEARD]
+        assert predict_ahead_hmm(A_MINOR, None, recent, sources, [am] * 4, True, Am, 1) == Am
+
+    def test_downbeat_predicts_through_a_correction_when_asked(self):
+        r = reading((0, 'maj'), [0, 4, 7])  # the decoded bar just ended was C, the band sat on Am
+        chord, source = decide(A_MINOR, None, r, [Chord(9, 'min')], r.coverage, downbeat=True,
+                               predictor=lambda rc: Chord(7), predict_through_corrections=True)
+        assert chord == Chord(7) and source == PREDICTED
+        chord, source = decide(A_MINOR, None, r, [Chord(9, 'min')], r.coverage, downbeat=True,
+                               predictor=lambda rc: Chord(7))
+        assert chord == Chord(0) and source == HEARD
+
+
+class TestRejectedWithSources:
+    def test_only_a_predicted_push_off_the_chord_in_force_counts(self):
+        Am, F, G, C = Chord(9, 'min'), Chord(5), Chord(7), Chord(0)
+        # pushed F, pulled back to Am: hold, whatever is predicted now
+        assert rejected(G, Am, [Am, F, Am, Am], [HEARD, PREDICTED, HEARD, HEARD])
+        # the singer went Am -> F -> Am on their own: no push happened
+        assert not rejected(F, Am, [Am, F, Am, Am], [HEARD, HEARD, HEARD, HEARD])
+        # the band pushed F off C, and the singer answered with Am, not C: not a pull-back
+        assert not rejected(F, Am, [C, F, Am, Am], [HEARD, PREDICTED, HEARD, HEARD])
+        # a push whose predecessor is out of view cannot be judged
+        assert not rejected(F, Am, [F, Am, Am, Am], [PREDICTED, HEARD, HEARD, HEARD])

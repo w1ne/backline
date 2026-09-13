@@ -16,7 +16,10 @@
     "bench:voice:output": "vite-node bench/voice/output.ts",
     "bench:patterns": "vite-node bench/patterns/run.ts",
     "bench:harmony": "vite-node bench/harmony/run.ts",
-    "bench:realvoice": "vite-node bench/realvoice/run.ts"
+    "bench:realvoice": "vite-node bench/realvoice/run.ts",
+    "bench:calibrate": "vite-node bench/calibrate/run.ts",
+    "bench:gate": "vite-node bench/gate.ts",
+    "smoke:live": "node services/smoke.mjs"
   },
   "keywords": [],
   "author": "",
@@ -24,6 +27,7 @@
   "description": "",
   "dependencies": {
     "@google/genai": "^2.22.0",
+    "pitchy": "^4.1.0",
     "smplr": "^1.0.0",
     "tone": "^15.1.22"
   },

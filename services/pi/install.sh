@@ -3,6 +3,8 @@
 set -euo pipefail
 cd /home/test/duet-ai
 test -f site/backline/index.html
+# Keep recovery executable outside the directories that an update replaces.
+sudo bash services/pi/install-update-runner.sh /home/test/duet-ai
 if [ ! -f original-morpho-enabled ]; then
   systemctl is-enabled PiMorpho.service > original-morpho-enabled || true
 fi

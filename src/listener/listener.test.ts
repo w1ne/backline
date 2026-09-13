@@ -85,6 +85,29 @@ describe('Listener.setMicMuted', () => {
   });
 });
 
+describe('Listener voice tempo', () => {
+  const syllables = (beatBpm: number, beatsN: number) => {
+    const p = 60 / beatBpm, out: number[] = [];
+    for (let i = 0; i < beatsN; i++) { out.push(1 + i * p); if (i % 2 === 1) out.push(1 + i * p + p / 2); }
+    return out;
+  };
+  it('folds a singer\'s syllable rate to the beat, but not a MIDI player\'s', async () => {
+    const mic = new Fake(); const lm = new Listener([mic], ['mic']); await lm.start();
+    syllables(87, 20).forEach(t => mic.note(-1, 0.8, t));
+    expect(Math.abs(lm.input.bpm! - 87)).toBeLessThan(2);
+    const midi = new Fake(); const lk = new Listener([midi], ['midi']); await lk.start();
+    syllables(87, 20).forEach(t => midi.note(60, 0.8, t));
+    expect(Math.abs(lk.input.bpm! - 174)).toBeLessThan(3);
+  });
+  it('a held sung note weighs in the key by how long it is held', async () => {
+    const a = new Fake(); let now = 0; const l = new Listener([a], ['mic'], () => now); await l.start();
+    // A F G B A held half a second each, frames every 50 ms: locks A minor from coverage
+    // (the correlation alone would not, see keyDetector.test.ts)
+    for (const midi of [69, 77, 79, 71, 69]) for (let i = 0; i < 10; i++) { now += 0.05; a.pitch!({ midi, cents: 0, stable: true }); }
+    expect(l.input.key).toEqual({ root: 9, mode: 'minor' });
+  });
+});
+
 describe('Listener continuous pitch', () => {
   it('exposes the stable pitch and folds new stable notes into notesNow/keyDetector', async () => {
     const a = new Fake();
@@ -322,8 +345,8 @@ describe('independent source readiness', () => {
   });
 });
 
-describe('Listener key snap for voice', () => {
-  it('moves an out-of-key sung pitch to the nearest scale tone once a key is known', async () => {
+describe('Listener preserves performer pitches', () => {
+  it('preserves an out-of-key sung pitch even after a key is known', async () => {
     const a = new Fake();
     const l = new Listener([a]);
     await l.start();
@@ -333,9 +356,9 @@ describe('Listener key snap for voice', () => {
     for (const n of [60, 62, 64, 65, 67, 69, 71, 72, 64, 67, 60]) a.note(n, 0.8, 1);
     expect(l.input.key).toEqual({ root: 0, mode: 'major' });
     heard.length = 0;
-    a.pitch!({ midi: 61, cents: 0, stable: true }); // C#4 glide → C4 or D4, never C#
+    a.pitch!({ midi: 61, cents: 0, stable: true }); // Intentional C#4 must reach the model unchanged
     expect(heard).toHaveLength(1);
-    expect([60, 62]).toContain(heard[0]);
+    expect(heard).toEqual([61]);
   });
   it('passes sung pitches through untouched while no key is known', async () => {
     const a = new Fake();
@@ -346,4 +369,36 @@ describe('Listener key snap for voice', () => {
     a.pitch!({ midi: 61, cents: 0, stable: true });
     expect(heard).toEqual([61]);
   });
+});
+
+it('closes mic lifecycle at captured transition, silence and mute times with stable IDs', async () => {
+  const mic = new Fake(); let now = 20;
+  const listener = new Listener([mic], ['mic'], () => now);
+  const seen: import('./performanceEvent').PerformanceEvent[] = [];
+  listener.onPerformance(e => seen.push(e));
+  await listener.start();
+  const pitch = mic.pitch as (p: import('./pitchTracker').StablePitch | null, t?: number) => void;
+  pitch({ midi: 60, cents: 0, stable: true, confidence: .9 }, 10);
+  pitch({ midi: 60, cents: 0, stable: true }, 10.5);
+  pitch({ midi: 64, cents: 0, stable: true }, 11);
+  pitch(null, 12);
+  expect(seen.map(e => e.type)).toEqual(['note_on', 'note_off', 'note_on', 'note_off']);
+  expect(seen[0]).toMatchObject({ source: 'mic', confidence: .9, timeSec: 10 });
+  expect(seen[1]).toMatchObject({ id: seen[0].id, durationSec: 1, timeSec: 11 });
+  expect(seen[3]).toMatchObject({ id: seen[2].id, durationSec: 1, timeSec: 12 });
+  pitch({ midi: 67, cents: 0, stable: true }, 19);
+  listener.setMicMuted(true);
+  expect(seen.at(-1)).toMatchObject({ type: 'note_off', durationSec: 1 });
+});
+
+it('exports only explicit manual preferences, without exposing mutable key state', () => {
+  const listener = new Listener([new Fake()]);
+  expect(listener.manualOverrides).toEqual({bpmOverride:null,keyOverride:null});
+  listener.setOverride({bpm:90,key:{root:9,mode:'minor'}});
+  const copy = listener.manualOverrides;
+  expect(copy).toEqual({bpmOverride:90,keyOverride:{root:9,mode:'minor'}});
+  copy.keyOverride!.root = 0;
+  expect(listener.manualOverrides.keyOverride?.root).toBe(9);
+  listener.setOverride({bpm:undefined,key:undefined});
+  expect(listener.manualOverrides).toEqual({bpmOverride:null,keyOverride:null});
 });

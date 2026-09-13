@@ -51,11 +51,12 @@ from amt import (  # noqa: E402
 )
 from live_duet import AccompanimentCommitter  # noqa: E402
 from arrangement import (  # noqa: E402
-    shape_notes, bass_pitch, harmony_classes, voice_chord, early_entry_plan, fill_silent_window, plan_window,
+    Arranger, plan_window,
 )
 from cached import cached_generate  # noqa: E402
 from brain import HarmonyBrain, sampling_for  # noqa: E402
-from instruments import resolve as resolve_instruments, TOGGLEABLE_PRESETS  # noqa: E402,F401
+from performance_history import PerformanceHistory  # noqa: E402
+from instruments import resolve as resolve_instruments, resolve_groups, TOGGLEABLE_PRESETS, DEFAULT_PRESETS  # noqa: E402,F401
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("amt-server")
@@ -134,7 +135,7 @@ class Session:
     imported unchanged from live_duet.py. The ensemble's different
     instruments are independent voices and may sound together -- only a
     single instrument overlapping itself gets trimmed -- and every
-    committed note still flattens into the one "keys" output voice below.
+    committed note retains its GM identity and arranger-assigned output role.
     """
 
     def __init__(self, model):
@@ -151,20 +152,20 @@ class Session:
         self.top_p = top_p
         self.creativity = .3
         self.amount = .5
+        self.enabled_roles = {role: True for role in ("keys", "bass", "lead")}
         self.temperature = 1.02
         # Default to the validated string-ensemble preset rather than a lone violin: a single
         # instrument was consistently too sparse against a real, densely-played performance to be
         # heard at all (see bench/amt/SETUP.md in the Music repo this was ported from). Every
         # selected instrument is an independent voice that may overlap the others --
         # AccompanimentCommitter below only keeps each individual instrument monophonic -- and
-        # they all flatten into the single "keys" output voice the client plays.
-        self.instrument_names = list(instrument_names or [])
+        # each retains its GM instrument identity and musical output role.
+        self.instrument_names = list(DEFAULT_PRESETS if instrument_names is None else instrument_names)
         self.accomp_instrs = resolve_instruments(self.instrument_names)
         self.accomp_bias = accomp_bias
 
         self.history: list[int] = []
         self.committer = AccompanimentCommitter(self.history)
-        self.human_notes: list[tuple[float, float, int]] = []  # (onset_beat, dur_beat, pitch)
         self.committed_horizon_beats = 0.0
         self.last_accomp_notes: list[tuple[float, float, int]] = []
         self.key = key
@@ -175,6 +176,8 @@ class Session:
         self.section = "intro"
         self.space = False
         self.brain = HarmonyBrain(key=key, genre=genre, lookahead_beats=lookahead_beats, bpm=bpm)
+        self.performance = PerformanceHistory(self.history, make_event, MELODY_INSTR, self.beat_s, self.brain.on_note)
+        self.human_notes = self.performance.notes
 
     def set_controls(self, msg):
         self.key = msg.get("key", self.key)
@@ -183,22 +186,24 @@ class Session:
         self.creativity = max(0.0, min(1.0, float(msg.get("creativity", self.creativity))))
         self.temperature, self.top_p = sampling_for(self.creativity)
         self.amount = max(0.0, min(1.0, float(msg.get("amount", self.amount))))
+        if isinstance(msg.get("enabledRoles"), dict):
+            self.enabled_roles.update({role: bool(value) for role, value in msg["enabledRoles"].items()
+                                       if role in self.enabled_roles})
         if "accompInstruments" in msg:
             self.instrument_names = list(msg["accompInstruments"] or [])
             self.accomp_instrs = resolve_instruments(self.instrument_names)
         if "accompBias" in msg:
             self.accomp_bias = float(msg["accompBias"])
 
+    @property
+    def arranger(self):
+        return Arranger(self.amount, self.creativity, self.enabled_roles)
+
     def add_human_notes(self, notes):
-        for n in notes:
-            onset_beat = float(n["beat"])
-            dur_beat = float(n.get("dur", 0.5))
-            pitch = int(n["pitch"])
-            self.human_notes.append((onset_beat, dur_beat, pitch))
-            self.brain.on_note(pitch, onset_beat)
-            self.history.extend(
-                make_event(onset_beat * self.beat_s, dur_beat * self.beat_s, MELODY_INSTR, pitch)
-            )
+        self.performance.add(notes)
+
+    def update_human_notes(self, notes):
+        self.performance.update(notes)
 
     def prune_context(self, start_beat: float) -> int:
         """Drop events that start more than CONTEXT_BEATS before `start_beat` from the token
@@ -208,7 +213,8 @@ class Session:
         which is time-ordered to within one bar (accompaniment for the next bar is committed
         while the melody of the current one is still coming in). Deleting the longest prefix
         whose onsets are all older than the cutoff therefore keeps at most one extra bar --
-        near enough, and it never reorders or rewrites anything still in the window.
+        near enough. Active notes removed with that prefix are carried forward as
+        clipped context events while their original captured onset remains intact.
         """
         cutoff_beat = start_beat - CONTEXT_BEATS
         if cutoff_beat <= 0:
@@ -221,7 +227,7 @@ class Session:
             return 0
         del self.history[:n]
         self.committer.drop_prefix(n)
-        self.human_notes = [note for note in self.human_notes if note[0] >= cutoff_beat]
+        self.performance.drop_prefix(n, cutoff_beat)
         return n
 
     def generate_next_bar_plan(self, bar: int) -> dict:
@@ -247,14 +253,18 @@ class Session:
         with no notes at all.
         """
         target_start_beat, target_end_beat = plan_window(now_beat, span_beats, self.lookahead_beats)
+        self.performance.observe_through(now_beat)
+        self.prune_context(target_start_beat)
+        arranger = self.arranger
+        generation_instrs = arranger.generation_instruments(self.accomp_instrs)
 
         # Chord and section for this window: harmony.py/predict.py and form.py via the brain.
         brain_out = self.brain.on_tick(now_beat)
         self.chord = brain_out["chord"]
         self.section = brain_out["section"]
-        if brain_out["idle"]:
-            # The form has ended: nothing until a start or new human notes reset it.
-            log.info("%s: ended, empty plan", label)
+        if brain_out["idle"] or not generation_instrs:
+            # Silence is explicit when the form ends or no instruments are enabled.
+            log.info("%s: idle or muted, empty plan", label)
             return {
                 "plan": self.plan_message(target_start_beat, target_end_beat, []),
                 "status": {"type": "status", "latencyMs": 0.0, "tokensPerSec": 0.0},
@@ -270,7 +280,7 @@ class Session:
             return {
                 "plan": self.plan_message(
                     target_start_beat, target_end_beat,
-                    early_entry_plan(self.key, self.chord, target_start_beat, target_end_beat)),
+                    []),
                 "status": {"type": "status", "latencyMs": 0.0, "tokensPerSec": 0.0},
             }
 
@@ -285,39 +295,48 @@ class Session:
         end_s = end_beat * self.beat_s
         commit_end_s = commit_end_beat * self.beat_s
 
-        self.prune_context(start_beat)
         history_before = list(self.history)
         human_in_context = sum(1 for (onset_beat, _, _) in self.human_notes if onset_beat <= start_beat)
         # The plan is asked for one bar before its first note is due, and the next cue arrives
         # after `span_beats`. Spend at most most of the committed window's own duration, so a
         # half-bar tick gets half the budget of a bar and the queue never falls behind the cues.
         deadline_s = GENERATION_BUDGET * (commit_end_beat - start_beat) * self.beat_s
+        # One sampling pass per selected preset, each masked to that preset's instruments
+        # and prompted with the same history. A single pass over the union locks onto the
+        # first instrument it happens to write (the history then keeps telling it "this is
+        # a cello line"), so any other tile the player switched on never joins.
+        groups = [g for g in (tuple(p for p in group if p in generation_instrs)
+                              for group in resolve_groups(self.instrument_names)) if g]
+        pass_deadline_s = deadline_s / max(1, len(groups))
+        start_tick = round(start_s * TIME_RESOLUTION)
+        commit_end_tick = round(commit_end_s * TIME_RESOLUTION)
         t0 = time.monotonic()
-        result = generate_duet(
-            self.model, start_s, end_s, history_before, self.accomp_instrs, self.top_p, self.accomp_bias,
-            temperature=self.temperature,
-            deadline_s=deadline_s,
-            # The committed voice is monophonic and the app plays to a beat grid, so a
-            # sixteenth note is the shortest onset gap worth sampling.
-            min_interval_ticks=max(1, round(self.beat_s / 4.0 * TIME_RESOLUTION)),
-        )
+        accomp = []
+        tokens_generated = 0
+        result = []
+        for group in groups:
+            result = generate_duet(
+                self.model, start_s, end_s, history_before, group, self.top_p, self.accomp_bias,
+                temperature=self.temperature,
+                deadline_s=pass_deadline_s,
+                # The committed voice is monophonic and the app plays to a beat grid, so a
+                # sixteenth note is the shortest onset gap worth sampling.
+                min_interval_ticks=max(1, round(self.beat_s / 4.0 * TIME_RESOLUTION)),
+            )
+            if SAMPLER == "cached":
+                tokens_generated += getattr(self.model, "amt_sampled_tokens", 0)
+            accomp.extend((t, d, instr, p) for (t, d, instr, p) in parse_events(result) if instr in group)
         latency_ms = (time.monotonic() - t0) * 1000.0
 
         # Compare on the model's own tick grid: the window bounds are bar lines
         # here, and a float `start_s < t` comparison dropped any note landing
         # exactly on one.
-        start_tick = round(start_s * TIME_RESOLUTION)
-        commit_end_tick = round(commit_end_s * TIME_RESOLUTION)
-        accomp = [
-            (t, d, instr, p) for (t, d, instr, p) in parse_events(result) if instr in self.accomp_instrs
-        ]
         raw_notes = [
             (t, d, instr, p) for (t, d, instr, p) in accomp
             if start_tick <= round(t * TIME_RESOLUTION) < commit_end_tick
         ]
-        # Every instrument flattens into the one "keys" voice the client plays, so the
-        # leave-room spacing applies across the whole ensemble, not per instrument.
-        raw_notes = shape_notes(raw_notes, start_s, commit_end_s, self.beat_s, self.space, TIME_RESOLUTION, key=self.key, chord=self.chord, creativity=self.creativity, amount=self.amount)
+        raw_notes = arranger.constrain(raw_notes, start_s, commit_end_s, self.beat_s,
+                                       self.space, TIME_RESOLUTION, self.key, self.chord)
         # (onset_s, dur_s, instr, pitch), trimmed/monophonic per instrument by the committer.
         committed = self.committer.commit(raw_notes)
         self.committed_horizon_beats = commit_end_beat
@@ -331,47 +350,16 @@ class Session:
             " (hit generation budget)" if latency_ms >= deadline_s * 1000.0 else "",
         )
 
-        # Up to 3 simultaneous chord-tone notes per keys onset (a voicing), built
-        # from the same key/chord the arrangement filter already restricted this
-        # pitch to -- bass (below) stays a single note per onset, monophonic.
-        chord_tones = harmony_classes(self.key, self.chord) or harmony_classes(self.key)
-        notes_out = []
-        for onset_s, dur_s, instr, pitch in committed:
-            for voiced_pitch in voice_chord(pitch, chord_tones, want=3):
-                notes_out.append(
-                    {
-                        "beat": onset_s / self.beat_s,
-                        "pitch": voiced_pitch,
-                        "dur": dur_s / self.beat_s,
-                        "vel": 0.65 if self.space else 0.5,
-                        "voice": "keys",
-                        "gmInstr": instr,
-                    }
-                )
-
-        root = bass_pitch(self.chord, self.key)
-        if root is not None and committed:
-            # One held bass note per window, anchored to the performer's detected harmony
-            # rather than the most frequent pitch in the generated counter-melody.
-            notes_out.append(
-                {
-                    "beat": start_beat,
-                    "pitch": root,
-                    "dur": commit_end_beat - start_beat,
-                    "vel": 0.55,
-                    "voice": "bass",
-                }
-            )
-
-        # An empty window is a dropout to the singer: fall back to the key-only plan.
-        notes_out = fill_silent_window(notes_out, self.key, self.chord, start_beat, commit_end_beat)
+        # The arranger routes the model's actual notes. Empty successful output
+        # is an intentional rest, never an implicit request for synthetic backing.
+        notes_out = arranger.events(committed, self.beat_s, self.space)
 
         prior_clipped = ops.pad(
             ops.clip(history_before, 0, int(TIME_RESOLUTION * start_s), clip_duration=False, seconds=False),
             int(TIME_RESOLUTION * start_s),
         )
-        tokens_generated = (getattr(self.model, "amt_sampled_tokens", 0) if SAMPLER == "cached"
-                            else max(0, len(result) - len(prior_clipped)))
+        if SAMPLER != "cached":
+            tokens_generated = max(0, len(result) - len(prior_clipped))
         tokens_per_sec = (tokens_generated / (latency_ms / 1000.0)) if latency_ms > 0 else 0.0
 
         return {
@@ -389,74 +377,89 @@ class Session:
         return plan
 
 
+def apply_session_message(session, msg):
+    kind = msg.get("type")
+    if kind == "start":
+        session.reset(
+            bpm=float(msg.get("bpm", 100.0)),
+            lookahead_beats=float(msg.get("lookaheadBeats", PLAN_LOOKAHEAD_BEATS)),
+            commit_beats=float(msg.get("commitBeats", 2.0)),
+            listen_beats=float(msg.get("listenBeats", 8.0)),
+            top_p=0.95, instrument_names=msg.get("accompInstruments"),
+            accomp_bias=float(msg.get("accompBias", ACCOMP_BIAS)),
+            key=msg.get("key"), genre=msg.get("genre"),
+        )
+        session.set_controls(msg)
+    elif kind == "notes":
+        session.add_human_notes(msg.get("notes", []))
+    elif kind == "note_updates":
+        session.update_human_notes(msg.get("notes", []))
+    elif kind == "set":
+        session.set_controls(msg)
+
+
+def generate_session_plan(session, msg):
+    if msg["type"] == "bar":
+        return session.generate_next_bar_plan(int(msg.get("bar", 0)))
+    return session.generate_tick_plan(float(msg.get("beat", 0.0)))
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+    from live_session import LatestPlanner, InputOverflow
+
     await websocket.accept()
-    model = load_model()
-    session = Session(model)
-    # Offload inference so other sockets and health requests stay responsive.
-    # The global lock serializes GPU work; this connection consumes buffered
-    # incoming messages after its current plan completes.
+    async with inference_lock:
+        loading = asyncio.create_task(asyncio.to_thread(load_model))
+        try:
+            model = await asyncio.shield(loading)
+        except asyncio.CancelledError:
+            await loading
+            raise
+    send_lock = asyncio.Lock()
+
+    async def send(msg):
+        async with send_lock:
+            await websocket.send_text(json.dumps(msg))
+
+    async def emit(out, commit_if_current):
+        async with send_lock:
+            if not commit_if_current():
+                return
+            if "error" in out:
+                await websocket.send_text(json.dumps({"type": "error", "message": out["error"]}))
+            else:
+                await websocket.send_text(json.dumps(out["plan"]))
+                await websocket.send_text(json.dumps(out["status"]))
+
+    planner = LatestPlanner(Session(model), inference_lock, apply_session_message, generate_session_plan, emit)
     log.info("connection opened")
     try:
         while True:
             raw = await websocket.receive_text()
             try:
                 msg = json.loads(raw)
-            except json.JSONDecodeError:
-                await websocket.send_text(json.dumps({"type": "error", "message": "invalid JSON"}))
-                continue
-
-            mtype = msg.get("type")
-            try:
-                if mtype == "ping":
-                    await websocket.send_text(json.dumps({"type": "pong"}))
-
-                elif mtype == "start":
-                    session.reset(
-                        bpm=float(msg.get("bpm", 100.0)),
-                        lookahead_beats=float(msg.get("lookaheadBeats", PLAN_LOOKAHEAD_BEATS)),
-                        commit_beats=float(msg.get("commitBeats", 2.0)),
-                        listen_beats=float(msg.get("listenBeats", 8.0)),
-                        top_p=0.95,
-                        instrument_names=msg.get("accompInstruments"),
-                        accomp_bias=float(msg.get("accompBias", ACCOMP_BIAS)),
-                        key=msg.get("key"),
-                        genre=msg.get("genre"),
-                    )
-                    # Tells a new client it may cue with `tick` every commitBeats instead of
-                    # `bar` every bar. An old client ignores unknown message types.
-                    await websocket.send_text(json.dumps({"type": "ready", "tick": True}))
-
-                elif mtype == "notes":
-                    session.add_human_notes(msg.get("notes", []))
-
-                elif mtype == "bar":
-                    bar = int(msg.get("bar", 0))
-                    async with inference_lock:
-                        out = await asyncio.to_thread(session.generate_next_bar_plan, bar)
-                    await websocket.send_text(json.dumps(out["plan"]))
-                    await websocket.send_text(json.dumps(out["status"]))
-
-                elif mtype == "tick":
-                    beat = float(msg.get("beat", 0.0))
-                    async with inference_lock:
-                        out = await asyncio.to_thread(session.generate_tick_plan, beat)
-                    await websocket.send_text(json.dumps(out["plan"]))
-                    await websocket.send_text(json.dumps(out["status"]))
-
-                elif mtype == "set":
-                    session.set_controls(msg)
-
+                if not isinstance(msg, dict):
+                    raise ValueError("expected a JSON object")
+                kind = msg.get("type")
+                if kind == "ping":
+                    await send({"type": "pong"})
+                elif kind in ("start", "notes", "note_updates", "bar", "tick", "set"):
+                    planner.submit(msg)
+                    if kind == "start":
+                        await send({"type": "ready", "tick": True, "performanceEvents": True})
                 else:
-                    await websocket.send_text(json.dumps({"type": "error", "message": f"unknown type {mtype}"}))
-            except WebSocketDisconnect:
-                raise
-            except Exception as e:  # noqa: BLE001
-                log.exception("error handling message %s", mtype)
-                await websocket.send_text(json.dumps({"type": "error", "message": str(e)}))
+                    await send({"type": "error", "message": f"unknown type {kind}"})
+            except InputOverflow as error:
+                await send({"type": "error", "message": str(error)})
+                await websocket.close(code=1009)
+                break
+            except (ValueError, TypeError) as error:
+                await send({"type": "error", "message": str(error)})
     except WebSocketDisconnect:
         log.info("connection closed")
+    finally:
+        await planner.close()
 
 
 def run_bench(n_bars=16):

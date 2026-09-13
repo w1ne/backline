@@ -8,6 +8,22 @@ vi.mock('tone', () => ({
 
 import { OnsetDetector } from './onset';
 import { MicSource } from './micSource';
+import { createPitchWorker } from './pitchWorkerClient';
+import { detectPitch } from './pitch';
+import { PitchTracker, VOICE_PROFILE } from './pitchTracker';
+// Execute the same estimator in a worker double; production never runs it on the UI thread.
+vi.mock('./pitchWorkerClient', async importOriginal => {
+  const original = await importOriginal<typeof import('./pitchWorkerClient')>();
+  return { ...original, createPitchWorker: vi.fn(() => {
+    const tracker = new PitchTracker(VOICE_PROFILE);
+    const worker = { onmessage: null as null | ((e: unknown) => void), onerror: null,
+      terminate() {}, postMessage(job: { samples: Float32Array; sampleRate: number; timeSec: number }) {
+        const estimate = detectPitch(job.samples, job.sampleRate);
+        worker.onmessage?.({ data: { pitch: tracker.push(estimate ? { ...estimate, t: job.timeSec } : null), timeSec: job.timeSec } });
+      } };
+    return worker;
+  }) };
+});
 
 /** Analyser stub whose time-domain buffer changes on every call so the poll
  *  fallback's "has the analyser refilled" hash check never skips a frame. */
@@ -40,6 +56,7 @@ function fakeContext() {
 describe('MicSource.setMuted', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.mocked(createPitchWorker).mockClear();
     const { ctx } = fakeContext();
     mockRawContext = ctx;
     Object.defineProperty(navigator, 'mediaDevices', {
@@ -99,6 +116,39 @@ describe('MicSource.setMuted', () => {
     expect(onNote).toHaveBeenCalled();
     expect(onNote.mock.calls[0][2]).toBeCloseTo(19.9);
     src.stop();
+  });
+
+  it('tracks a quiet periodic note below the old one-percent gate', async () => {
+    const {ctx, an}=fakeContext();mockRawContext=ctx;
+    an.getFloatTimeDomainData=(buf:Float32Array)=>{
+      for(let i=0;i<buf.length;i++) buf[i]=.004*Math.sin(2*Math.PI*220*i/48000);
+    };
+    const src=new MicSource();const onPitch=vi.fn();
+    await src.start(vi.fn(),vi.fn(),onPitch);
+    vi.advanceTimersByTime(300);
+    expect(onPitch.mock.calls.some(([p])=>p?.midi===57 && p.stable)).toBe(true);
+    src.stop();
+  });
+
+  it('restarts failed pitch workers twice, exposes exhaustion, and supports explicit retry', async () => {
+    const src = new MicSource();
+    const errors = vi.fn(); src.onPitchError = errors;
+    await src.start(vi.fn(), vi.fn(), vi.fn());
+    for (let attempt = 0; attempt < 3; attempt++) {
+      vi.advanceTimersByTime(50);
+      const worker = vi.mocked(createPitchWorker).mock.results[attempt].value as Worker;
+      worker.onerror!(new ErrorEvent('error'));
+    }
+    vi.advanceTimersByTime(500);
+    expect(createPitchWorker).toHaveBeenCalledTimes(3);
+    expect(errors).toHaveBeenCalledTimes(3);
+    expect(src.pitchError).toContain('Retry');
+    expect(await src.retry()).toBe(true);
+    vi.advanceTimersByTime(50);
+    expect(createPitchWorker).toHaveBeenCalledTimes(4);
+    src.stop();
+    vi.advanceTimersByTime(500);
+    expect(createPitchWorker).toHaveBeenCalledTimes(4);
   });
 
   it('is idempotent when set to the same value', async () => {

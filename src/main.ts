@@ -6,6 +6,7 @@ import { renderLive, type LiveActions } from './ui/live';
 import { PI_EDITION, applyDeviceProfile } from './device/profile';
 import { startArturiaControls } from './device/arturia';
 import { startDeviceRuntime } from './device/runtime';
+import { PerformanceGuard } from './device/performanceGuard';
 import { Listener } from './listener/listener';
 import { MidiSource } from './listener/midiSource';
 import { TapTempo } from './listener/tapTempo';
@@ -70,6 +71,7 @@ const YOU_NOTE_SEC = 0.25;
 
 const root = document.getElementById('app')!;
 const store = new Store();
+const performanceGuard = new PerformanceGuard();
 let liveActions: LiveActions;
 const demo = new URLSearchParams(location.search).has('demo');
 let listener: Listener | undefined;
@@ -97,6 +99,7 @@ let tapCount = 0;
 let disarmFallback: (() => void) | undefined;
 let halfBarTimer: ReturnType<typeof setTimeout> | undefined;
 let beatTimers: ReturnType<typeof setTimeout>[] = [];
+let toastTimer: ReturnType<typeof setTimeout> | undefined;
 let countInSynth: Tone.Synth | undefined;
 let countInTimers: ReturnType<typeof setTimeout>[] = [];
 /** Mirrors the Bandleader's own SongForm one-for-one, driven by the same per-bar dynamics,
@@ -119,6 +122,17 @@ const SECTION_LABEL: Record<Section, string> = {
   ended: 'Ended · sing to start again',
 };
 
+/** Shows a self-dismissing notice in the LCD-styled toast. A later call replaces whatever
+ *  is currently showing and restarts the dismiss clock, rather than stacking messages. */
+function showToast(message: string, ms = 3500): void {
+  if (toastTimer !== undefined) clearTimeout(toastTimer);
+  store.update({ toast: message });
+  toastTimer = setTimeout(() => {
+    toastTimer = undefined;
+    store.update({ toast: null });
+  }, ms);
+}
+
 /** Re-reads the player's activity for one beat and hands the result to the band. Engines only
  *  call back on the bar, so beats 1..3 come off timers re-armed from every downbeat — they
  *  never drift more than a bar, and a bpm change lands on the next one. */
@@ -128,7 +142,14 @@ function tickBeat(beat: number): void {
   // consumer (patterns, Lyria density, ACE/AMT requests) sees the effective value. The store keeps
   // the effective number too, for the INTENSITY bar to show what the band is actually playing at.
   const eff = effectiveDynamics(listener.tickBeat(beat), store.state.intensity, beat);
-  band?.set({ dynamics: eff });
+  // A mic-only singer has no keyboard chord to lean on, so the band knows to keep the keys
+  // comp plain and out of the sung note's way (see colorChord / chordPattern).
+  const pitch = listener.input.pitch;
+  const sungPitchClass = pitch?.stable ? ((pitch.midi % 12) + 12) % 12 : undefined;
+  // `source`/`sungPitchClass` are Bandleader-only fields (see src/band/bandleader.ts); cast
+  // rather than widen BandEngine.set's signature, since the other engines (Lyria/ACE/AMT)
+  // don't and shouldn't know about them -- they simply ignore the extra properties.
+  band?.set({ dynamics: eff, source: micIsOnlySource() ? 'mic' : 'midi', sungPitchClass } as Parameters<NonNullable<typeof band>['set']>[0]);
   store.update({ effectiveIntensity: eff.intensity });
   // The form only moves on bar boundaries; tickBeat also runs on beats 1-3 off timers.
   if (beat % BEATS_PER_BAR !== 0) return;
@@ -282,10 +303,10 @@ function setBandBpm(b: BandEngine, bpm: number): void {
 function makeBand(engine: EngineChoice): BandEngine {
   playbackActivity.clear();
   accompActivity.clear();
-  store.update({activeParts: {}, accompActive: {}, modelLatencyMs:null, accompanimentStatus: 'Listening'});
+  store.update({activeParts: {}, accompActive: {}, modelLatencyMs:null, responseLatencyMs:null, accompanimentStatus: 'Listening'});
   if (engine === 'lyria') return new LyriaEngine(players.rawContext());
   if (engine === 'acestep') return new AceStepEngine(players.rawContext());
-  if (engine === 'amt') return new AmtEngine(players, listener!);
+  if (engine === 'amt') return new AmtEngine(players, listener!, undefined, undefined, undefined, () => outputLatencyMs(players.rawContext()));
   return new PatternEngine(players, PATTERNS);
 }
 
@@ -314,6 +335,9 @@ function wireBand(b: BandEngine): void {
     if (band !== b) return;
     store.update({ ...(message ? {accompanimentStatus:message} : {}),
       ...(latencyMs !== undefined ? {modelLatencyMs:latencyMs} : {}) });
+  };
+  b.onResponseTiming = responseLatencyMs => {
+    if (band === b) store.update({ responseLatencyMs });
   };
   b.onStats = s => {
     const increased = s.loops > store.state.loops;
@@ -437,6 +461,7 @@ async function power() {
 
   midi = new MidiSource(store.state.midiIn);
   mic = new MicSource(store.state.micIn);
+  mic.onPitchError = error => store.update({ error });
   midi.onInputs(inputs => store.update({ midiInputs: inputs }));
   // MIDI times are performance.now-based. Read at use, not at boot: the AudioContext clock
   // stands still until the first gesture resumes it.
@@ -450,6 +475,10 @@ async function power() {
   const perfOffset = (): number => Tone.now() - performance.now() / 1000 - (store.state.outputLatencyMs ?? 0) / 1000;
 
   listener = new Listener([midi, mic], ['midi', 'mic']);
+  listener.onPerformance(e => {
+    if (e.type === 'note_on') performanceGuard.noteOn(e.id);
+    else performanceGuard.noteOff(e.id);
+  });
   listener.setMicMuted(store.state.micMuted);
   monitor = new MidiMonitor(players.rawContext(), store.state.sound);
   const activeMonitor = monitor;
@@ -464,12 +493,21 @@ async function power() {
   // The listener timestamps notes on the performance.now clock; the strip draws on the
   // AudioContext one, which is what every scheduled band note is already in.
   listener.onNote(n => {
+    // Paused means paused: the performer's own notes are neither shown nor recorded
+    // until they let the band play again.
+    if (store.state.paused) return;
     const t = n.timeSec + perfOffset();
     viz?.addNote('you', n.midi, t, YOU_NOTE_SEC, n.velocity);
     if (store.state.recording) midiRecorder.addYou(n.midi, n.velocity, t);
   });
 
   listener.onChange(input => {
+    performanceGuard.observeOnsets(input.onsets);
+    if (store.state.paused) return;
+    // The strip's voice line: the continuous reading, not the snapped note, so a slide looks
+    // like a slide. Runs on every listener emit (~20 Hz from the mic's pitch poll).
+    const p = input.pitch;
+    viz?.addPitch(Tone.now(), p ? p.midi + p.cents / 100 : null, p?.stable ?? false);
     // The service's chord wins the display too while its plan is fresh — see planOverride.ts.
     const fresh = planFreshness.chordFresh(store.state.bar);
     store.update({ input: fresh ? { ...input, chord: chooseChord(store.state.engine, fresh, planChord, input.chord) } : input });
@@ -520,8 +558,11 @@ async function power() {
 }
 
 function powerOff() {
+  performanceGuard.clear();
   whiteNoise.setEnabled(false);
   drone.setEnabled(false);
+  if (toastTimer !== undefined) clearTimeout(toastTimer);
+  toastTimer = undefined;
   disarmFallback?.();
   disarmFallback = undefined;
   if (halfBarTimer !== undefined) clearTimeout(halfBarTimer);
@@ -532,10 +573,12 @@ function powerOff() {
   songForm.reset();
   playbackActivity.clear();
   accompActivity.clear();
-  listener?.stop();
-  listener = undefined;
+  // Remove the monitor's owned edge before the listener disconnects the shared
+  // microphone source from every destination.
   vocalChain?.dispose();
   vocalChain = undefined;
+  listener?.stop();
+  listener = undefined;
   monitor?.stop();
   monitor = undefined;
   lastFollowedBpm = undefined;
@@ -554,6 +597,7 @@ function powerOff() {
     loopsUpdatedAt: undefined,
     effectiveIntensity: 0,
     input: { bpm: null, key: null, chord: null, notesNow: [], pitch: null, inputLevel: 0, onsets: 0, pendingBpm: null, dynamics: { ...IDLE_DYNAMICS } },
+    toast: null,
   });
 }
 
@@ -595,10 +639,19 @@ store.subscribe(s => {
         clearBeatTimers();
         band.stop();
         playbackActivity.clear();
+        // The band alone isn't the whole mix: the ambient drone/noise beds run independently
+        // of the transport, so pause has to silence those too or it isn't actually silent.
+        drone.setEnabled(false);
+        whiteNoise.setEnabled(false);
         store.update({ paused: true, activeParts: {}, accompanimentStatus: 'Paused' });
+        showToast('Paused — mic & MIDI input is not being taken');
         return;
       }
-      store.update({ paused: false, accompanimentStatus: 'Listening' });
+      if (toastTimer !== undefined) clearTimeout(toastTimer);
+      toastTimer = undefined;
+      drone.setEnabled(true);
+      whiteNoise.setEnabled(true);
+      store.update({ paused: false, accompanimentStatus: 'Listening', toast: null });
       const bpm = lastFollowedBpm ?? store.state.input.bpm;
       if (bpm && store.state.locked) {
         startBand(band, bpm, Tone.now() + 0.1).catch(err => {
@@ -737,13 +790,13 @@ store.subscribe(s => {
     },
     setDroneVolume: value => {
       const droneVolume = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
-      drone.setEnabled(store.state.power === 'on');
+      drone.setEnabled(store.state.power === 'on' && !store.state.paused);
       drone.setLevel(droneVolume);
       store.update({ droneVolume });
     },
     setNoiseVolume: value => {
       const noiseVolume = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
-      whiteNoise.setEnabled(store.state.power === 'on');
+      whiteNoise.setEnabled(store.state.power === 'on' && !store.state.paused);
       whiteNoise.setLevel(noiseVolume);
       store.update({ noiseVolume });
     },
@@ -800,7 +853,8 @@ if (PI_EDITION && !demo) {
     Tone.getDestination().mute = !playing;
     if (playing) await power();
     else powerOff();
-  });
+  }, () => ({ ...performanceGuard.snapshot(store.state),
+    ...(listener?.manualOverrides ?? { bpmOverride: null, keyOverride: null }) }));
 }
 
 // The strip runs on the AudioContext clock, the same one every scheduled note is timed
@@ -878,6 +932,22 @@ function runVizDemo(bpm: number, startBar: number): void {
     // the player, slightly behind the grid and only in bars already gone by
     for (let i = 0; i < you.length; i++)
       viz!.addNote('you', you[(i + bar) % you.length], at + i * 0.66 * beat + 0.02, 0.3 * beat, 0.9);
+    // and the voice line through those notes: one phrase per bar that scoops into the first
+    // note, glides between the rest with a little vibrato on each, then breathes at the bar end
+    const phraseEnd = you.length - 1;
+    for (let i = 0; i < you.length; i++) {
+      const target = you[(i + bar) % you.length];
+      const prev = i === 0 ? target - 3 : you[(i - 1 + bar) % you.length];
+      const start = at + i * 0.66 * beat + 0.02;
+      for (let k = 0; k < 14; k++) {
+        const f = k / 14;
+        const t = start + f * 0.66 * beat;
+        const glide = f < 0.25 ? (prev - target) * Math.pow(1 - f / 0.25, 2) : 0;
+        const vib = f > 0.4 ? Math.sin((f - 0.4) * Math.PI * 5) * 0.2 : 0;
+        viz!.addPitch(t, target + glide + vib, f >= 0.25);
+      }
+      if (i === phraseEnd) viz!.addPitch(start + 0.66 * beat, null, false);
+    }
   };
 
   // two bars behind the playhead, three ahead, topped up every bar

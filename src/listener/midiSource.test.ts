@@ -110,3 +110,45 @@ describe('MidiSource input filtering', () => {
     expect(seen).toEqual([['Minilab3 MIDI']]);
   });
 });
+
+it('preserves polyphony, velocity, captured timestamps and channel-scoped sustain durations', async () => {
+  const port = new FakePort('keyboard', 'Keyboard');
+  const { src } = await startWith([port], null);
+  const events: import('./performanceEvent').PerformanceEvent[] = [];
+  src.onPerformance(e => events.push(e));
+  const message = (data: number[], timeStamp: number) => port.handlers.forEach(h => h({ data: new Uint8Array(data), timeStamp, target: port } as unknown as MIDIMessageEvent));
+  message([0x90, 60, 64], 1000);
+  message([0xb0, 64, 127], 1100);
+  message([0x90, 64, 100], 1200);
+  message([0x80, 60, 0], 1500);
+  message([0x90, 64, 0], 1600);
+  expect(events).toHaveLength(2);
+  message([0xb1, 64, 0], 1700); // pedal on another channel cannot release these
+  expect(events).toHaveLength(2);
+  message([0xb0, 64, 0], 2000);
+  expect(events).toHaveLength(4);
+  expect(events[0]).toMatchObject({ source: 'midi', velocity: 64 / 127, timeSec: 1, confidence: 1 });
+  expect(events[2]).toMatchObject({ type: 'note_off', id: events[0].id, durationSec: 1, timeSec: 2 });
+  expect(events[3].durationSec).toBeCloseTo(.8);
+  message([0x90, 67, 100], 2200);
+  src.setInput('different');
+  expect(events.at(-1)).toMatchObject({ type: 'note_off', midi: 67 });
+  src.stop();
+});
+
+it('clears only disconnected port sustain so reconnected keys release normally', async () => {
+  const port = new FakePort('a', 'Keyboard');
+  const access = fakeAccess([port]);
+  vi.stubGlobal('navigator', { requestMIDIAccess: () => Promise.resolve(access) });
+  const source = new MidiSource();
+  const events: import('./performanceEvent').PerformanceEvent[] = [];
+  source.onPerformance(e => events.push(e));
+  await source.start(() => {}, () => {});
+  const send = (data: number[]) => port.handlers.forEach(h => h({ data: new Uint8Array(data), timeStamp: 1000, target: port } as unknown as MIDIMessageEvent));
+  send([0xb0, 64, 127]);
+  const stateChange = vi.mocked(access.addEventListener).mock.calls[0][1] as (e: unknown) => void;
+  stateChange({ port: { id: 'a', state: 'disconnected' } });
+  send([0x90, 60, 100]); send([0x80, 60, 0]);
+  expect(events.map(e => e.type)).toEqual(['note_on', 'note_off']);
+  source.stop();
+});

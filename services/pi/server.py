@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlparse
 import uuid
 
 INSTRUMENTS = {'drums', 'bass', 'keys', 'lead'}
+ACCOMP_PRESETS = {'strings', 'violin', 'guitar', 'sax', 'brass', 'keys', 'orchestral', 'ambient'}
 
 
 def validate_command(command):
@@ -34,6 +35,11 @@ def validate_command(command):
         else:
             raise ValueError('Unknown setting')
         return dict(type=kind, field=field, value=value)
+    if kind == 'accompPreset':
+        preset = command.get('preset')
+        if isinstance(preset, str) and preset in ACCOMP_PRESETS and type(command.get('on')) is bool:
+            return dict(type=kind, preset=preset, on=command['on'])
+        raise ValueError('Invalid accompaniment preset selection')
     if kind == 'toggle' and command.get('instrument') in INSTRUMENTS:
         return dict(type=kind, instrument=command['instrument'])
     if kind == 'transport' and type(command.get('playing')) is bool:
