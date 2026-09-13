@@ -121,6 +121,57 @@ class LatestPlannerTest(unittest.IsolatedAsyncioTestCase):
         worker.submit({'type': 'notes', 'notes': [2, 3]})
         await worker.close()
 
+    async def test_phrase_answer_is_discarded_when_input_changes_before_send(self):
+        for kind in ('notes', 'note_updates', 'set'):
+            with self.subTest(kind=kind):
+                send_lock = asyncio.Lock()
+                await send_lock.acquire()
+                waiting, finished = asyncio.Event(), asyncio.Event()
+                output = []
+                def generate(session, cue):
+                    session.history.append('answer')
+                    return {'plan': {'notes': [], 'phraseResponse': True}, 'status': {}}
+                async def emit(result, commit):
+                    waiting.set()
+                    async with send_lock:
+                        if commit(): output.append(result)
+                    finished.set()
+                worker = LatestPlanner(SimpleNamespace(model=None, history=[]), asyncio.Lock(),
+                                       lambda s, m: None, generate, emit)
+                worker.submit({'type': 'tick', 'beat': 10})
+                await asyncio.wait_for(waiting.wait(), 1)
+                worker.submit({'type': kind, 'notes': [1], 'amount': 0})
+                send_lock.release()
+                await asyncio.wait_for(finished.wait(), 1)
+                await worker.close()
+                self.assertEqual(output, [])
+                self.assertEqual(worker.session.history, [])
+
+    async def test_periodic_dynamics_and_unchanged_controls_do_not_starve_answers(self):
+        send_lock = asyncio.Lock()
+        await send_lock.acquire()
+        waiting, finished = asyncio.Event(), asyncio.Event()
+        output = []
+        def generate(session, cue):
+            return {'plan': {'notes': [], 'phraseResponse': True}, 'status': {}}
+        async def emit(result, commit):
+            waiting.set()
+            async with send_lock:
+                if commit(): output.append(result)
+            finished.set()
+        worker = LatestPlanner(SimpleNamespace(model=None), asyncio.Lock(),
+                               lambda s, m: None, generate, emit)
+        worker.submit({'type': 'set', 'amount': .5, 'enabledRoles': {'lead': True}})
+        worker.submit({'type': 'tick', 'beat': 10})
+        await asyncio.wait_for(waiting.wait(), 1)
+        for silence in (1, 1.5, 2):
+            worker.submit({'type': 'set', 'amount': .5, 'enabledRoles': {'lead': True},
+                           'silenceBeats': silence, 'intensity': 0, 'space': True})
+        send_lock.release()
+        await asyncio.wait_for(finished.wait(), 1)
+        await worker.close()
+        self.assertEqual(len(output), 1)
+
     def test_snapshot_preserves_internal_aliases_but_shares_only_model(self):
         history=[1];model=object()
         source=SimpleNamespace(model=model,history=history,committer=SimpleNamespace(history=history))

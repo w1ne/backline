@@ -1,10 +1,10 @@
 import type { BandState, Chord, Genre, Instrument, NoteEvent, Pattern } from '../types';
 import { INSTRUMENTS, IDLE_DYNAMICS, DRUM } from '../types';
-import { tonicTriad } from '../listener/chordDetector';
+import { tonicTriad } from '../music/chords';
 import { colorChord } from '../music/chordColor';
 import { mulberry32 } from '../rng';
 import type { ClockLike } from './clockTypes';
-import { SongForm } from './form';
+import { SongForm, type FormResult } from './form';
 
 const BEATS_PER_BAR = 4;
 /** chord-timeline entries kept; two bars of half-bar ticks is plenty to voice a bar from */
@@ -45,8 +45,9 @@ export interface PlayersLike {
   cancelScheduled?(): void;
   schedule(instrument: Instrument, events: NoteEvent[], barStartTime: number, bpm: number, onScheduled?: ScheduleConfirmation): void;
   /** AMT only: play through a real GM instrument sampler (see gmInstruments.ts) instead of
-   *  the synthesized Keys voice. */
-  scheduleAccompaniment?(gmProgram: number, events: NoteEvent[], barStartTime: number, bpm: number, onScheduled?: ScheduleConfirmation): void;
+   *  the synthesized Keys voice. An optional signal cancels only this batch, including
+   *  sample loading and native audio starts. */
+  scheduleAccompaniment?(gmProgram: number, events: NoteEvent[], barStartTime: number, bpm: number, onScheduled?: ScheduleConfirmation, signal?: AbortSignal): void;
 }
 
 export class Bandleader {
@@ -58,7 +59,11 @@ export class Bandleader {
     enabled: { drums: false, bass: false, keys: false, lead: false },
     dynamics: { ...IDLE_DYNAMICS },
   };
+  /** Runs at the top of every bar, before the form is ticked, so the app can hand over the
+   *  bar's dynamics and chord first. */
   onBarCb?: (bar: number) => void;
+  /** Runs once the bar's section is decided — the one place the song form is read from. */
+  onFormCb?: (bar: number, form: FormResult) => void;
   private rng: () => number;
   /** chord changes stamped with the absolute beat they took effect on, ascending */
   private chordLog: { beat: number; chord: Chord }[] = [];
@@ -128,13 +133,21 @@ export class Bandleader {
   }
   private onBar(bar: number, t: number) {
     this.onBarCb?.(bar);
+    const { dynamics } = this.state;
+    const form = this.songForm.tick({ bar, dynamics, silenceBeats: dynamics.silenceBeats, playerStopped: false });
+    this.onFormCb?.(bar, form);
     // A toggle can land after this bar's callback was scheduled ahead of time; if the bar's
     // start has already slipped into the past, don't schedule stale notes for it — the
-    // instrument simply joins on the next bar.
-    if (t < this.now()) return;
+    // instrument simply joins on the next bar. The form above has still moved on.
+    if (t >= this.now()) this.scheduleBar(bar, t, form);
+    // The ending bar has just been scheduled with arrangement.ending — now stop the clock so
+    // the band doesn't loop forever. The app restarts it through the existing first-lock path
+    // once the singer comes back in (see main.ts).
+    if (form.shouldStop) this.stop();
+  }
+  private scheduleBar(bar: number, t: number, form: FormResult) {
     const { genre, key, creativity, enabled, dynamics, source, sungPitchClass } = this.state;
     const barBeat = bar * BEATS_PER_BAR;
-    const form = this.songForm.tick({ bar, dynamics, silenceBeats: dynamics.silenceBeats, playerStopped: false });
     const ctx = {
       bar,
       key,
@@ -152,9 +165,5 @@ export class Bandleader {
     for (const i of INSTRUMENTS)
       if (enabled[i])
         this.players.schedule(i, humanize(i, this.patterns[genre][i].nextBar(ctx), spb, this.rng), t, this.clock.bpm);
-    // The ending bar above has just been scheduled with arrangement.ending — now stop the
-    // clock so the band doesn't loop forever. The app restarts it through the existing
-    // first-lock path once the singer comes back in (see main.ts).
-    if (form.shouldStop) this.stop();
   }
 }

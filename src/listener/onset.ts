@@ -1,4 +1,3 @@
-import { magnitudeSpectrum } from './fft';
 import { DEFAULT_TUNING } from './tuning';
 
 /**
@@ -74,7 +73,6 @@ export class OnsetDetector {
   /** peak-picking neighbourhood: 2·lookahead+1 frames, oldest first */
   private win: Frame[] = [];
   private lastOnset = -Infinity;
-  private level = 0;
   private readonly gap: number;
   private readonly windowSec: number;
   private readonly mult: number;
@@ -98,24 +96,15 @@ export class OnsetDetector {
    * Returns true when a (slightly earlier) frame is confirmed as an onset;
    * its timestamp is `lastOnsetTime`.
    */
-  process(mag: Float32Array, t: number, rms?: number): boolean {
-    return this.pushFlux(this.flux(mag), t, rms) !== null;
-  }
-
-  /** Same, straight from a time-domain frame (length must be a power of two). */
-  processFrame(frame: Float32Array, t: number): boolean {
-    let s = 0;
-    for (let i = 0; i < frame.length; i++) s += frame[i] * frame[i];
-    return this.process(magnitudeSpectrum(frame), t, Math.sqrt(s / frame.length));
+  process(mag: Float32Array, t: number): boolean {
+    return this.pushFlux(this.flux(mag), t) !== null;
   }
 
   /**
    * Feed a flux value computed elsewhere (the AudioWorklet does the FFT off the
    * main thread). Returns the onset time in seconds, or null.
    */
-  pushFlux(flux: number, t: number, rms?: number): number | null {
-    if (rms !== undefined) this.level = Math.min(1, rms * 20);
-
+  pushFlux(flux: number, t: number): number | null {
     const thr = this.threshold(flux, t);
     const frame = { flux, t, thr };
     this.win.push(frame);
@@ -162,10 +151,6 @@ export class OnsetDetector {
     return base * this.mult + this.delta;
   }
 
-  get inputLevel(): number {
-    return this.level;
-  }
-
   get lastOnsetTime(): number {
     return this.lastOnset;
   }
@@ -175,6 +160,5 @@ export class OnsetDetector {
     this.hist = [];
     this.win = [];
     this.lastOnset = -Infinity;
-    this.level = 0;
   }
 }

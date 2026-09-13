@@ -100,6 +100,11 @@ PYEOF
   nginx -t && nginx -s reload
 fi
 
+log "fetch ACE-Step XL-turbo DiT as bf16 (HF repo is 20 GB fp32; converted shard-by-shard via /dev/shm)"
+if [ ! -f "$ACE_REPO_DIR/checkpoints/acestep-v15-xl-turbo/model-00004-of-00004.safetensors" ]; then
+  ( cd "$ACE_REPO_DIR" && .venv/bin/python "$BACKLINE_DIR/services/acestep/xl_bf16.py" )
+fi
+
 log "purge pip/uv caches (40GB container disk fills fast with ACE checkpoints + 2 venvs)"
 rm -rf /root/.cache/pip /root/.cache/uv
 pip cache purge >/dev/null 2>&1 || true

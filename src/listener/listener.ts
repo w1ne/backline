@@ -31,6 +31,9 @@ const PENDING_MIN_ONSETS = 6;
 const PROVISIONAL_WAIT_SEC = 8;
 /** longest gap between two stable pitch frames still counted as the note being held */
 const MAX_PITCH_FRAME_SEC = 0.1;
+/** Level samples arrive at ~31 Hz; the display needs no more than 10 Hz of them, and every
+ *  emit re-renders the LCD, so level-only emits are throttled to this spacing. */
+const LEVEL_EMIT_INTERVAL_SEC = 0.1;
 
 export class Listener {
   private performanceCbs = new Set<(e: PerformanceEvent) => void>();
@@ -51,8 +54,6 @@ export class Listener {
   private keyDet: KeyDetector;
   private chordDet: ChordDetector;
   private chord: Chord | null = null;
-  /** absolute beat of the last `tickChord`; diagnostic only */
-  lastChordBeat = -1;
   private recent: { n: number; t: number }[] = [];
   /** distinct stable notes from the continuous mic pitch tracker */
   private pitchNotes: { n: number; t: number }[] = [];
@@ -63,7 +64,10 @@ export class Listener {
   /** when a MIDI note last arrived; while none is recent the chord detector runs in melody mode */
   private lastMidiNoteAt = -Infinity;
   private level = 0;
+  private lastLevelEmitAt = -Infinity;
   private onsetCount = 0;
+  /** running tempo estimate from the onsets so far, recomputed on every onset (not on every read) */
+  private pendingBpm: number | null = null;
   /** onset times kept only for the live "~98 BPM" readout while listening */
   private onsetTimes: number[] = [];
   /** how many of `onsetTimes` came from the mic; a voice majority folds syllable rate to the beat */
@@ -122,17 +126,14 @@ export class Listener {
       this.onsetTimes.push(t);
       if (voice) this.voiceOnsets++;
       if (this.onsetTimes.length > 24) { this.onsetTimes.shift(); if (this.voiceOnsets > this.onsetTimes.length) this.voiceOnsets = this.onsetTimes.length; }
+      const pending = bpmFromOnsets(this.onsetTimes, PENDING_MIN_ONSETS, this.tempoOpts);
+      this.pendingBpm = pending?.bpm ?? null;
       // A singer with a fast tempo shouldn't wait the full 12 onsets for the band to start:
       // once there's been 6+ onsets' worth of signal for 8s with still no real lock, adopt
-      // the running estimate as a provisional one — bpmFromOnsets(..., 12) below still runs
-      // every push and will replace it with the real lock as soon as it's ready.
-      if (!this.tempo.locked && this.onsetTimes.length >= PENDING_MIN_ONSETS) {
-        const first = this.onsetTimes[0];
-        if (t - first >= PROVISIONAL_WAIT_SEC) {
-          const pending = bpmFromOnsets(this.onsetTimes, PENDING_MIN_ONSETS, this.tempoOpts);
-          if (pending) this.tempo.adoptProvisional(pending.bpm, pending.downbeat);
-        }
-      }
+      // the running estimate as a provisional one — the TempoLock's own 12-onset estimate
+      // still runs every push and will replace it with the real lock as soon as it's ready.
+      if (!this.tempo.locked && pending && t - this.onsetTimes[0] >= PROVISIONAL_WAIT_SEC)
+        this.tempo.adoptProvisional(pending.bpm, pending.downbeat);
       if (n >= 0) {
         this.lastMidiNoteAt = t;
         this.keyDet.addNote(n, v);
@@ -144,8 +145,11 @@ export class Listener {
       this.emit();
     };
     const onLevel = (lvl: number) => {
+      const now = this.now();
       this.level = lvl;
-      this.activity.level(lvl, this.now());
+      this.activity.level(lvl, now);
+      if (now - this.lastLevelEmitAt < LEVEL_EMIT_INTERVAL_SEC) return;
+      this.lastLevelEmitAt = now;
       this.emit();
     };
     const onPitch = (p: StablePitch | null, timeSec = p?.timeSec ?? this.now()) => {
@@ -255,7 +259,7 @@ export class Listener {
       pitch: this.pitch,
       inputLevel: this.level,
       onsets: this.onsetCount,
-      pendingBpm: bpmFromOnsets(this.onsetTimes, PENDING_MIN_ONSETS, this.tempoOpts)?.bpm ?? null,
+      pendingBpm: this.pendingBpm,
       dynamics: this.activity.dynamics,
     };
   }
@@ -282,7 +286,6 @@ export class Listener {
     const now = this.now();
     const mode = now - this.lastMidiNoteAt > this.chordDet.windowSec * 2 ? 'melody' : 'auto';
     this.chord = this.chordDet.tick(now, this.input.key, mode);
-    this.lastChordBeat = beatIndex;
     this.emit();
     return this.chord;
   }

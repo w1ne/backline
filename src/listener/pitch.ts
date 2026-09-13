@@ -33,10 +33,6 @@ function correlatorFor(n: number) {
   return c;
 }
 
-export function detectPitchHz(x: Float32Array, sr: number): number | null {
-  return detectPitch(x, sr)?.hz ?? null;
-}
-
 /**
  * McLeod pitch method over one analysis window. The autocorrelation comes from pitchy's
  * FFT-based Autocorrelator (the expensive part); the normalised square difference and the
@@ -87,5 +83,3 @@ export function detectPitch(x: Float32Array, sr: number, minClarity = MIN_CLARIT
   const chosen = peaks.find(p => p.value >= PEAK_FRACTION * max)!;
   return { hz: sr / chosen.lag, clarity: chosen.value, peak: max };
 }
-
-export const hzToMidi = (hz: number) => Math.round(69 + 12 * Math.log2(hz / 440));

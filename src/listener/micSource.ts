@@ -171,7 +171,7 @@ export class MicSource implements Source {
         const { flux, rms, t } = e.data as { flux: number; rms: number; t: number };
         this.lastRms = rms;
         if (!this.muted && n++ % LEVEL_EVERY === 0) onLevel(Math.min(1, rms * 20));
-        const at = onset.pushFlux(flux, t, rms);
+        const at = onset.pushFlux(flux, t);
         if (at !== null) fire(at);
       };
       return;
@@ -207,7 +207,7 @@ export class MicSource implements Source {
       if (!this.muted && n++ % LEVEL_EVERY === 0) onLevel(Math.min(1, rms * 20));
       const t = ctx.currentTime - FFT_SIZE / 2 / ctx.sampleRate;
       const frame = tail.slice(tail.length - FFT_SIZE);
-      const at = onset.pushFlux(onset.flux(magnitudeSpectrum(frame)), t, rms);
+      const at = onset.pushFlux(onset.flux(magnitudeSpectrum(frame)), t);
       if (at !== null) fire(at);
     }, 10);
   }

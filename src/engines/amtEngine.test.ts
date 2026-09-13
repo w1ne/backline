@@ -146,6 +146,50 @@ describe('AmtEngine', () => {
     engine.stop();
   });
 
+  it('runs local drums through a Bandleader: form, humanize and the amount all apply', async () => {
+    const { engine, clock, players } = mk();
+    const sections: { bar: number; section: string; shouldStop: boolean }[] = [];
+    engine.onForm = (bar, form) => sections.push({ bar, section: form.section, shouldStop: form.shouldStop });
+    engine.setEnabled('drums', true);
+    engine.setAmount(0.5);
+    await engine.start(120, 0);
+    clock.tick(0, 1); clock.tick(1, 3); clock.tick(2, 5);
+    expect(sections).toEqual([
+      { bar: 0, section: 'intro', shouldStop: false },
+      { bar: 1, section: 'intro', shouldStop: false },
+      { bar: 2, section: 'groove', shouldStop: false },
+    ]);
+    const drums = players.calls.filter(c => c.i === 'drums');
+    expect(drums.map(c => c.barStart)).toEqual([1, 3, 5]);
+    const events = drums.flatMap(c => c.events);
+    // humanized: not every hit sits exactly on the sixteenth grid
+    expect(events.some(e => Math.abs(e.time - Math.round(e.time * 4) / 4) > 1e-9)).toBe(true);
+    // the manual amount still scales what reaches the players (FakePlayers has no bus)
+    expect(Math.max(...events.map(e => e.velocity))).toBeLessThanOrEqual(0.5 * 1.1);
+    engine.setAmount(0);
+    clock.tick(3, 7);
+    expect(players.calls.filter(c => c.i === 'drums')).toHaveLength(3);
+    engine.stop();
+  });
+
+  it('local drums play the ending bar and report shouldStop after four silent bars', async () => {
+    const { engine, clock } = mk();
+    const seen: string[] = [];
+    engine.onForm = (_bar, form) => seen.push(form.shouldStop ? 'stop' : form.section);
+    engine.setEnabled('drums', true);
+    await engine.start(120, 0);
+    clock.tick(0, 1); clock.tick(1, 3);
+    engine.set({ dynamics: { intensity: 0, space: true, fillDue: false, silenceBeats: 16 } });
+    clock.tick(2, 5);
+    expect(seen).toEqual(['intro', 'intro', 'stop']);
+    // a restart begins a new song
+    engine.stop();
+    await engine.start(120, 10);
+    clock.tick(0, 11);
+    expect(seen[3]).toBe('intro');
+    engine.stop();
+  });
+
   it('sends manual amount to AMT and updates already scheduled audio through the bus', async () => {
     const { engine, players } = mk();
     const setBandAmount = vi.fn();
@@ -201,7 +245,7 @@ describe('AmtEngine', () => {
     engine.stop();vi.useRealTimers();
   });
 
-  it('sends a start message with lookahead/commit/listen beats on open', async () => {
+  it('advertises cancellable phrase responses with timing configuration on open', async () => {
     const { engine } = mk();
     engine.set({ genre: 'jazz', key: { root: 9, mode: 'minor' }, creativity: 0.4 });
     await engine.start(100, 0);
@@ -215,6 +259,7 @@ describe('AmtEngine', () => {
       lookaheadBeats: 2,
       commitBeats: 2,
       listenBeats: 8,
+      phraseResponses: true,
     });
   });
 
@@ -805,6 +850,71 @@ it('requests the model guitar when the visible lead role is enabled with the def
   vi.useRealTimers();
 });
 
+describe('remembered phrase playback', () => {
+  const plan = { type: 'plan', phraseResponse: true, phraseInstrument: 24, notes: [
+    {voice:'lead',gmInstr:24,beat:4,pitch:60,dur:1,vel:.8},
+    {voice:'keys',gmInstr:4,beat:4,pitch:64,dur:1,vel:.5},
+  ] };
+  it.each(['performance', 'legacy'] as const)('invalidates only the response when %s input resumes after lookahead', async mode => {
+    const players = new FakePlayers();
+    const schedule = vi.spyOn(players, 'scheduleAccompaniment');
+    let fire!: (e: any) => void;
+    const notes = { onNote: (cb: typeof fire) => {fire=cb;},
+      ...(mode === 'performance' ? { onPerformance: (cb: typeof fire) => {fire=cb;} } : {}) };
+    const engine = new AmtEngine(players, notes, new FakeClock(), () => 0, () => 0);
+    engine.setEnabled('lead', true); engine.setEnabled('keys', true);
+    await engine.start(120, 0);
+    startedSocket().receiveJson(plan);
+    const phrase = schedule.mock.calls.find(c => c[0] === 24) as unknown as unknown[];
+    const backing = schedule.mock.calls.find(c => c[0] === 4) as unknown as unknown[];
+    const signal = phrase[5] as AbortSignal;
+    expect(signal?.aborted).toBe(false);
+    expect(backing[5]).toBeUndefined();
+    fire({type:'note_on',id:'p',source:'midi',midi:62,velocity:.8,confidence:1,timeSec:.5});
+    expect(signal.aborted).toBe(true);
+    expect(players.accompCalls).toHaveLength(2);
+    engine.stop();
+  });
+
+  it('rejects responses while any performer note remains held, then accepts a fresh gap response', async () => {
+    const players = new FakePlayers();
+    const schedule = vi.spyOn(players, 'scheduleAccompaniment');
+    let fire!: (e: any) => void;
+    let now = 0;
+    const engine = new AmtEngine(players, {onNote:vi.fn(),onPerformance: cb => {fire=cb;}}, new FakeClock(), () => now, () => now);
+    engine.setEnabled('lead', true); engine.setEnabled('keys', true);
+    await engine.start(120, 0);
+    const onset = {type:'note_on',id:'p',source:'midi',midi:62,velocity:.8,confidence:1,timeSec:0};
+    fire(onset);
+    now = .5;
+    startedSocket().receiveJson(plan);
+    expect(players.accompCalls.map(c => c.gmProgram)).toEqual([4]);
+    fire({...onset,type:'note_off',timeSec:.5});
+    startedSocket().receiveJson({...plan,latestCaptureTimeSec:.5,notes:[{...plan.notes[0],beat:6}]});
+    expect(players.accompCalls.map(c => c.gmProgram)).toEqual([4,24]);
+    const signal = (schedule.mock.calls[1] as unknown as unknown[])[5] as AbortSignal;
+    expect(signal.aborted).toBe(false);
+    engine.stop();
+    expect(signal.aborted).toBe(true);
+  });
+});
+
+it('rejects a stale phrase arriving after the resumed note was already released, while preserving backing', async () => {
+  let fire!: (e: import('../listener/performanceEvent').PerformanceEvent) => void;
+  const players = new FakePlayers();
+  const engine = new AmtEngine(players, {onNote:vi.fn(),onPerformance:cb=>{fire=cb;}}, new FakeClock(), () => 1, () => 101);
+  engine.setEnabled('lead', true); engine.setEnabled('keys', true);
+  await engine.start(120, 1);
+  const onset = {type:'note_on' as const,id:'resume',source:'midi' as const,midi:62,velocity:.8,confidence:1,timeSec:101.2};
+  fire(onset); fire({...onset,type:'note_off',timeSec:101.3});
+  startedSocket().receiveJson({type:'plan',phraseResponse:true,phraseInstrument:24,latestCaptureTimeSec:101,notes:[
+    {voice:'lead',gmInstr:24,beat:4,pitch:60,dur:1,vel:.8},
+    {voice:'keys',gmInstr:4,beat:4,pitch:64,dur:1,vel:.5},
+  ]});
+  expect(players.accompCalls.map(c => c.gmProgram)).toEqual([4]);
+  engine.stop();
+});
+
 describe('AmtEngine status numbers', () => {
   beforeEach(() => { FakeWebSocket.instances = []; });
 
@@ -1011,4 +1121,29 @@ describe('AmtEngine tempo change', () => {
     expect(startedSocket().sent[0]).not.toHaveProperty('resume');
     engine.stop();
   });
+});
+
+it.each([false, true])('preserves later same-program backing in a four-beat phrase plan (explicit bounds: %s)', async explicit => {
+  const players = new FakePlayers();
+  const schedule = vi.spyOn(players, 'scheduleAccompaniment');
+  const notes = new FakeNoteSource();
+  const engine = new AmtEngine(players, notes, new FakeClock(), () => 0, () => 0);
+  engine.setEnabled('lead', true);
+  await engine.start(120, 0);
+  startedSocket().receiveJson({type:'plan',fromBeat:4,toBeat:8,phraseResponse:true,phraseInstrument:24,
+    ...(explicit ? {phraseFromBeat:4,phraseToBeat:5} : {}),
+    notes:[
+      {voice:'lead',gmInstr:24,beat:4,pitch:60,dur:1,vel:.8},
+      {voice:'lead',gmInstr:24,beat:explicit ? 5 : 6,pitch:64,dur:1,vel:.5},
+    ],
+  });
+  expect(schedule).toHaveBeenCalledTimes(2);
+  const phrase = schedule.mock.calls[0] as unknown as unknown[];
+  const backing = schedule.mock.calls[1] as unknown as unknown[];
+  expect((phrase[1] as NoteEvent[]).map(n => n.note)).toEqual([60]);
+  expect((backing[1] as NoteEvent[]).map(n => n.note)).toEqual([64]);
+  expect(backing[5]).toBeUndefined();
+  notes.fire({midi:62,velocity:.8,timeSec:.2});
+  expect((phrase[5] as AbortSignal).aborted).toBe(true);
+  engine.stop();
 });

@@ -13,8 +13,7 @@ export interface StablePitch {
 }
 
 import { DEFAULT_TUNING, type TrackerTuning } from './tuning';
-
-const centsBetween = (a: number, b: number) => 1200 * Math.log2(a / b);
+import { centsBetween, hzToMidi } from '../music/pitchClass';
 
 /** Debounce raw estimates without folding genuine octave changes into old notes.
  * A median window rejects isolated harmonic errors; sustained changes are accepted.
@@ -122,7 +121,7 @@ export class PitchTracker {
    */
   private reading(): StablePitch | null {
     if (this.stableHz === null) return null;
-    const midiFloat = 69 + 12 * Math.log2(this.stableHz / 440);
+    const midiFloat = hzToMidi(this.stableHz);
     const midi = Math.round(midiFloat);
     const cents = Math.round((midiFloat - midi) * 100);
     return { midi, cents, stable: true };

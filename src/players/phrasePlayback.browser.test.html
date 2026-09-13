@@ -1,0 +1,33 @@
+<!-- Native regression fixture: serve the repository with python3 -m http.server,
+then open /src/players/phrasePlayback.browser.test.html in Chrome. No network
+samples or audio device are needed. A passing result has responseDisconnected=0,
+nativeStopOnly>0 and backingPreserved>0. This deliberately reproduces installed
+smplr's duration stop behavior using its real Sampler and OfflineAudioContext. -->
+<!doctype html><body>running<script type="module">
+import {Sampler} from '../../node_modules/smplr/dist/index.mjs';
+const run = async (disconnect, backing) => {
+ const ctx = new OfflineAudioContext(1, 24000, 48000);
+ const buffer = ctx.createBuffer(1, 24000, 48000);
+ const data = buffer.getChannelData(0);
+ for(let i=0;i<data.length;i++) data[i]=Math.sin(i*2*Math.PI*440/48000)*.2;
+ const gate = ctx.createGain(); gate.connect(ctx.destination);
+ const phrase = Sampler(ctx,{buffers:{C4:buffer},detune:0,decayTime:.1,lpfCutoffHz:20000,destination:gate}); await phrase.ready;
+ const stop = phrase.start({note:60,time:.05,duration:.2,velocity:80});
+ stop(); // Already native: duration sets stopping state, so stop cannot prevent onset.
+ if(disconnect) gate.disconnect();
+ if(backing) {
+   const bass = Sampler(ctx,{buffers:{C4:buffer},detune:0,decayTime:.1,lpfCutoffHz:20000,destination:ctx.destination}); await bass.ready;
+   bass.start({note:60,time:.05,duration:.2,velocity:80});
+ }
+ const result = await ctx.startRendering();
+ const samples = result.getChannelData(0).slice(4800,9600);
+ return Math.sqrt(samples.reduce((sum,x)=>sum+x*x,0)/samples.length);
+};
+try {
+ const nativeStopOnly = await run(false,false);
+ const responseDisconnected = await run(true,false);
+ const backingPreserved = await run(true,true);
+ const pass = nativeStopOnly>.001 && responseDisconnected===0 && backingPreserved>.001;
+ document.body.textContent=JSON.stringify({pass,nativeStopOnly,responseDisconnected,backingPreserved});
+} catch(error) {document.body.textContent=error.stack;}
+</script></body>

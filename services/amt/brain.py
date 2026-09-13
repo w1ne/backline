@@ -100,7 +100,7 @@ class HarmonyBrain:
         self.notes_heard += 1
         if self.form.section in ("ending", "ended"):
             # The singer came back after the band stopped: a new song, from the intro.
-            self.form.reset()
+            self.form.reset(start_bar=int(beat // self.beats_per_bar))
             self.last_form_bar = None
             self.section = "intro"
 

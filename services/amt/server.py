@@ -56,6 +56,7 @@ from arrangement import (  # noqa: E402
 )
 from cached import cached_generate  # noqa: E402
 from brain import HarmonyBrain, sampling_for  # noqa: E402
+from musical_identity import MusicalIdentity
 from performance_history import PerformanceHistory  # noqa: E402
 from instruments import resolve as resolve_instruments, resolve_groups, TOGGLEABLE_PRESETS, DEFAULT_PRESETS  # noqa: E402,F401
 from readiness import health_response  # noqa: E402
@@ -226,8 +227,13 @@ class Session:
         self.brain = HarmonyBrain(key=key, genre=genre, lookahead_beats=lookahead_beats, bpm=bpm)
         self.performance = PerformanceHistory(self.history, make_event, MELODY_INSTR, self.beat_s, self.brain.on_note)
         self.human_notes = self.performance.notes
+        self.identity = MusicalIdentity()
+        self.phrase_response = False
+        self.phrase_responses = False
 
     def set_controls(self, msg):
+        if 'phraseResponses' in msg:
+            self.phrase_responses = msg['phraseResponses'] is True
         self.key = msg.get("key", self.key)
         self.brain.set_controls(msg)
         self.space = bool(msg.get("space", self.space))
@@ -272,10 +278,13 @@ class Session:
 
     @property
     def arranger(self):
-        return Arranger(self.amount, self.creativity, self.enabled_roles)
+        return Arranger(self.amount, self.creativity, self.enabled_roles, self.section)
 
     def add_human_notes(self, notes):
+        ended = self.brain.form.section in ('ending', 'ended')
         self.performance.add(notes)
+        if ended and self.brain.form.section == 'intro':
+            self.identity.reset()
         if self.first_human_beat is None and self.human_notes:
             self.first_human_beat = min(onset for (onset, _, _) in self.human_notes)
 
@@ -331,15 +340,16 @@ class Session:
         with no notes at all.
         """
         target_start_beat, target_end_beat = plan_window(now_beat, span_beats, self.lookahead_beats)
+        self.phrase_response = False
         self.performance.observe_through(now_beat)
+        self.identity.observe(self.human_notes, self.performance.records, now_beat)
         self.prune_context(target_start_beat)
-        arranger = self.arranger
-        generation_instrs = arranger.generation_instruments(self.accomp_instrs)
-
         # Chord and section for this window: harmony.py/predict.py and form.py via the brain.
         brain_out = self.brain.on_tick(now_beat)
         self.chord = brain_out["chord"]
         self.section = brain_out["section"]
+        arranger = self.arranger
+        generation_instrs = arranger.generation_instruments(self.accomp_instrs)
         if brain_out["idle"] or not generation_instrs:
             # Silence is explicit when the form ends or no instruments are enabled.
             log.info("%s: idle or muted, empty plan", label)
@@ -421,8 +431,15 @@ class Session:
             (t, d, instr, p) for (t, d, instr, p) in accomp
             if start_tick <= round(t * TIME_RESOLUTION) < commit_end_tick
         ]
+        # Older open clients cannot cancel a queued answer when the player resumes.
+        # They retain normal AMT backing and section contrast until refreshed.
+        if self.phrase_responses:
+            raw_notes = self.identity.shape(raw_notes, start_beat, commit_end_beat, self.beat_s,
+                                            now_beat, self.creativity, self.section)
+            self.phrase_response = self.identity.response_applied
         raw_notes = arranger.constrain(raw_notes, start_s, commit_end_s, self.beat_s,
-                                       self.space, TIME_RESOLUTION, self.key, self.chord)
+                                       self.space, TIME_RESOLUTION, self.key, self.chord,
+                                       phrase_instrument=self.identity.response_instrument if self.phrase_response else None)
         # (onset_s, dur_s, instr, pitch), trimmed/monophonic per instrument by the committer.
         committed = self.committer.commit(raw_notes)
         self.committed_horizon_beats = commit_end_beat
@@ -469,6 +486,11 @@ class Session:
         """A plan with the chord in force from the window start and the current section.
         `chord`/`chordFrom`/`section` are optional: an old client ignores them."""
         plan = {"type": "plan", "fromBeat": from_beat, "toBeat": to_beat, "notes": notes, "section": self.section}
+        if self.phrase_response and any(n.get("gmInstr") == self.identity.response_instrument for n in notes):
+            plan["phraseResponse"] = True
+            plan["phraseInstrument"] = self.identity.response_instrument
+            plan["phraseFromBeat"] = from_beat
+            plan["phraseToBeat"] = min(to_beat, from_beat + 2.)
         if self.chord:
             plan["chord"] = self.chord
             plan["chordFrom"] = from_beat
