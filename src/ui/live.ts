@@ -161,7 +161,6 @@ function skeleton(): string {
         <span class="lcd" id="lcd"></span>
         <div class="bar-input">
           <p class="connection-line" id="input-status"></p>
-          <p class="connection-line keyboard-feedback" aria-live="polite" aria-atomic="true"><span id="keyboard-sound"></span><span id="keyboard-levels"></span></p>
           <p class="connection-line band-line"><span id="band-status" role="status"></span><span id="model-latency"></span></p>
           <button type="button" id="enable-audio" class="audio-start">Enable sound</button>
         </div>
@@ -270,7 +269,9 @@ function skeleton(): string {
 
         </div>
       </div>
-      <details class="model-details instrument-details"><summary>Your instrument</summary>
+      <details class="model-details instrument-details"><summary>Your instrument
+        <span class="instrument-summary" aria-live="polite" aria-atomic="true"><span id="keyboard-sound"></span><span id="keyboard-levels"></span></span>
+      </summary>
         <div class="zone zone--orange instrument-zone">
           <span class="zone-label">Your instrument</span>
         <p class="connection-line" id="midi-status"></p>
@@ -285,10 +286,12 @@ function skeleton(): string {
               ).join('')}
             </select>
           </div>
+          <div class="live-instrument-controls"><h3>Live knobs</h3>
           <div class="field"><label for="noise-volume">White noise <output id="noise-value"></output></label><input id="noise-volume" type="range" min="0" max="1" step="0.01" /></div>
           <div class="field"><label for="noise-register">Noise register <output id="noise-register-value"></output></label><input id="noise-register" type="range" min="-2" max="2" step="0.02" /></div>
           <div class="field"><label for="drone-volume">Drone <output id="drone-value"></output></label><input id="drone-volume" type="range" min="0" max="1" step="0.01" /></div>
           <div class="field"><label for="drone-register">Drone register <output id="drone-register-value"></output></label><input id="drone-register" type="range" min="-2" max="2" step="0.02" /></div>
+          </div>
         </div>
         </div>
       </details>

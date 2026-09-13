@@ -132,13 +132,17 @@ body {
 .m-note { transform-origin: 50% 100%; }
 .m-pad { opacity: 1; }
 
-.keyboard-feedback {
+.instrument-summary {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 16px;
+  margin-top: 6px;
+  font: 12px/1.6 var(--mono);
 }
 
-#keyboard-sound { color: var(--led); font-weight: 600; }
+#keyboard-sound { font-weight: 600; }
+.live-instrument-controls { display: grid; gap: 12px; grid-column: 1 / -1; }
+.live-instrument-controls h3 { margin: 0; font-size: 14px; }
 
 .bar-top {
   display: flex;
