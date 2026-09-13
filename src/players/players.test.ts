@@ -7,7 +7,8 @@ const sf = vi.hoisted(() => ({ instruments: [] as any[] }));
 vi.mock('smplr', () => ({
   Soundfont: (_ctx: unknown, options: unknown) => {
     let resolveReady!: () => void;
-    const inst = { options, stop: vi.fn(), dispose: vi.fn(), ready: new Promise<void>(r => { resolveReady = r; }), start: vi.fn(), resolveReady: () => resolveReady() };
+    let rejectReady!: (error: Error) => void;
+    const inst = { options, stop: vi.fn(), dispose: vi.fn(), ready: new Promise<void>((r, reject) => { resolveReady = r; rejectReady = reject; }), start: vi.fn(), resolveReady: () => resolveReady(), rejectReady: (error: Error) => rejectReady(error) };
     sf.instruments.push(inst);
     return inst;
   },
@@ -536,4 +537,39 @@ it('reuses a fully ended response sampler without reloading its samples', async 
   expect(sf.instruments).toHaveLength(1);
   expect(voice.start).toHaveBeenCalledTimes(2);
   players.cancelScheduled();
+});
+
+it('loads every AMT program from bundled same-origin assets, including response batches', () => {
+  sf.instruments.length = 0;
+  const players = new Players(); withFakeBusses(players);
+  const programs = [4,24,40,41,42,46,48,56,65,73,88];
+  for (const program of programs) {
+    players.scheduleAccompaniment(program, [{time:0,note:60,duration:1,velocity:.8}], 100, 120);
+  }
+  for (const voice of sf.instruments) {
+    expect(voice.options.instrumentUrl).toMatch(/^\/.*samples\/amt\/[a-z0-9_]+-ogg\.js$/);
+    expect(voice.options.loadLoopData).toBe(false);
+    expect(voice.options.instrument).toBeUndefined();
+  }
+  const response = new AbortController();
+  players.scheduleAccompaniment(40, [{time:0,note:60,duration:1,velocity:.8}], 100, 120, undefined, response.signal);
+  expect(sf.instruments.at(-1).options.instrumentUrl).toMatch(/samples\/amt\/violin-ogg\.js$/);
+  response.abort();
+});
+
+
+it('reports sample failure and allows a fresh bounded load on the next plan', async () => {
+  sf.instruments.length = 0;
+  const players = new Players(); withFakeBusses(players);
+  const error = vi.fn(); players.onSampleError = error;
+  const event = {time:0,note:60,duration:1,velocity:.8};
+  players.scheduleAccompaniment(40, [event], 100, 120);
+  const voice = sf.instruments[0];
+  const failure = new Error('asset unavailable');
+  voice.rejectReady(failure);
+  await voice.ready.catch(() => undefined);
+  expect(error).toHaveBeenCalledWith(40, failure);
+  expect(voice.dispose).toHaveBeenCalled();
+  players.scheduleAccompaniment(40, [event], 102, 120);
+  expect(sf.instruments).toHaveLength(2);
 });

@@ -20,3 +20,6 @@ bench/realvoice/out/
 # tempo bench: reference-library venv and outputs
 bench/tempo/.venv/
 bench/tempo/out/
+
+# Downloaded, integrity-checked AMT assets are bundled at build time.
+public/samples/amt/
