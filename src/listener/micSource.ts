@@ -87,6 +87,11 @@ export class MicSource implements Source {
     return this.srcNode;
   }
 
+  /** The raw mic MediaStream, for a consumer that needs its own (native) AudioContext. */
+  get mediaStream(): MediaStream | undefined {
+    return this.stream;
+  }
+
   /**
    * Gates the mic's contribution to the listener without touching the MediaStream track,
    * so unmuting is instant (no getUserMedia round trip). MIDI input is a separate Source

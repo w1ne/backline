@@ -156,12 +156,12 @@ export class AceStepEngine implements BandEngine {
   private morphNode?: AudioNode;
   private amount = 1;
   private extras: AccompPreset[] = [];
+  private micCtx?: AudioContext;
   private micTap?: ScriptProcessorNode;
-  private micSink?: GainNode;
 
-  /** `micNode` hands back the live mic source node (undefined until the mic is running); its
-   *  audio is streamed to the server so the band can follow what the player sings. */
-  constructor(private ctx: AudioContext, private micNode?: () => AudioNode | undefined) {}
+  /** `micStream` hands back the live mic MediaStream (undefined until the mic is running);
+   *  its audio is streamed to the server so the band can follow what the player sings. */
+  constructor(private ctx: AudioContext, private micStream?: () => MediaStream | undefined) {}
 
   /** Sends the generated stream to the main output, the MORPH output, or both. */
   routeBand(route: MorphRoute, morphNode?: AudioNode): void {
@@ -229,34 +229,46 @@ export class AceStepEngine implements BandEngine {
     return this.player?.getAnalyser();
   }
 
-  /** Taps the mic and ships it to the server, 16 kHz mono PCM16, while the socket is open. */
+  /** Taps the mic and ships it to the server, 16 kHz mono PCM16, while the socket is open.
+   *  The band's context is Tone's standardized wrapper (no ScriptProcessor), so the raw
+   *  MediaStream gets its own small native AudioContext, opened at 16 kHz where the browser
+   *  allows it so the frames need no resampling. */
   private startMicStream(): void {
-    const src = this.micNode?.();
-    if (!src || this.micTap || typeof this.ctx.createScriptProcessor !== 'function') return;
-    const tap = this.ctx.createScriptProcessor(MIC_PROCESSOR_SIZE, 1, 1);
+    const stream = this.micStream?.();
+    const Ctx = typeof AudioContext !== 'undefined' ? AudioContext : undefined;
+    if (!stream || this.micTap || !Ctx) return;
+    let micCtx: AudioContext;
+    try {
+      micCtx = new Ctx({ sampleRate: MIC_STREAM_RATE });
+    } catch {
+      micCtx = new Ctx();
+    }
+    if (typeof micCtx.createScriptProcessor !== 'function') {
+      void micCtx.close();
+      return;
+    }
+    const src = micCtx.createMediaStreamSource(stream);
+    const tap = micCtx.createScriptProcessor(MIC_PROCESSOR_SIZE, 1, 1);
     // a muted sink keeps the processor alive without feeding the mic to the speakers
-    const sink = this.ctx.createGain();
+    const sink = micCtx.createGain();
     sink.gain.value = 0;
     tap.onaudioprocess = ev => {
       if (this.ws?.readyState !== WebSocket.OPEN) return;
-      this.ws.send(encodeMicFrame(ev.inputBuffer.getChannelData(0), this.ctx.sampleRate));
+      this.ws.send(encodeMicFrame(ev.inputBuffer.getChannelData(0), micCtx.sampleRate));
     };
     src.connect(tap);
     tap.connect(sink);
-    sink.connect(this.ctx.destination);
+    sink.connect(micCtx.destination);
+    void micCtx.resume();
+    this.micCtx = micCtx;
     this.micTap = tap;
-    this.micSink = sink;
   }
 
   private stopMicStream(): void {
-    if (this.micTap) {
-      this.micTap.onaudioprocess = null;
-      try { this.micNode?.()?.disconnect(this.micTap); } catch { /* already gone */ }
-      this.micTap.disconnect();
-    }
-    this.micSink?.disconnect();
+    if (this.micTap) this.micTap.onaudioprocess = null;
     this.micTap = undefined;
-    this.micSink = undefined;
+    void this.micCtx?.close().catch(() => undefined);
+    this.micCtx = undefined;
   }
 
   stop(): void {
