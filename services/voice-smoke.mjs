@@ -204,6 +204,7 @@ try {
   assert(result.scheduled.some(n => n.inst === 'keys'), 'No real sampled notes reached scheduling');
   assert(result.peaks.filter(n => n.eligible && n.peak > .001).length >= 3,
     'No audible sampled accompaniment after count-in (master audio stayed silent)');
+  assert.equal(result.error, null, 'Voice-only playback reported an application error');
   assert.equal(evidence.browserErrors.length, 0, 'Unhandled browser errors');
   assert(!evidence.externalRequests.some(url => /\/violin-ogg\.js(?:\?|$)/.test(url)),
     'AMT attempted to load its instrument from an external CDN');

@@ -19,8 +19,9 @@ The 20-second observation also checks that sustained input stays active beyond t
 old false-ending threshold. A disconnected MIDI stub keeps the scenario voice-only
 regardless of the host's attached hardware. Artifacts (state, wire input, plans,
 audio peaks, browser errors and screenshot) go to `test-results/voice-smoke/`.
-Nonessential external font and inactive keyboard/pattern sample requests are blocked
+Nonessential external font and fallback-pattern sample requests are blocked
 and logged; the AMT instrument must load locally and produce sound despite that.
+The gate also rejects application errors, including unused keyboard sound failures.
 The production deploy workflow runs this gate before either deployment job can run.
 
 To verify the gate itself, `VOICE_SMOKE_FAULT=samples npm run smoke:voice` must fail
