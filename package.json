@@ -20,7 +20,12 @@
     "bench:tempo": "vite-node bench/tempo/run.ts",
     "bench:calibrate": "vite-node bench/calibrate/run.ts",
     "bench:gate": "vite-node bench/gate.ts",
-    "smoke:live": "node services/smoke.mjs"
+    "smoke:live": "node services/smoke.mjs",
+    "samples:amt": "node services/fetch-amt-samples.mjs",
+    "predev": "npm run samples:amt",
+    "prebuild": "npm run samples:amt",
+    "prebuild:pi": "npm run samples:amt",
+    "smoke:voice": "node services/voice-smoke.mjs"
   },
   "keywords": [],
   "author": "",
@@ -36,6 +41,7 @@
     "jsdom": "^29.1.1",
     "typescript": "^5.9.3",
     "vite": "^5.4.21",
-    "vitest": "^2.1.9"
+    "vitest": "^2.1.9",
+    "ws": "^8.21.3"
   }
 }

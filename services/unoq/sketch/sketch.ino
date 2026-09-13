@@ -56,6 +56,27 @@ const char* HEART_L[] = {
 
 bool ping() { return true; }
 
+volatile unsigned long g_demoStart = 0;
+volatile unsigned long g_demoDuration = 0;
+
+// A bounded preview uses its own clock, then returns to the latest band state.
+bool demo(int seconds) {
+  if (seconds < 0 || seconds > 3600) return false;
+  g_demoStart = millis();
+  g_demoDuration = (unsigned long)seconds * 1000;
+  return true;
+}
+
+// Older UNO Q firmware does not export sinf, expf or fmodf to loaded sketches.
+// Linking succeeds with those imports, but the runtime rejects the entire sketch.
+float cyclePhase(float cycles) { return cycles - (unsigned long)cycles; }
+
+float pulseDecay(float phase) {
+  float remaining = 1.0f - phase;
+  float squared = remaining * remaining;
+  return squared * squared;
+}
+
 bool beat(float bpm, float energy, int mode, int flags, int sinceBarMs) {
   g_bpm = bpm;
   g_energy = energy;
@@ -107,30 +128,33 @@ void burst(float t, int level) {
 void render() {
   clearFrame();
   unsigned long now = millis();
-  float e = g_energy;
-  switch (g_mode) {
+  bool preview = g_demoDuration > 0 && now - g_demoStart < g_demoDuration;
+  float e = preview ? 1.0f : g_energy;
+  int mode = preview ? PLAY : g_mode;
+  int flags = preview ? FLAG_ANSWER | (((now - g_demoStart) / 3000) % 2 ? FLAG_FILL : 0) : g_flags;
+  switch (mode) {
     case OFFLINE:
       blitHeart(HEART_M, 7, 1);
       break;
     case LISTEN: {
-      float breath = 0.5f + 0.5f * sinf(now / 1000.0f * 1.2f);   // ~5 s cycle
+      float breath = 0.5f + 0.5f * (float)sin((double)now / 1000.0 * 1.2);   // ~5 s cycle
       drawHeart(0.5f, 1 + (int)(breath * 4));
       break;
     }
     case PLAY: {
-      float bpm = g_bpm > 30 ? g_bpm : 120;
+      float bpm = preview ? 156 : (g_bpm > 30 ? g_bpm : 120);
       float beatMs = 60000.0f / bpm;
-      unsigned long sinceBar = now - g_barRef;
-      float beatPhase = fmodf((float)sinceBar, beatMs) / beatMs;      // 0 at the beat
-      float pulse = expf(-beatPhase * 4.5f);                          // sharp attack, decay
+      unsigned long sinceBar = now - (preview ? g_demoStart : g_barRef);
+      float beatPhase = cyclePhase((float)sinceBar / beatMs);      // 0 at the beat
+      float pulse = pulseDecay(beatPhase);                          // sharp attack, decay
       int beatIx = (int)(sinceBar / beatMs) % 4;
       float accent = beatIx == 0 ? 1.0f : 0.75f;                     // downbeat hits harder
       float size = 0.25f + 0.75f * e * pulse * accent;
       int level = 2 + (int)((LEVELS - 2) * (0.35f + 0.65f * pulse * accent));
       drawHeart(size, level);
-      float barT = fmodf((float)sinceBar, beatMs * 4) / (beatMs * 4);
-      if (g_flags & FLAG_FILL) burst(barT, 3 + (int)(4 * pulse));
-      if (g_flags & FLAG_ANSWER) sparkles(2 + (int)(4 * e), 4);
+      float barT = cyclePhase((float)sinceBar / (beatMs * 4));
+      if (flags & FLAG_FILL) burst(barT, 3 + (int)(4 * pulse));
+      if (flags & FLAG_ANSWER) sparkles(2 + (int)(4 * e), 4);
       break;
     }
   }
@@ -153,7 +177,7 @@ unsigned long lastProvide = 0;
 void loop() {
   if (!provided && millis() - lastProvide > 500) {
     lastProvide = millis();
-    provided = Bridge.provide("ping", ping) && Bridge.provide("beat", beat);
+    provided = Bridge.provide("ping", ping) && Bridge.provide("beat", beat) && Bridge.provide("demo", demo);
   }
   render();
   delay(25);

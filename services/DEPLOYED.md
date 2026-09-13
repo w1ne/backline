@@ -22,10 +22,15 @@ session).
 git -C /opt/backline pull --no-rebase origin main
 tmux kill-session -t ace
 tmux new-session -d -s ace "cd /opt/backline/services/acestep && \
+  ACE_SONG_MODE=1 \
   ACESTEP_CHECKPOINTS_DIR=/opt/ace-step/checkpoints ACE_REPO_DIR=/opt/ace-step \
   PORT=8080 /opt/ace-step/.venv/bin/python server.py 2>&1 | tee /var/log/ace.log"
 curl -s http://127.0.0.1:8080/health
 ```
+
+`ACE_SONG_MODE=1` is ON in production since 2026-09-13 07:07 UTC (16-bar
+segments sliced into 2-bar blocks; see `services/acestep/README.md`). The
+DiT is `acestep-v15-xl-turbo`, LM off.
 
 Model load takes a couple of minutes, so `/health` stays unreachable for
 a while after the restart.

@@ -7,6 +7,7 @@ import { DEFAULT_DRUM_KIT, type DrumKit } from './sampledVoices';
 import type { PlayersLike, ScheduleConfirmation } from '../band/bandleader';
 import { routeTargets, type MorphRoute } from '../audio/routing';
 import { GM_INSTRUMENTS } from './gmInstruments';
+import { amtSampleStorage, amtSampleUrl } from './amtSamples';
 
 /** The bit of a Tone/Web Audio node the routing actually uses. Keeps `route()` testable
  *  with plain fakes instead of a real audio graph. */
@@ -62,6 +63,7 @@ export class Players implements PlayersLike {
   onSchedule?: (instrument: Instrument, events: NoteEvent[], barStartTime: number, bpm: number) => void;
   /** AMT only: fires per GM program actually scheduled through scheduleAccompaniment(), so
    *  the AMT panel can show which preset(s) are currently sounding. */
+  onSampleError?: (gmProgram: number, error: unknown) => void;
   onAccompSchedule?: (gmProgram: number, events: NoteEvent[], barStartTime: number, bpm: number) => void;
   /** Count of note events dropped because they were stale (too close to/before now) or a
    * duplicate on the same monophonic voice within the merge window. Test/diagnostic hook. */
@@ -106,12 +108,24 @@ export class Players implements PlayersLike {
     this.setGenre(this.genre);
   }
 
+  private morphListeners = new Set<(node: AudioNode | undefined) => void>();
+
   /** Hands the players the MORPH bus input (or undefined when the output is off).
    *  Every instrument's route is re-applied, so "morph" pads become audible on the box
    *  and fall back to the main output when it goes away. */
   setMorphBus(node: AudioNode | undefined): void {
     this.morphNode = node;
     INSTRUMENTS.forEach(i => this.applyRoute(i));
+    this.morphListeners.forEach(cb => cb(node));
+  }
+
+  /** Notifies a voice outside the fixed Instrument set (e.g. the found-sound sampler) of the
+   *  MORPH bus, immediately and on every change, so it can route itself without needing a
+   *  slot in `busses`/`INSTRUMENTS`. Returns an unsubscribe function. */
+  onMorphChange(cb: (node: AudioNode | undefined) => void): () => void {
+    this.morphListeners.add(cb);
+    cb(this.morphNode);
+    return () => this.morphListeners.delete(cb);
   }
 
   /** Remove old-tempo events and tails when an engine transport restarts. */
@@ -323,7 +337,7 @@ export class Players implements PlayersLike {
       const ctx = this.rawContext();
       destination = ctx.createGain();
       Tone.connect(destination, this.busses[gm.role]);
-      voice = Soundfont(ctx, { instrument: gm.name, kit: 'MusyngKite', destination });
+      voice = Soundfont(ctx, { instrumentUrl: amtSampleUrl(gm.name), loadLoopData: false, storage: amtSampleStorage, destination });
       if (!signal) this.accompVoices.set(gmProgram, voice);
     }
     const batchStops = new Set<() => void>();
@@ -389,7 +403,16 @@ export class Players implements PlayersLike {
       this.onSchedule?.(gm.role, sounding, barStart, bpm);
       this.onAccompSchedule?.(gmProgram, sounding, barStart, bpm);
       onScheduled?.(sounding);
-    }, () => { this.dropped += notes.length; disposeResponse(); });
+    }, error => {
+      this.dropped += notes.length;
+      if (!signal && this.accompVoices.get(gmProgram) === voice) {
+        this.accompVoices.delete(gmProgram);
+        destination?.disconnect();
+        voice.dispose();
+        this.onSampleError?.(gmProgram, error);
+      } else if (signal && !disposed) this.onSampleError?.(gmProgram, error);
+      disposeResponse();
+    });
   }
 
   private hit(note: number, t: number, v: number) {

@@ -70,6 +70,15 @@ export class PcmPlayer {
   /** Re-routes the whole generated stream, including chunks already scheduled ahead of
    *  the playhead — otherwise a route change would not be audible for the ~3 s of audio
    *  already queued. */
+  /** Band amount 0..1 on the shared output gain (no-op without an output node). */
+  setAmount(amount: number): void {
+    if (!this.out) return;
+    const v = Number.isFinite(amount) ? Math.min(1, Math.max(0, amount)) : 1;
+    const g = this.out.gain;
+    if (typeof g.setTargetAtTime === 'function') g.setTargetAtTime(v, this.ctx.currentTime, 0.05);
+    else g.value = v;
+  }
+
   routeBand(route: MorphRoute, morphNode?: AudioNode): void {
     this.bandRoute = route;
     if (arguments.length > 1) this.morphNode = morphNode;

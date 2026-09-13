@@ -8,6 +8,9 @@ export interface Env {
   GITHUB_TOKEN: string;
   /** Comma-separated list of origins the app is served from. */
   ALLOWED_ORIGINS: string;
+  /** Comma-separated host suffixes (e.g. ".backline-88n.pages.dev") whose https origins are
+   *  also allowed -- Cloudflare Pages branch previews get a new hostname per branch. */
+  ALLOWED_ORIGIN_SUFFIXES?: string;
   REPO: string;
   ACESTEP_UPSTREAM?: string;
   AMT_UPSTREAM?: string;
@@ -25,7 +28,12 @@ export function allowedOrigins(env: Env): string[] {
 }
 
 export function isAllowedOrigin(origin: string | null, env: Env): boolean {
-  return !!origin && allowedOrigins(env).includes(origin);
+  if (!origin) return false;
+  if (allowedOrigins(env).includes(origin)) return true;
+  const suffixes = (env.ALLOWED_ORIGIN_SUFFIXES ?? "").split(",").map(s => s.trim()).filter(Boolean);
+  const host = origin.startsWith("https://") ? origin.slice("https://".length) : "";
+  if (!host || host.includes("/") || host.includes(":")) return false;
+  return suffixes.some(sfx => host.endsWith(sfx) && host.length > sfx.length);
 }
 
 /**

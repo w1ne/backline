@@ -158,3 +158,127 @@ class SongModeTest(unittest.TestCase):
         self.assertLess(b1.mean(), b2.mean())
         self.assertLessEqual(abs(int(b2[0]) - int(b1[-1])), 2)
         self.assertEqual(len(sleeps), 8)  # every sliced block was paced
+
+
+class SongModeFollowsSwitchesTest(unittest.TestCase):
+    def drive(self, msgs):
+        requests, packets = [], []
+
+        class Model:
+            def generate(self, params):
+                requests.append(params)
+                return np.zeros((round(params.audio_duration * server.TARGET_SR), 2), dtype=np.float32)
+
+        async def send_binary(packet):
+            packets.append(packet)
+
+        async def send_json(_):
+            pass
+
+        async def fake_sleep(_):
+            pass
+
+        async def run():
+            session = server.Session(Model())
+            for seq, m in enumerate(msgs, 1):
+                await session.handle_block(dict(seq=seq, bars=2, **m), send_binary, send_json)
+
+        with patch.object(server, 'SONG_MODE', True), patch.object(server, 'BLOCK_V2', True), \
+             patch.object(server, 'pace_sleep', fake_sleep), \
+             patch.object(server, '_write_temp_wav', return_value='/tmp/backline-test-source.wav'), \
+             patch.object(server.os, 'unlink'):
+            asyncio.run(run())
+        return requests, packets
+
+    def test_genre_or_instrument_switch_re_renders_with_context_and_tempo_drift_does_not(self):
+        base = dict(bpm=100, key='A minor', genre='lofi', instruments=['drums', 'bass'])
+        requests, packets = self.drive([
+            base, base,
+            dict(base, genre='rock'),                      # style switch -> repaint from here
+            dict(base, genre='rock', bpm=104),             # 4% drift -> keep slicing
+            dict(base, genre='rock', bpm=104, instruments=['drums', 'bass', 'keys']),  # switch -> repaint
+        ])
+        self.assertEqual([p.task_type for p in requests], ['text2music', 'repaint', 'repaint'])
+        self.assertIn('rock', requests[1].prompt.lower())
+        self.assertEqual(requests[1].repainting_start, 2 * 4.8)   # 9.6 s already heard as context
+        self.assertEqual(len(packets), 5)
+
+    def test_dynamics_thinning_the_instruments_does_not_re_render_but_a_toggle_does(self):
+        base = dict(bpm=100, key='A minor', genre='lofi', enabled=['drums', 'bass', 'keys'])
+        requests, _ = self.drive([
+            dict(base, instruments=['drums', 'bass', 'keys']),
+            dict(base, instruments=['drums', 'bass']),                 # busy player: keys thinned out
+            dict(base, instruments=['drums', 'bass', 'keys', 'lead']), # space: lead fill
+            dict(base, enabled=['drums', 'bass'], instruments=['drums', 'bass']),  # user switched keys off
+        ])
+        self.assertEqual([p.task_type for p in requests], ['text2music', 'repaint'])
+        self.assertNotIn('electric piano', requests[1].prompt.lower())
+
+    def test_relative_key_flip_is_ignored_key_change_re_segments_big_tempo_jump_restarts(self):
+        base = dict(bpm=100, key='A minor', genre='lofi', instruments=['drums', 'bass'])
+        requests, _ = self.drive([
+            base,
+            dict(base, key='C major'),            # relative key: same scale, nothing happens
+            dict(base, key='G major'),            # real key change: repaint from here in G
+            dict(base, key='G major', bpm=125),   # 25% jump: fresh song
+        ])
+        self.assertEqual([p.task_type for p in requests], ['text2music', 'repaint', 'text2music'])
+        self.assertEqual(requests[1].key_scale, 'G major')
+        self.assertTrue(server.same_scale('A minor', 'C major'))
+        self.assertTrue(server.same_scale('F# minor', 'A major'))
+        self.assertFalse(server.same_scale('A minor', 'A major'))
+
+
+class VoiceFollowingTest(unittest.TestCase):
+    def test_segment_uses_cover_on_the_sung_audio_once_a_full_segment_was_heard(self):
+        requests, written = [], []
+
+        class Model:
+            def generate(self, params):
+                requests.append(params)
+                return np.zeros((round(params.audio_duration * server.TARGET_SR), 2), dtype=np.float32)
+
+        def write(audio, sr=server.TARGET_SR):
+            written.append((audio.shape, sr))
+            return '/tmp/backline-test-source.wav'
+
+        async def nothing(*_):
+            pass
+
+        async def run():
+            session = server.Session(Model())
+            session.ingest_audio(b'JUNK' + b'\x00' * 100)          # unknown frame is ignored
+            self.assertEqual(len(session.hum), 0)
+            msg = dict(bpm=120, bars=2, key='C major', instruments=['drums', 'bass'])
+            await session.handle_block(dict(seq=1, **msg), nothing, nothing)   # nothing sung yet
+            # 32 s of singing = one 16-bar segment at 120 bpm
+            pcm = (np.zeros(32 * server.HUM_SR, dtype='<i2')).tobytes()
+            for i in range(0, len(pcm), 8000):
+                session.ingest_audio(server.HUM_MAGIC + pcm[i:i + 8000])
+            self.assertEqual(len(session.hum), 32 * server.HUM_SR)
+            session.song = None                                     # force the next render
+            await session.handle_block(dict(seq=2, **msg), nothing, nothing)
+
+        with patch.object(server, 'SONG_MODE', True), patch.object(server, 'BLOCK_V2', True), \
+             patch.object(server, 'SONG_COVER', True), patch.object(server, 'pace_sleep', nothing), \
+             patch.object(server, '_write_temp_wav', side_effect=write), patch.object(server.os, 'unlink'):
+            asyncio.run(run())
+
+        self.assertEqual([p.task_type for p in requests], ['text2music', 'cover'])
+        self.assertEqual(requests[1].audio_cover_strength, server.creativity_to_cover_strength(0.5))
+        self.assertEqual(requests[1].audio_duration, 32)
+        self.assertIsNone(requests[1].repainting_start)
+        self.assertEqual(written[-1], ((32 * server.HUM_SR, 1), server.HUM_SR))
+
+
+class ControlsReachAceTest(unittest.TestCase):
+    def test_accompaniment_tiles_become_prompt_instruments(self):
+        p = server.build_prompt('lofi', ['drums', 'bass'], extras=['sax', 'strings', 'bogus'])
+        self.assertIn('saxophone', p)
+        self.assertIn('string section', p)
+        self.assertNotIn('bogus', p)
+
+    def test_creativity_sets_how_tightly_the_cover_follows(self):
+        self.assertEqual(server.creativity_to_cover_strength(0.0), server.COVER_STRENGTH_TIGHT)
+        self.assertEqual(server.creativity_to_cover_strength(1.0), server.COVER_STRENGTH_LOOSE)
+        self.assertGreater(server.creativity_to_cover_strength(0.3), server.creativity_to_cover_strength(0.8))

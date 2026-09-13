@@ -83,15 +83,14 @@ describe('the listening LCD', () => {
     expect(lcd({ onsets: 7, pendingBpm: 98.4 }, midi)).toBe('LISTENING · MIC ✓ MIDI ✓ · 7/12 · ~98 BPM');
   });
 
-  it('counts onsets for a mic-only session too once the count-in is off', () => {
-    expect(lcd({ onsets: 7, pendingBpm: 98.4 }, { countIn: false })).toBe('LISTENING · MIC ✓ MIDI ✗ · 7/12 · ~98 BPM');
+  it('invites singing with count-in off too', () => {
+    expect(lcd({ onsets: 7, pendingBpm: 98.4 }, { countIn: false })).toBe('LISTENING · MIC ✓ MIDI ✗ · SING TO START');
   });
 
-  it('under a mic alone with the count-in on, the syllable rate is a hint and the singer sets the tempo', () => {
-    expect(lcd({ onsets: 7, pendingBpm: 140.4 })).toBe('LISTENING · MIC ✓ MIDI ✗ · ~140 spoken · TAP OR SET BPM');
-    expect(lcd({ onsets: 0 })).toBe('LISTENING · MIC ✓ MIDI ✗ · TAP OR SET BPM');
-    // once the tempogram has a beat it is the suggestion, no longer marked as syllable rate
-    expect(lcd({ onsets: 20, pendingBpm: 140.4, voiceBpm: 96.2 })).toBe('LISTENING · MIC ✓ MIDI ✗ · ~96 · TAP OR SET BPM');
+  it('invites a solo singer to start without a tempo setting', () => {
+    expect(lcd({ onsets: 7, pendingBpm: 140.4 })).toBe('LISTENING · MIC ✓ MIDI ✗ · SING TO START');
+    expect(lcd({ onsets: 0 })).toBe('LISTENING · MIC ✓ MIDI ✗ · SING TO START');
+    expect(lcd({ onsets: 20, pendingBpm: 140.4, voiceBpm: 96.2 })).toBe('LISTENING · MIC ✓ MIDI ✗ · SING TO START');
   });
 
   it('drops the estimate once the band is live', () => {
@@ -162,6 +161,22 @@ describe('engine and genre controls while power is off', () => {
     expect(store.state.power).toBe('off');
     root.querySelector<HTMLButtonElement>('#genre-chips .chip[data-genre="funk"]')!.click();
     expect(store.state.genre).toBe('funk');
+  });
+
+  it('does not show a playback pill in the browser', () => {
+    const root = setup();
+    renderLive(root, store, actions);
+    const pill = root.querySelector<HTMLElement>('#playback-target')!;
+    expect(pill.style.display).toBe('none');
+    expect(pill.textContent).toBe('');
+  });
+
+  it('offers every engine as a selectable model', () => {
+    const root = setup();
+    renderLive(root, store, actions);
+    expect(root.querySelector<HTMLButtonElement>('#engine-acestep')!.hidden).toBe(false);
+    expect(root.querySelector<HTMLButtonElement>('#engine-amt')!.hidden).toBe(false);
+    expect(root.querySelector<HTMLButtonElement>('#engine-patterns')!.hidden).toBe(false);
   });
 
   it('flags ACE/AMT as offline in the switch but keeps them clickable', () => {

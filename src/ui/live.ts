@@ -9,7 +9,6 @@ import type { AppState, Store } from './state';
 import type { SourceState } from '../listener/listener';
 import { shortDeviceName } from '../audio/devices';
 import { isPhoneUA } from '../listener/micConstraints';
-import { waitsForGivenTempo, tempoHint } from '../band/startPolicy';
 
 const ALL_KEYS: { root: number; mode: 'major' | 'minor' }[] = [
   ...NOTE_NAMES.map((_, root) => ({ root, mode: 'major' as const })),
@@ -52,6 +51,12 @@ export interface LiveActions {
   setVoiceMonitor?(enabled: boolean): void;
   /** ms a toggled instrument spends showing "joining…"/"leaving…" before it settles */
   changeLatencyMs?: number;
+  /** SAMPLE pad: begin capturing a found sound from the mic */
+  startSampleRecording?(): void;
+  /** SAMPLE pad: stop capturing; the clip is ready to trigger once this settles */
+  stopSampleRecording?(): void;
+  /** SAMPLE pad: play the captured clip, snapped to the next beat when the band is running */
+  triggerSample?(): void;
 }
 
 const actionsRef = new WeakMap<HTMLElement, LiveActions>();
@@ -84,8 +89,11 @@ export function renderLive(root: HTMLElement, store: Store, actions: LiveActions
   update(screen, store.state, actions.changeLatencyMs ?? 0);
   // Only the Pi remote has somewhere else to play; in the browser the pill says nothing useful.
   const target = screen.querySelector<HTMLElement>('#playback-target')!;
-  target.hidden = actions.playbackTarget !== 'Pi';
-  target.textContent = `Playback: ${actions.playbackTarget ?? 'This browser'}`;
+  const onPi = actions.playbackTarget === 'Pi';
+  target.hidden = !onPi;
+  // .pill sets display:flex, which beats the [hidden] attribute -- force it off the page.
+  target.style.display = onPi ? '' : 'none';
+  target.textContent = onPi ? 'Playback: Pi' : '';
   if (actions.setPlaying) {
     const audio = screen.querySelector<HTMLButtonElement>('#enable-audio')!;
     audio.hidden = false;
@@ -98,6 +106,45 @@ function skeleton(): string {
     <div class="screen" data-live>
       <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
       <div class="bar">
+        <div class="mascot" id="mascot" aria-hidden="true">
+          <svg viewBox="0 0 140 130" width="100%" height="100%" stroke-linejoin="round" stroke-linecap="round">
+            <g class="m-body">
+              <ellipse cx="72" cy="126" rx="40" ry="4" fill="#000" opacity=".4"/>
+              <!-- back wing -->
+              <g class="m-wing m-wing-b"><path d="M70 60 q-6 -34 -48 -30 q22 4 20 16 q-16 -4 -24 8 q18 -2 22 10 q-10 2 -12 10 q22 -8 42 -14z" fill="#f3ecd2" stroke="#2b2018" stroke-width="2.5"/></g>
+              <!-- sampler -->
+              <g class="m-box"><path d="M12 92 h48 l6 6 v22 h-48 l-6 -6z" fill="#e2453c" stroke="#2b2018" stroke-width="2.5"/>
+                <rect class="m-pad" style="--s:0" x="20" y="96" width="9" height="7" rx="1.5" fill="#f3ecd2" stroke="#2b2018" stroke-width="1"/><rect class="m-pad" style="--s:1" x="31" y="96" width="9" height="7" rx="1.5" fill="#f3ecd2" stroke="#2b2018" stroke-width="1"/><rect class="m-pad" style="--s:2" x="42" y="96" width="9" height="7" rx="1.5" fill="#f3ecd2" stroke="#2b2018" stroke-width="1"/><rect class="m-pad" style="--s:3" x="20" y="105" width="9" height="7" rx="1.5" fill="#f3ecd2" stroke="#2b2018" stroke-width="1"/><rect class="m-pad" style="--s:4" x="31" y="105" width="9" height="7" rx="1.5" fill="#f3ecd2" stroke="#2b2018" stroke-width="1"/><rect class="m-pad" style="--s:5" x="42" y="105" width="9" height="7" rx="1.5" fill="#f3ecd2" stroke="#2b2018" stroke-width="1"/>
+                <circle cx="56" cy="99" r="2.5" fill="#2aff95"/><circle cx="56" cy="107" r="2.5" fill="#f3ecd2"/>
+                <text x="16" y="118" font-family="var(--display)" font-size="6" fill="#2aff95" stroke="none">HACKATHON</text></g>
+              <!-- body -->
+              <path d="M52 64 q28 -22 60 -6 q20 12 12 40 q-4 14 -22 14 h-30 q-8 -4 -14 -18 q-8 -18 -6 -30z" fill="#d9b06a" stroke="#2b2018" stroke-width="2.5"/>
+              <path d="M78 74 q6 -2 8 4 M96 70 q6 0 6 6 M86 88 q6 -2 8 4 M108 92 q4 -2 8 2" stroke="#f3ecd2" stroke-width="2.5" stroke-dasharray="3 3" fill="none"/>
+              <!-- hind + front legs -->
+              <g class="m-leg m-leg-r"><path d="M108 100 q6 10 2 22 h-8 l4 -18z" fill="#d9b06a" stroke="#2b2018" stroke-width="2.5"/></g>
+              <g class="m-leg m-leg-l"><path d="M84 104 q2 10 -2 18 h-8 l4 -16z" fill="#d9b06a" stroke="#2b2018" stroke-width="2.5"/></g>
+              <g class="m-arm"><path d="M52 84 q-14 4 -18 14" stroke="#d9b06a" stroke-width="9" fill="none"/><path d="M52 84 q-14 4 -18 14" stroke="#2b2018" stroke-width="12" fill="none" opacity="0"/><path d="M34 98 q-2 4 2 6" stroke="#2b2018" stroke-width="2.5" fill="none"/></g>
+              <!-- front wing -->
+              <g class="m-wing m-wing-f"><path d="M76 56 q10 -40 62 -30 q-26 6 -22 20 q20 -6 30 8 q-22 -2 -26 12 q12 2 14 12 q-30 -10 -58 -12z" fill="#f3ecd2" stroke="#2b2018" stroke-width="2.5"/>
+                <path d="M92 36 q8 6 6 14 M106 40 q6 6 4 12 M118 50 q6 4 4 10" stroke="#2b2018" stroke-width="1.5" fill="none" opacity=".6"/></g>
+              <!-- head -->
+              <g class="m-head">
+                <path d="M40 40 l-8 -26 M50 38 l-2 -26" stroke="#2b2018" stroke-width="7" fill="none"/>
+                <path d="M40 40 l-8 -26 M50 38 l-2 -26" stroke="#a67c3c" stroke-width="4" fill="none"/>
+                <path d="M36 26 h6 M44 24 h6 M34 20 h6" stroke="#2b2018" stroke-width="1.5"/>
+                <path d="M62 40 l14 -14 l-2 18z" fill="#d9b06a" stroke="#2b2018" stroke-width="2.5"/>
+                <path d="M66 40 l8 -8 l-1 10z" fill="#e8b3b8"/>
+                <path d="M30 44 q14 -16 40 -6 q10 8 6 22 q-6 12 -22 10 l-16 -4 q-10 -6 -8 -22z" fill="#d9b06a" stroke="#2b2018" stroke-width="2.5"/>
+                <path d="M44 46 q6 -2 8 2 M38 54 q4 -2 6 2 M52 62 q4 0 6 2" stroke="#f3ecd2" stroke-width="2" stroke-dasharray="2 3" fill="none"/>
+                <g class="m-eyes"><ellipse cx="52" cy="54" rx="6" ry="4.5" fill="#fff" stroke="#2b2018" stroke-width="2"/><circle cx="52" cy="54" r="3" fill="#2aff95"/><circle cx="52" cy="54" r="1.4" fill="#2b2018"/></g>
+                <circle cx="31" cy="62" r="3" fill="#2b2018"/>
+                <g class="m-flower"><circle cx="30" cy="36" r="5" fill="#f6d5dc" stroke="#2b2018" stroke-width="1.5"/><circle cx="30" cy="36" r="1.5" fill="#e2453c"/></g>
+              </g>
+              <g class="m-flower m-flower-2"><circle cx="128" cy="86" r="5" fill="#f6d5dc" stroke="#2b2018" stroke-width="1.5"/><circle cx="128" cy="86" r="1.5" fill="#e2453c"/></g>
+              <g class="m-note"><path d="M112 26 v-13 l9 -3 v13" stroke="#ffd400" stroke-width="3" fill="none"/><circle cx="109" cy="26" r="4" fill="#ffd400"/><circle cx="118" cy="23" r="4" fill="#ffd400"/></g>
+            </g>
+          </svg>
+        </div>
         <div class="bar-top">
           <h1 class="logo">duet<i>.ai</i></h1>
           <span class="pill" id="live-pill"></span>
@@ -108,10 +155,10 @@ function skeleton(): string {
         <span class="lcd" id="lcd"></span>
         <div class="bar-input">
           <p class="connection-line" id="input-status"></p>
+          <p class="connection-line band-line"><span id="band-status" role="status"></span><span id="model-latency"></span></p>
           <button type="button" id="enable-audio" class="audio-start">Enable sound</button>
         </div>
       </div>
-      <div class="section-heading band-heading"><div><h2>Your band</h2><p id="band-status" role="status"></p></div><span id="model-latency"></span></div>
       <div class="readout">
         <div class="ro-tempo"><small>Tempo</small><strong id="ro-tempo">&mdash;</strong></div>
         <div class="ro-side">
@@ -159,6 +206,16 @@ function skeleton(): string {
               </button>
             </div>`,
         ).join('')}
+      </div>
+      <div class="inst" id="sample-tile">
+        <div class="pad">
+          <button type="button" class="pad-btn sample" id="sample-btn"
+                  aria-label="Hold to record a found sound, tap to play it back">
+            <span class="dot"></span>
+            <span class="name">Sample</span>
+            <span class="st"><span class="st-text"></span></span>
+          </button>
+        </div>
       </div>
       <div class="row2">
         <div class="zone zone--pink knob-zone">
@@ -235,13 +292,13 @@ function skeleton(): string {
         <div class="zone zone--orange engine">
           <span class="zone-label">Accompaniment model</span>
           <div class="engine-keys" id="engine-choice">
-            <button type="button" class="engine-key" id="engine-patterns" data-engine="patterns" hidden>
+            <button type="button" class="engine-key" id="engine-patterns" data-engine="patterns">
               <span class="engine-key-text">
                 <span class="engine-key-name">Patterns</span>
               </span>
               <span class="engine-led" data-engine-led="patterns"></span>
             </button>
-            <button type="button" class="engine-key" id="engine-acestep" data-engine="acestep" hidden>
+            <button type="button" class="engine-key" id="engine-acestep" data-engine="acestep">
               <span class="engine-key-text">
                 <span class="engine-key-name">ACE-Step</span>
               </span>
@@ -332,6 +389,35 @@ function wireControls(screen: HTMLElement, store: Store): void {
       actions().toggleAccompPreset?.(preset, !btn.classList.contains('on'));
     });
   });
+  const sampleBtn = screen.querySelector<HTMLButtonElement>('#sample-btn')!;
+  // Hold to (re-)record a found sound; a quick tap plays back a clip that's already there.
+  // A long-press threshold is only meaningful once a clip exists — with none yet, any press
+  // starts capturing straight away.
+  const SAMPLE_LONG_PRESS_MS = 350;
+  let sampleHoldTimer: ReturnType<typeof setTimeout> | undefined;
+  sampleBtn.addEventListener('pointerdown', e => {
+    sampleBtn.setPointerCapture(e.pointerId);
+    if (store.state.sampleReady) {
+      sampleHoldTimer = setTimeout(() => {
+        sampleHoldTimer = undefined;
+        actions().startSampleRecording?.();
+      }, SAMPLE_LONG_PRESS_MS);
+    } else {
+      actions().startSampleRecording?.();
+    }
+  });
+  const releaseSample = () => {
+    if (sampleHoldTimer) {
+      clearTimeout(sampleHoldTimer);
+      sampleHoldTimer = undefined;
+      actions().triggerSample?.();
+      return;
+    }
+    actions().stopSampleRecording?.();
+  };
+  sampleBtn.addEventListener('pointerup', releaseSample);
+  sampleBtn.addEventListener('pointercancel', releaseSample);
+
   screen.querySelector<HTMLButtonElement>('#record-midi')!.addEventListener('click', () => actions().toggleRecord?.());
   screen.querySelector<HTMLButtonElement>('#pause-band')!.addEventListener('click', () => actions().togglePause?.());
 
@@ -433,6 +519,7 @@ function update(screen: HTMLElement, s: AppState, changeLatencyMs: number): void
   updateHeader(screen, s);
   updateEngine(screen, s);
   updateAccompTiles(screen, s);
+  updateSampleTile(screen, s);
   updateReadouts(screen, s);
   updateMicMute(screen, s);
   updateVoiceMonitor(screen, s);
@@ -499,13 +586,8 @@ function lcdText(s: AppState): string {
     return `LIVE · BAR ${s.bar}${s.input.chord ? ` · ${chordName(s.input.chord)}` : ''}${flags}`;
   }
   const who = `LISTENING · MIC ${mark(s.sources.mic)} ${midiLabel(s)}`;
-  // A singer alone gives the tempo (tap or typed) and gets a count-in; the tempogram's beat
-  // (or, before it has one, the syllable rate) is shown as the hint. See src/band/startPolicy.ts.
   const micOnly = s.sources.mic === 'on' && s.sources.midi !== 'on';
-  if (waitsForGivenTempo({ micOnly, countIn: s.countIn, hasBpmOverride: false })) {
-    const hint = tempoHint(s.input.pendingBpm, s.input.voiceBpm);
-    return `${who}${hint ? ` · ${hint}` : ''} · TAP OR SET BPM`;
-  }
+  if (micOnly) return `${who} · SING TO START`;
   // once there is enough to guess with, show the running estimate — it is the
   // only feedback that the mic is hearing a tempo and not just noise
   const guess = s.input.pendingBpm ? ` · ~${Math.round(s.input.pendingBpm)} BPM` : '';
@@ -554,18 +636,30 @@ export function accompPresetMuted(preset: AccompPreset, enabled: Record<Instrume
 
 function updateAccompTiles(screen: HTMLElement, s: AppState): void {
   const row = screen.querySelector<HTMLElement>('#accomp-tiles')!;
-  row.hidden = s.engine !== 'amt';
+  // AMT plays these as GM presets, ACE-Step renders them into the arrangement; Patterns has
+  // no place for them.
+  row.hidden = s.engine !== 'amt' && s.engine !== 'acestep';
 
   screen.querySelectorAll<HTMLButtonElement>('#accomp-tiles button[data-preset]').forEach(btn => {
     const preset = btn.dataset.preset as AccompPreset;
     const on = s.accompPresets.includes(preset);
-    const muted = accompPresetMuted(preset, s.enabled);
-    const active = on && !muted && !!s.accompActive[preset];
+    // only AMT routes a preset through a band role that can be switched off
+    const muted = s.engine === 'amt' && accompPresetMuted(preset, s.enabled);
+    const active = on && !muted && (s.engine === 'acestep' ? s.locked : !!s.accompActive[preset]);
     btn.classList.toggle('on', on);
     btn.classList.toggle('active', active);
     btn.setAttribute('aria-pressed', String(on));
     btn.querySelector<HTMLElement>('.st-text')!.textContent = !on ? 'off' : muted ? 'muted' : active ? 'playing' : 'ready';
   });
+}
+
+function updateSampleTile(screen: HTMLElement, s: AppState): void {
+  const btn = screen.querySelector<HTMLButtonElement>('#sample-btn')!;
+  btn.classList.toggle('recording', s.sampleRecording);
+  btn.classList.toggle('on', s.sampleReady);
+  btn.setAttribute('aria-pressed', String(s.sampleReady));
+  btn.querySelector<HTMLElement>('.st-text')!.textContent =
+    s.sampleRecording ? 'rec…' : s.sampleReady ? 'tap to play' : 'hold to record';
 }
 
 function updateHeader(screen: HTMLElement, s: AppState): void {
@@ -668,16 +762,18 @@ const lastBar = new WeakMap<HTMLElement, number>();
 function updateBeats(screen: HTMLElement, s: AppState): void {
   const beats = screen.querySelector<HTMLElement>('#beats')!;
   const tiles = screen.querySelector<HTMLElement>('#inst-tiles')!;
+  const bar = screen.querySelector<HTMLElement>('.bar')!;
   if (!s.locked || !s.input.bpm) {
     beats.classList.remove('run');
     tiles.classList.remove('run');
+    bar.classList.remove('run');
     lastBar.delete(screen);
     return;
   }
   screen.style.setProperty('--beat', `${60 / s.input.bpm}s`);
   if (lastBar.get(screen) === s.bar && beats.classList.contains('run')) return;
   lastBar.set(screen, s.bar);
-  for (const el of [beats, tiles]) {
+  for (const el of [beats, tiles, bar]) {
     el.classList.remove('run');
     void el.offsetWidth; // reflow so the animation restarts on the downbeat
     el.classList.add('run');

@@ -11,11 +11,12 @@ import { Listener } from './listener/listener';
 import { MidiSource } from './listener/midiSource';
 import { TapTempo } from './listener/tapTempo';
 import { countInClicks } from './band/countIn';
-import { waitsForGivenTempo } from './band/startPolicy';
+import { initialTempo } from './band/startPolicy';
 import { SECTION_LABEL, type FormResult, type Section } from './band/form';
 import { PlanFreshness, chooseChord, chooseSection } from './band/planOverride';
 import { outputLatencyMs } from './audio/outputLatency';
 import { Drone } from './players/drone';
+import { FoundSoundSampler } from './audio/foundSound';
 import { WhiteNoise } from './players/whiteNoise';
 import { LOCAL_SOUNDS } from './device/arturia';
 import { MidiMonitor } from './players/monitor';
@@ -89,6 +90,7 @@ const drone = new Drone();
 let morph: MorphBus | undefined;
 let mic: MicSource | undefined;
 let vocalChain: VocalChain | undefined;
+let foundSound: FoundSoundSampler | undefined;
 let midi: MidiSource | undefined;
 /** true once players.init() has built the AudioContext the morph bus has to live in */
 let audioReady = false;
@@ -269,6 +271,19 @@ function applyVoiceMonitor(): void {
   vocalChain.setEnabled(allowed && !store.state.micMuted);
 }
 
+/** Builds the found-sound sampler the first time the mic's source node and the band's
+ *  master chain both exist; a no-op once built. Subscribes it to the MORPH bus once so it
+ *  keeps following that device without any further wiring. */
+function applyFoundSound(): void {
+  if (foundSound || !audioReady || !mic?.sourceNode) return;
+  const reverbBus = players.reverbBus();
+  const masterInput = players.preLimiterInput();
+  if (!reverbBus || !masterInput) return;
+  foundSound = new FoundSoundSampler(mic.sourceNode);
+  foundSound.connectMaster(masterInput, reverbBus);
+  players.onMorphChange(node => foundSound?.setMorphNode(node));
+}
+
 /** Pushes the store's routing into the audio graph: pads via Players, engines via the band. */
 function applyRouting(): void {
   const r = store.state.routing;
@@ -295,7 +310,7 @@ function makeBand(engine: EngineChoice): BandEngine {
   accompActivity.clear();
   store.update({activeParts: {}, accompActive: {}, modelLatencyMs:null, responseLatencyMs:null, queueLatencyMs:null, requestAgeMs:null, tooLate:0, accompanimentStatus: 'Listening'});
   if (engine === 'lyria') return new LyriaEngine(players.rawContext());
-  if (engine === 'acestep') return new AceStepEngine(players.rawContext());
+  if (engine === 'acestep') return new AceStepEngine(players.rawContext(), () => mic?.mediaStream);
   if (engine === 'amt') return new AmtEngine(players, listener!, undefined, undefined, undefined, () => outputLatencyMs(players.rawContext()));
   return new PatternEngine(players, PATTERNS);
 }
@@ -478,6 +493,7 @@ async function power() {
   listener.setMicMuted(store.state.micMuted);
   monitor = new MidiMonitor(players.rawContext(), store.state.sound);
   const activeMonitor = monitor;
+  activeMonitor.onError = error => store.update({ error: `Keyboard sound: ${String(error)}` });
   monitor.start().then(() => PI_EDITION ? activeMonitor.preload(LOCAL_SOUNDS) : undefined)
     .catch(error => store.update({ error: `Keyboard sound: ${String(error)}` }));
   band = makeBand(engine);
@@ -505,18 +521,21 @@ async function power() {
     const p = input.pitch;
     viz?.addPitch(Tone.now(), p ? p.midi + p.cents / 100 : null, p?.stable ?? false);
     // The service's chord wins the display too while its plan is fresh — see planOverride.ts.
+    const startingBpm = !store.state.locked ? initialTempo({
+      micOnly: micIsOnlySource(), stablePitch: input.pitch?.stable ?? false,
+      bpm: input.bpm, voiceBpm: input.voiceBpm,
+    }) : null;
+    if (startingBpm != null) {
+      listener!.setSessionTempo(startingBpm);
+      input = { ...input, bpm: startingBpm };
+    }
     const fresh = planFreshness.chordFresh(store.state.bar);
     store.update({ input: fresh ? { ...input, chord: chooseChord(store.state.engine, fresh, planChord, input.chord) } : input });
     if (input.key) drone.setRoot(input.key.root);
     if (input.key) band!.set({ key: input.key });
-    if (input.bpm && !store.state.locked && store.state.paused) {
-      store.update({ locked: true });
-      lastFollowedBpm = input.bpm;
-    } else if (input.bpm && !store.state.locked) {
-      // A singer alone: the detected tempo is syllable rate, not beat, so with the count-in on
-      // the band waits for a tapped or typed tempo (the LCD shows the estimate as a hint).
-      if (waitsForGivenTempo({ micOnly: micIsOnlySource(), countIn: store.state.countIn, hasBpmOverride: listener!.hasBpmOverride })) return;
-      const db = listener!.downbeat! + perfOffset();
+    if (input.bpm && !store.state.locked) {
+      const downbeat = listener!.downbeat;
+      const db = downbeat == null ? Tone.now() + 0.15 : downbeat + perfOffset();
       const barLen = 240 / input.bpm;
       let first = db;
       while (first < Tone.now() + 0.1) first += barLen;
@@ -550,6 +569,7 @@ async function power() {
   await listener.start();
   store.update({ sources: { ...listener.sourceStatus } });
   applyVoiceMonitor();
+  applyFoundSound();
   // labels only come back from enumerateDevices() once a media permission has been
   // granted, so the pickers are worth re-reading right after the mic starts
   void refreshDevices().catch(() => undefined);
@@ -795,6 +815,23 @@ const liveActions: LiveActions = {
     whiteNoise.setLevel(noiseVolume);
     store.update({ noiseVolume });
   },
+  startSampleRecording: () => {
+    if (!foundSound || foundSound.isRecording) return;
+    store.update({ sampleRecording: true });
+    void foundSound.startRecording();
+  },
+  stopSampleRecording: () => {
+    if (!foundSound?.isRecording) return;
+    foundSound.stopRecording().then(() => {
+      store.update({ sampleRecording: false, sampleReady: foundSound!.hasClip });
+    });
+  },
+  triggerSample: () => {
+    if (!foundSound?.hasClip) return;
+    // 0 means the Transport isn't running (no lock yet) -- play immediately instead of
+    // silently scheduling for a "next beat" that will never come.
+    foundSound.trigger(Tone.getTransport().nextSubdivision('4n') || undefined);
+  },
   setSound: sound => {
     if (sound === store.state.sound) return;
     monitor?.setSound(sound).catch(error => store.update({error: `Keyboard sound: ${String(error)}`}));
@@ -872,7 +909,15 @@ players.onSchedule = (inst, events, barStart, bpm) => {
     if (scheduled.length > 200) scheduled.shift();
   }
 };
+const failedAccompSamples = new Set<number>();
+const sampleLoadMessage = 'An accompaniment instrument could not load. Retrying…';
+players.onSampleError = (gmProgram) => {
+  failedAccompSamples.add(gmProgram);
+  store.update({ error: sampleLoadMessage });
+};
 players.onAccompSchedule = (gmProgram, events, barStart, bpm) => {
+  failedAccompSamples.delete(gmProgram);
+  if (!failedAccompSamples.size && store.state.error === sampleLoadMessage) store.update({ error: null });
   for (const preset of GM_INSTRUMENTS[gmProgram]?.presets ?? []) accompActivity.add(preset, events, barStart, bpm);
 };
 

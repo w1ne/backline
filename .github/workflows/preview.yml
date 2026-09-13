@@ -30,6 +30,11 @@ jobs:
         with: { node-version: 20, cache: npm }
       - run: npm ci
       - run: npm test
+      - uses: actions/cache@v4
+        with:
+          path: public/samples/amt
+          key: amt-samples-${{ hashFiles('services/amt-samples-manifest.json') }}
+      - run: npm run samples:amt
       - run: npx vite build --base=/
       - run: npx wrangler@3 pages deploy dist --project-name backline --branch "${GITHUB_REF_NAME}" --commit-dirty=true
         env:

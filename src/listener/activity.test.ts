@@ -179,3 +179,23 @@ describe('ActivityTracker level reference', () => {
     expect(Math.abs(loud.dynamics.intensity - quiet.dynamics.intensity)).toBeLessThan(0.05);
   });
 });
+
+it('held notes suppress silence without fabricating onset density', () => {
+  const held = new ActivityTracker();
+  const baseline = new ActivityTracker();
+  held.onset(0); baseline.onset(0);
+  held.setHeld(true, 0);
+  for (let beat = 0; beat < 40; beat++) {
+    const sounding = held.tick(beat, beat * .5);
+    const ordinary = baseline.tick(beat, beat * .5);
+    expect(sounding.silenceBeats).toBe(0);
+    expect(sounding.space).toBe(false);
+    expect(sounding.intensity).toBe(ordinary.intensity);
+  }
+  held.setHeld(false, 20);
+  expect(held.tick(40, 20).silenceBeats).toBe(0);
+  expect(held.tick(41, 20.5).silenceBeats).toBeCloseTo(1);
+  expect(held.tick(42, 21).space).toBe(true);
+  held.reset();
+  expect(held.tick(100, 50).space).toBe(false);
+});
