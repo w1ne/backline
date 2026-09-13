@@ -44,6 +44,7 @@ interface PlanNote {
   /** Preserve the model instrument within any melodic role. */
   gmInstr?: number;
   captureTimeSec?: number;
+  phraseSignal?: AbortSignal;
 }
 
 /** Minimal notifier interface the engine needs from the app's Listener, kept narrow so
@@ -132,6 +133,18 @@ export class AmtEngine implements BandEngine {
   tooLate = 0;
   private detach?: () => void;
   private inputSession = 0;
+  private phraseController = new AbortController();
+  private heldNotes = new Set<string>();
+  private legacyOnsetAt = -Infinity;
+  private latestOnsetCapture = -Infinity;
+
+  /** Each onset invalidates the entire outstanding answer, including sampler loads
+   * and native scheduled starts. Backing batches never receive this signal. */
+  private interruptPhrase(): void {
+    this.phraseController.abort();
+    this.phraseController = new AbortController();
+    this.pending = this.pending.filter(n => !n.phraseSignal);
+  }
 
   constructor(
     private players: PlayersLike,
@@ -153,6 +166,10 @@ export class AmtEngine implements BandEngine {
   }
 
   async start(bpm: number, firstBarAt: number): Promise<void> {
+    this.interruptPhrase();
+    this.heldNotes.clear();
+    this.legacyOnsetAt = -Infinity;
+    this.latestOnsetCapture = -Infinity;
     this.stopping = false;
     this.lastResponseCapture = -Infinity;
     this.lastResponseEstimate = Infinity;
@@ -239,12 +256,16 @@ export class AmtEngine implements BandEngine {
       if (this.stopping || session !== this.inputSession) return;
       this.latestCaptureTimeSec = e.timeSec;
       if (e.type === 'note_off') {
+        this.heldNotes.delete(e.id);
         if (e.durationSec !== undefined) {
           this.releaseBuf.push({ id: e.id, dur: e.durationSec * this.bpm / 60, captureTimeSec: e.timeSec });
           this.flushNotes();
         }
         return;
       }
+      this.latestOnsetCapture = e.timeSec;
+      this.heldNotes.add(e.id);
+      this.interruptPhrase();
       const beat = ((e.timeSec + inputOffset - this.firstBarAt) * this.bpm) / 60;
       if (beat < 0) return;
       this.noteBuf.push({ id: e.id, beat, pitch: e.midi, dur: DEFAULT_NOTE_DUR_BEATS,
@@ -252,6 +273,10 @@ export class AmtEngine implements BandEngine {
       this.flushNotes();
     }) || undefined : this.notes.onNote(n => {
       if (this.stopping || session !== this.inputSession) return;
+      this.legacyOnsetAt = this.now();
+      this.latestOnsetCapture = n.timeSec;
+      this.latestCaptureTimeSec = n.timeSec;
+      this.interruptPhrase();
       const beat = ((n.timeSec + inputOffset - this.firstBarAt) * this.bpm) / 60;
       if (beat < 0) return;
       this.noteBuf.push({ beat, pitch: n.midi, dur: DEFAULT_NOTE_DUR_BEATS, vel: n.velocity });
@@ -263,6 +288,8 @@ export class AmtEngine implements BandEngine {
 
   stop(): void {
     this.stopping = true;
+    this.interruptPhrase();
+    this.heldNotes.clear();
     this.responseTimings.clear();
     this.timingFlushPending = false;
     this.onResponseTiming?.(null);
@@ -447,6 +474,7 @@ export class AmtEngine implements BandEngine {
     const keep: PlanNote[] = [];
     const byBarVoice = new Map<string, PlanNote[]>();
     for (const n of this.pending) {
+      if (n.phraseSignal?.aborted) continue;
       if (this.firstBarAt + n.beat * spb < minTime) {
         this.tooLate++;
         continue;
@@ -459,7 +487,7 @@ export class AmtEngine implements BandEngine {
       const barNum = Math.floor(n.beat / BEATS_PER_BAR);
       // Notes on the 'keys' voice with different gmInstr are different real instruments
       // (see gmInstruments.ts) and must reach separate Players.scheduleAccompaniment() calls.
-      const key = `${barNum}:${n.voice}:${n.gmInstr ?? ''}`;
+      const key = `${barNum}:${n.voice}:${n.gmInstr ?? ''}:${n.phraseSignal ? 'phrase' : 'backing'}`;
       const list = byBarVoice.get(key) ?? [];
       list.push(n);
       byBarVoice.set(key, list);
@@ -477,9 +505,10 @@ export class AmtEngine implements BandEngine {
         velocity: n.vel * this.velocityAmount,
       }));
       const session = this.inputSession;
+      const signal = list[0].phraseSignal;
       const original = new Map(events.map((event, i) => [event, list[i]]));
       const onScheduled = (accepted: readonly NoteEvent[]) => {
-        if (this.stopping || session !== this.inputSession || !this.amount || !this.state.enabled[voice]) return;
+        if (signal?.aborted || this.stopping || session !== this.inputSession || !this.amount || !this.state.enabled[voice]) return;
         if (!accepted.length) return;
         if (!this.gotFirstNotes) {
           this.gotFirstNotes = true;
@@ -494,7 +523,7 @@ export class AmtEngine implements BandEngine {
       };
       const gmInstr = gmInstrStr ? Number(gmInstrStr) : undefined;
       if (gmInstr !== undefined && this.players.scheduleAccompaniment) {
-        this.players.scheduleAccompaniment(gmInstr, events, barStart, this.bpm, onScheduled);
+        this.players.scheduleAccompaniment(gmInstr, events, barStart, this.bpm, onScheduled, signal);
       } else {
         this.players.schedule(voice, events, barStart, this.bpm, onScheduled);
       }
@@ -577,12 +606,21 @@ export class AmtEngine implements BandEngine {
         Number.isFinite(n.dur) && n.dur > 0 && Number.isFinite(n.vel) && n.vel >= 0 && n.vel <= 1) : [];
       if (!notes.length) this.onStatus?.('Listening · resting');
       for (const n of notes) {
-        // Already handed to Players (or already queued): Tone has no way to cancel a
-        // triggered event, so the first scheduling of a note is the one that stands.
+        const phrase = msg.phraseResponse === true && Number.isInteger(msg.phraseInstrument)
+          && n.gmInstr === msg.phraseInstrument;
+        // Legacy listeners have no release lifecycle; retain a short onset guard.
+        // A cancellable GM sampler is required for remembered responses.
+        const stalePhrase = this.latestOnsetCapture > -Infinity
+          && (typeof msg.latestCaptureTimeSec !== 'number' || !Number.isFinite(msg.latestCaptureTimeSec)
+            || msg.latestCaptureTimeSec < this.latestOnsetCapture);
+        if (phrase && (stalePhrase || this.heldNotes.size || this.now() - this.legacyOnsetAt < .25
+          || !this.players.scheduleAccompaniment)) continue;
+        // Keep the first scheduling of a note; canceled responses must not be
+        // resurrected by a duplicate plan after the performer resumes.
         const key = AmtEngine.noteKey(n);
         if (this.scheduled.has(key)) continue;
         if (this.pending.some(p => AmtEngine.noteKey(p) === key)) continue;
-        this.pending.push({ ...n, captureTimeSec: typeof msg.latestCaptureTimeSec === 'number' && Number.isFinite(msg.latestCaptureTimeSec) ? msg.latestCaptureTimeSec : undefined });
+        this.pending.push({ ...n, phraseSignal: phrase ? this.phraseController.signal : undefined, captureTimeSec: typeof msg.latestCaptureTimeSec === 'number' && Number.isFinite(msg.latestCaptureTimeSec) ? msg.latestCaptureTimeSec : undefined });
       }
       this.pruneScheduled();
       this.scheduleDue();

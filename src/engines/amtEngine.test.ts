@@ -794,3 +794,68 @@ it('requests the model guitar when the visible lead role is enabled with the def
   engine.stop();
   vi.useRealTimers();
 });
+
+describe('remembered phrase playback', () => {
+  const plan = { type: 'plan', phraseResponse: true, phraseInstrument: 24, notes: [
+    {voice:'lead',gmInstr:24,beat:4,pitch:60,dur:1,vel:.8},
+    {voice:'keys',gmInstr:4,beat:4,pitch:64,dur:1,vel:.5},
+  ] };
+  it.each(['performance', 'legacy'] as const)('invalidates only the response when %s input resumes after lookahead', async mode => {
+    const players = new FakePlayers();
+    const schedule = vi.spyOn(players, 'scheduleAccompaniment');
+    let fire!: (e: any) => void;
+    const notes = { onNote: (cb: typeof fire) => {fire=cb;},
+      ...(mode === 'performance' ? { onPerformance: (cb: typeof fire) => {fire=cb;} } : {}) };
+    const engine = new AmtEngine(players, notes, new FakeClock(), () => 0, () => 0);
+    engine.setEnabled('lead', true); engine.setEnabled('keys', true);
+    await engine.start(120, 0);
+    startedSocket().receiveJson(plan);
+    const phrase = schedule.mock.calls.find(c => c[0] === 24) as unknown as unknown[];
+    const backing = schedule.mock.calls.find(c => c[0] === 4) as unknown as unknown[];
+    const signal = phrase[5] as AbortSignal;
+    expect(signal?.aborted).toBe(false);
+    expect(backing[5]).toBeUndefined();
+    fire({type:'note_on',id:'p',source:'midi',midi:62,velocity:.8,confidence:1,timeSec:.5});
+    expect(signal.aborted).toBe(true);
+    expect(players.accompCalls).toHaveLength(2);
+    engine.stop();
+  });
+
+  it('rejects responses while any performer note remains held, then accepts a fresh gap response', async () => {
+    const players = new FakePlayers();
+    const schedule = vi.spyOn(players, 'scheduleAccompaniment');
+    let fire!: (e: any) => void;
+    let now = 0;
+    const engine = new AmtEngine(players, {onNote:vi.fn(),onPerformance: cb => {fire=cb;}}, new FakeClock(), () => now, () => now);
+    engine.setEnabled('lead', true); engine.setEnabled('keys', true);
+    await engine.start(120, 0);
+    const onset = {type:'note_on',id:'p',source:'midi',midi:62,velocity:.8,confidence:1,timeSec:0};
+    fire(onset);
+    now = .5;
+    startedSocket().receiveJson(plan);
+    expect(players.accompCalls.map(c => c.gmProgram)).toEqual([4]);
+    fire({...onset,type:'note_off',timeSec:.5});
+    startedSocket().receiveJson({...plan,latestCaptureTimeSec:.5,notes:[{...plan.notes[0],beat:6}]});
+    expect(players.accompCalls.map(c => c.gmProgram)).toEqual([4,24]);
+    const signal = (schedule.mock.calls[1] as unknown as unknown[])[5] as AbortSignal;
+    expect(signal.aborted).toBe(false);
+    engine.stop();
+    expect(signal.aborted).toBe(true);
+  });
+});
+
+it('rejects a stale phrase arriving after the resumed note was already released, while preserving backing', async () => {
+  let fire!: (e: import('../listener/performanceEvent').PerformanceEvent) => void;
+  const players = new FakePlayers();
+  const engine = new AmtEngine(players, {onNote:vi.fn(),onPerformance:cb=>{fire=cb;}}, new FakeClock(), () => 1, () => 101);
+  engine.setEnabled('lead', true); engine.setEnabled('keys', true);
+  await engine.start(120, 1);
+  const onset = {type:'note_on' as const,id:'resume',source:'midi' as const,midi:62,velocity:.8,confidence:1,timeSec:101.2};
+  fire(onset); fire({...onset,type:'note_off',timeSec:101.3});
+  startedSocket().receiveJson({type:'plan',phraseResponse:true,phraseInstrument:24,latestCaptureTimeSec:101,notes:[
+    {voice:'lead',gmInstr:24,beat:4,pitch:60,dur:1,vel:.8},
+    {voice:'keys',gmInstr:4,beat:4,pitch:64,dur:1,vel:.5},
+  ]});
+  expect(players.accompCalls.map(c => c.gmProgram)).toEqual([4]);
+  engine.stop();
+});

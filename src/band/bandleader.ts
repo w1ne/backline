@@ -45,8 +45,9 @@ export interface PlayersLike {
   cancelScheduled?(): void;
   schedule(instrument: Instrument, events: NoteEvent[], barStartTime: number, bpm: number, onScheduled?: ScheduleConfirmation): void;
   /** AMT only: play through a real GM instrument sampler (see gmInstruments.ts) instead of
-   *  the synthesized Keys voice. */
-  scheduleAccompaniment?(gmProgram: number, events: NoteEvent[], barStartTime: number, bpm: number, onScheduled?: ScheduleConfirmation): void;
+   *  the synthesized Keys voice. An optional signal cancels only this batch, including
+   *  sample loading and native audio starts. */
+  scheduleAccompaniment?(gmProgram: number, events: NoteEvent[], barStartTime: number, bpm: number, onScheduled?: ScheduleConfirmation, signal?: AbortSignal): void;
 }
 
 export class Bandleader {
