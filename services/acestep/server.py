@@ -82,8 +82,12 @@ CONTEXT_MAX_SECONDS = float(os.environ.get("ACE_CONTEXT_MAX_SECONDS", "12"))
 # every request; the client protocol (2-bar blocks) is unchanged.
 SONG_MODE = os.environ.get("ACE_SONG_MODE", "0").lower() in ("1", "true", "yes")
 SONG_SEGMENT_BARS = int(os.environ.get("ACE_SONG_SEGMENT_BARS", "16"))
-# how far ahead of the block's due time a sliced block may be sent
-SONG_PACE_LEAD_SECONDS = 1.5
+# how far ahead of the block's due time a sliced block may be sent (gives the client
+# a buffer to ride out a 2-5 s re-render)
+SONG_PACE_LEAD_SECONDS = 3.0
+# tempo drift below this fraction does not restart the song (the client cuts and resyncs
+# to the new grid; the current segment keeps playing at its old tempo until it runs out)
+SONG_BPM_RESTART_FRACTION = 0.10
 if SONG_MODE:
     BLOCK_V2 = True
 # Point at an already-running acestep-api instead of spawning one (lets a flagged test
@@ -406,7 +410,7 @@ class AceStepModel:
                     raise RuntimeError(f"ACE-Step task {task_id} succeeded with no audio file")
                 out_path = _local_path_from_audio_url(candidates[0]["file"])
                 break
-            time.sleep(1.0)
+            time.sleep(0.1)
         if out_path is None:
             raise RuntimeError(f"ACE-Step task {task_id} timed out")
 
@@ -434,6 +438,8 @@ class Session:
         self.song_pos = 0
         self.song_t0 = 0.0
         self.song_blocks_served = 0
+        # what the current segment was rendered with; a change re-renders at the next block
+        self.song_prompt_key: Optional[tuple] = None
 
     def cancel_inflight(self) -> None:
         if self._task and not self._task.done():
@@ -466,7 +472,9 @@ class Session:
         duration = bars * 240.0 / bpm
         needs_restart = bpm != self.last_bpm or key != self.last_key or self.prev_audio is None
         if SONG_MODE:
-            await self._run_song_block(msg, seq, bpm, key, duration, needs_restart, send_binary, send_json)
+            drift = abs(bpm - (self.last_bpm or bpm)) / max(1, self.last_bpm or bpm)
+            song_restart = key != self.last_key or self.prev_audio is None or drift > SONG_BPM_RESTART_FRACTION
+            await self._run_song_block(msg, seq, bpm, key, duration, song_restart, send_binary, send_json)
             return
         # `complete` adds tracks over source audio. Feeding its mix back repeatedly layers
         # instruments over the same passage. Instead preserve one bar of context and repaint
@@ -575,6 +583,12 @@ async def _run_song_block(self: "Session", msg: dict, seq: int, bpm: int, key: s
     if needs_restart:
         self.song = None
         self.prev_audio = None
+    instruments = msg.get("instruments", ["drums", "bass"])
+    prompt_key = (msg.get("genre", "lofi"), tuple(sorted(instruments)), msg.get("player_instrument"))
+    if self.song is not None and self.song_prompt_key is not None and prompt_key != self.song_prompt_key:
+        # style or instrument switch: drop the rest of this segment and re-render from here,
+        # continuing from what was already heard
+        self.song = None
     if self.song is None or self.song_pos + target_samples > len(self.song):
         # render the next segment: text2music on a fresh start, otherwise a repaint that
         # continues the last CONTEXT_MAX_SECONDS of what the player already heard.
@@ -590,7 +604,6 @@ async def _run_song_block(self: "Session", msg: dict, seq: int, bpm: int, key: s
         context_duration = context_samples / TARGET_SR
         if self.seed is None or needs_restart:
             self.seed = creativity_to_seed(float(msg.get("creativity", 0.5)), 0)
-        instruments = msg.get("instruments", ["drums", "bass"])
         prompt = build_prompt(
             msg.get("genre", "lofi"), instruments, exclude=msg.get("player_instrument"),
             chords=[str(c) for c in (msg.get("chords") or [])],
@@ -627,6 +640,7 @@ async def _run_song_block(self: "Session", msg: dict, seq: int, bpm: int, key: s
         if seq != self._latest_seq:
             return
         self.song = audio
+        self.song_prompt_key = prompt_key
         self.song_pos = 0
         self.song_t0 = time.monotonic()
         self.song_blocks_served = 0

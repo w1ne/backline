@@ -158,3 +158,52 @@ class SongModeTest(unittest.TestCase):
         self.assertLess(b1.mean(), b2.mean())
         self.assertLessEqual(abs(int(b2[0]) - int(b1[-1])), 2)
         self.assertEqual(len(sleeps), 8)  # every sliced block was paced
+
+
+class SongModeFollowsSwitchesTest(unittest.TestCase):
+    def drive(self, msgs):
+        requests, packets = [], []
+
+        class Model:
+            def generate(self, params):
+                requests.append(params)
+                return np.zeros((round(params.audio_duration * server.TARGET_SR), 2), dtype=np.float32)
+
+        async def send_binary(packet):
+            packets.append(packet)
+
+        async def send_json(_):
+            pass
+
+        async def fake_sleep(_):
+            pass
+
+        async def run():
+            session = server.Session(Model())
+            for seq, m in enumerate(msgs, 1):
+                await session.handle_block(dict(seq=seq, bars=2, **m), send_binary, send_json)
+
+        with patch.object(server, 'SONG_MODE', True), patch.object(server, 'BLOCK_V2', True), \
+             patch.object(server, 'pace_sleep', fake_sleep), \
+             patch.object(server, '_write_temp_wav', return_value='/tmp/backline-test-source.wav'), \
+             patch.object(server.os, 'unlink'):
+            asyncio.run(run())
+        return requests, packets
+
+    def test_genre_or_instrument_switch_re_renders_with_context_and_tempo_drift_does_not(self):
+        base = dict(bpm=100, key='A minor', genre='lofi', instruments=['drums', 'bass'])
+        requests, packets = self.drive([
+            base, base,
+            dict(base, genre='rock'),                      # style switch -> repaint from here
+            dict(base, genre='rock', bpm=104),             # 4% drift -> keep slicing
+            dict(base, genre='rock', bpm=104, instruments=['drums', 'bass', 'keys']),  # switch -> repaint
+        ])
+        self.assertEqual([p.task_type for p in requests], ['text2music', 'repaint', 'repaint'])
+        self.assertIn('rock', requests[1].prompt.lower())
+        self.assertEqual(requests[1].repainting_start, 2 * 4.8)   # 9.6 s already heard as context
+        self.assertEqual(len(packets), 5)
+
+    def test_key_change_or_large_tempo_change_starts_a_fresh_song(self):
+        base = dict(bpm=100, key='A minor', genre='lofi', instruments=['drums', 'bass'])
+        requests, _ = self.drive([base, dict(base, key='C major'), dict(base, key='C major', bpm=125)])
+        self.assertEqual([p.task_type for p in requests], ['text2music', 'text2music', 'text2music'])
