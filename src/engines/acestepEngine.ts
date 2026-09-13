@@ -120,6 +120,8 @@ interface BlockRequest {
   enabled: Instrument[];
   /** extra colours from the accompaniment tiles (sax, strings, orchestral, ambient) */
   extras: AccompPreset[];
+  /** the band-amount knob, 0..1: how much band to arrange (sparse .. full), not loudness */
+  amount: number;
 }
 
 /** Streams bar-quantized blocks from the ACE-Step service and schedules them back-to-back
@@ -196,7 +198,6 @@ export class AceStepEngine implements BandEngine {
     this.nextBlockAt = firstBarAt;
     this.player = new PcmPlayer(this.ctx, undefined, this.morphNode);
     this.player.routeBand(this.bandRoute, this.morphNode);
-    this.player.setAmount(this.amount);
     this.player.setBarSeconds(240 / bpm);
 
     const wsUrl = RELAY_URL.replace(/^http/, 'ws') + '/acestep';
@@ -326,10 +327,10 @@ export class AceStepEngine implements BandEngine {
     this.state.enabled[i] = on;
   }
 
-  /** Band amount is the stream's output level: the arrangement itself is rendered audio. */
+  /** Band amount rides along on the next request: the server arranges a sparser or fuller
+   *  band for it (how much band, not how loud). */
   setAmount(amount: number): void {
     this.amount = Number.isFinite(amount) ? Math.min(1, Math.max(0, amount)) : 1;
-    this.player?.setAmount(this.amount);
   }
 
   /** The accompaniment tiles become extra instruments in the next render's prompt. */
@@ -392,6 +393,7 @@ export class AceStepEngine implements BandEngine {
       density: sel.density,
       enabled: (Object.keys(this.state.enabled) as Instrument[]).filter(i => this.state.enabled[i]),
       extras: [...this.extras],
+      amount: this.amount,
     };
     this.send(req);
   }

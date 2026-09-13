@@ -317,3 +317,24 @@ class PrefetchTest(unittest.TestCase):
             asyncio.run(run())
         self.assertEqual(renders, ['text2music', 'repaint'])
         self.assertEqual(dones[4]['ms'], 0.0)   # boundary block cost nothing on the request path
+
+
+class BandAmountTest(unittest.TestCase):
+    def test_amount_sets_the_size_of_the_arrangement(self):
+        allon = ['drums', 'bass', 'keys', 'lead']
+        self.assertEqual(server.arrange_for_amount(allon, 0.1)[0], ['drums', 'bass'])
+        self.assertEqual(server.arrange_for_amount(allon, 0.5)[0], ['drums', 'bass', 'keys'])
+        self.assertEqual(server.arrange_for_amount(allon, 0.9)[0], allon)
+        self.assertEqual(server.arrange_for_amount(['keys'], 0.1)[0], ['keys'])  # never silence the band
+        self.assertIn('sparse', server.arrange_for_amount(allon, 0.1)[1])
+
+    def test_turning_the_knob_across_a_bucket_edge_re_renders(self):
+        session = server.Session(None)
+        base = dict(bpm=100, key='A minor', genre='lofi', enabled=['drums', 'bass', 'keys', 'lead'])
+        low = session._segment_plan(dict(base, amount=0.2), 100, 'A minor', True)
+        low2 = session._segment_plan(dict(base, amount=0.3), 100, 'A minor', False)
+        high = session._segment_plan(dict(base, amount=0.9), 100, 'A minor', False)
+        self.assertEqual(low['prompt_key'], low2['prompt_key'])
+        self.assertNotEqual(low['prompt_key'], high['prompt_key'])
+        self.assertNotIn('electric guitar lead', low['prompt'])
+        self.assertIn('electric guitar lead', high['prompt'])

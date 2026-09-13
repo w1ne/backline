@@ -164,6 +164,29 @@ EXTRA_WORDS = {
 }
 
 
+# Band amount (the user's knob): how much band, not how loud. Three arrangement sizes, so
+# turning the knob re-renders at most at bucket edges rather than on every notch.
+AMOUNT_ORDER = ["drums", "bass", "keys", "lead"]
+
+
+def amount_bucket(amount: float) -> int:
+    a = max(0.0, min(1.0, amount))
+    return 0 if a < 0.34 else 1 if a < 0.67 else 2
+
+
+def arrange_for_amount(enabled: list[str], amount: float) -> tuple[list[str], str]:
+    """Thins the user's enabled instruments to the band size the amount asks for, and the
+    prompt words that go with it. Extras (sax/strings/...) are handled by the caller."""
+    bucket = amount_bucket(amount)
+    if bucket == 0:
+        keep = [i for i in enabled if i in ("drums", "bass")] or enabled[:1]
+        return keep, "minimal arrangement, sparse, lots of space, just the groove"
+    if bucket == 1:
+        keep = [i for i in enabled if i != "lead"] or enabled
+        return keep, "moderate arrangement, steady, some space"
+    return list(enabled), "full arrangement, rich, busy, all instruments playing"
+
+
 def density_words(density: float) -> str:
     # How full the band should sound, as prompt text. ACE-Step has no density control, so
     # this is the only lever the block request has on how busy the band sounds. The client
@@ -654,9 +677,12 @@ async def pace_sleep(seconds: float) -> None:
 
 def _segment_plan(self: "Session", msg: dict, bpm: int, key: str, needs_restart: bool):
     """Everything a segment render needs, decided now so a prefetch can run later unchanged."""
-    instruments = msg.get("enabled") or msg.get("instruments", ["drums", "bass"])
-    extras = [str(e) for e in (msg.get("extras") or [])]
-    prompt_key = (msg.get("genre", "lofi"), tuple(sorted(instruments)), tuple(sorted(extras)), msg.get("player_instrument"))
+    enabled = msg.get("enabled") or msg.get("instruments", ["drums", "bass"])
+    amount = float(msg.get("amount", 1.0))
+    instruments, amount_words = arrange_for_amount([str(i) for i in enabled], amount)
+    extras = [str(e) for e in (msg.get("extras") or [])] if amount_bucket(amount) > 0 else []
+    prompt_key = (msg.get("genre", "lofi"), tuple(sorted(instruments)), tuple(sorted(extras)),
+                  amount_bucket(amount), msg.get("player_instrument"))
     if self.seed is None or needs_restart:
         self.seed = creativity_to_seed(float(msg.get("creativity", 0.5)), 0)
     prompt = build_prompt(
@@ -666,6 +692,7 @@ def _segment_plan(self: "Session", msg: dict, bpm: int, key: str, needs_restart:
         density=float(msg.get("density", msg.get("intensity", 0.5))), fill=False,
         extras=extras,
     )
+    prompt = f"{prompt}, {amount_words}"
     return dict(bpm=bpm, key=key, prompt=prompt, prompt_key=prompt_key,
                 creativity=float(msg.get("creativity", 0.5)))
 
