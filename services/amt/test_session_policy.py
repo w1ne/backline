@@ -189,6 +189,9 @@ class SessionPolicyTests(unittest.TestCase):
         self.assertEqual(snapshot.history, [0, 150, 60])
 
     def test_set_bpm_rescales_seconds_and_keeps_beats(self):
+        # This pins token bookkeeping, not harmony: the hand table keeps the chord (and so the
+        # chord-pad tokens) fixed while the tempo changes.
+        self.session.brain.predictor = 'table'
         # Two beats heard at 120 bpm (0.5 s/beat), one accompaniment window committed ...
         self.session.update_human_notes([{'id': 'n1', 'dur': 1}])
         self.session.add_human_notes([{'id': 'n2', 'beat': 2, 'pitch': 64, 'dur': 1}])

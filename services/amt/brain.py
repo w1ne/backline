@@ -20,7 +20,7 @@ HALF_BAR = 2.0
 # table remains the default: HMM gains 12 points on the benchmark mean but loses
 # one bar on the live replay and 12 points on the minor loop. Both remain testable
 # explicitly, independently of the selected default.
-PREDICTOR = 'table'
+PREDICTOR = 'hmm'  # owner decision 2026-09-13: use the Chordonomicon-fitted transitions (CC BY-NC; resolve before any paid tier)
 # Below this many heard notes an old client's `set.chord` still names the chord; from here on
 # the service's own decision wins.
 CLIENT_CHORD_MAX_NOTES = 4
