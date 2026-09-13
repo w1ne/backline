@@ -101,7 +101,7 @@ const defaults: AppState = {
   activeParts: {},
   sources: { mic: 'off', midi: 'off' },
   genre: 'lofi',
-  engine: 'amt',
+  engine: 'acestep',
   sound: 'grand',
   noiseVolume: 0,
   droneVolume: 0,
