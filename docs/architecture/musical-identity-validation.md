@@ -21,10 +21,12 @@ Both answers retained the performer's direction and stayed inside beats 12–14.
 
 Backend review approved state ownership, snapshot isolation, response freshness, section policy and commit ordering. Regression tests cover the final arranger, including fixed phrase rhythm across creativity levels, sparse output, instrument identity, mute controls, sustained notes, reset, duplicate/out-of-order cues, periodic telemetry and stale emission.
 
-Final combined checkout: 726 frontend tests, 206 backend tests with 8 subtests, 40 Pi tests (one optional dependency skip), and 5 UNO Q tests passed. Web and Pi production builds passed. All 44 benchmark gates passed under the repository's current thresholds.
+Final combined checkout: 726 frontend tests, 207 backend tests with 8 subtests, 40 Pi tests (one optional dependency skip), and 5 UNO Q tests passed. Web and Pi production builds passed. All 44 benchmark gates passed under the repository's current thresholds.
 
 Native Chrome with the installed smplr Sampler confirmed the cancellation behavior: the ordinary stop handle alone left RMS 0.0246017, disconnecting the response output produced RMS 0, and independent backing retained RMS 0.0246017. See `src/players/phrasePlayback.browser.test.html` for the offline fixture. Engine tests also cover held input, sample-loading races, stale plans arriving after an onset/release, and preserving later backing on the same program.
 
 Concurrent main changes were preserved, including transport half-bar cues, RTT-aware inference deadlines, model readiness and the pre-existing early/repeated-empty-window fallback. Phrase memory never manufactures a response from that fallback. The fallback is ordinary backing, so its behavior differs from the single-empty-window GPU comparison above.
 
 A real Chrome session against the candidate RunPod service sent three eight-note MIDI calls through the shared UI: 20 plans received, three remembered responses, no application errors. Two late notes were dropped rather than scheduled off time. This checks the real protocol and sampler path; it does not establish zero latency or subjective musical quality.
+
+Deployment compatibility: only clients advertising `phraseResponses: true` receive remembered answers. Older open clients retain ordinary AMT backing and section contrast until refreshed. The Pi was deliberately disconnected by the user during deployment and its final update is deferred until it reconnects and becomes idle. No live Pi files were replaced by this session.
