@@ -117,7 +117,7 @@ log "start ACE-Step service (tmux: ace, port 8080)"
 tmux new-session -d -s ace "cd $BACKLINE_DIR/services/acestep && \
   ACESTEP_CHECKPOINTS_DIR=$ACE_REPO_DIR/checkpoints \
   ACE_REPO_DIR=$ACE_REPO_DIR \
-  PORT=8080 \
+  ACE_SONG_MODE=1 PORT=8080 \
   $ACE_REPO_DIR/.venv/bin/python server.py 2>&1 | tee $LOG_DIR/ace.log"
 
 log "start AMT service (tmux: amt, internal port 18081, public via nginx 8081)"

@@ -234,13 +234,13 @@ function skeleton(): string {
         <div class="zone zone--orange engine">
           <span class="zone-label">Accompaniment model</span>
           <div class="engine-keys" id="engine-choice">
-            <button type="button" class="engine-key" id="engine-patterns" data-engine="patterns" hidden>
+            <button type="button" class="engine-key" id="engine-patterns" data-engine="patterns">
               <span class="engine-key-text">
                 <span class="engine-key-name">Patterns</span>
               </span>
               <span class="engine-led" data-engine-led="patterns"></span>
             </button>
-            <button type="button" class="engine-key" id="engine-acestep" data-engine="acestep" hidden>
+            <button type="button" class="engine-key" id="engine-acestep" data-engine="acestep">
               <span class="engine-key-text">
                 <span class="engine-key-name">ACE-Step</span>
               </span>
