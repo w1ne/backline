@@ -24,7 +24,8 @@
     "samples:amt": "node services/fetch-amt-samples.mjs",
     "predev": "npm run samples:amt",
     "prebuild": "npm run samples:amt",
-    "prebuild:pi": "npm run samples:amt"
+    "prebuild:pi": "npm run samples:amt",
+    "smoke:voice": "node services/voice-smoke.mjs"
   },
   "keywords": [],
   "author": "",

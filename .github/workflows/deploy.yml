@@ -35,6 +35,17 @@ jobs:
           path: public/samples/amt
           key: amt-samples-${{ hashFiles('services/amt-samples-manifest.json') }}
       - run: npm run build
+      - uses: browser-actions/setup-chrome@v1
+        id: chrome
+      - name: Gate release on microphone-to-sampled-audio playback
+        run: npm run smoke:voice
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-voice-smoke
+          path: test-results/voice-smoke
       - uses: actions/upload-pages-artifact@v3
         with: { path: dist }
   deploy:
