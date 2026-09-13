@@ -3,7 +3,7 @@ import time
 import torch
 from amt import _instr_mask_logits, STRING_ENSEMBLE_ACCOMP_INSTRS
 from anticipation import ops
-from anticipation.config import TIME_RESOLUTION
+from anticipation.config import TIME_RESOLUTION, MAX_TIME
 from anticipation.vocab import AUTOREGRESS, TIME_OFFSET, DUR_OFFSET, NOTE_OFFSET, REST
 from anticipation.sample import safe_logits, future_logits, nucleus
 
@@ -26,7 +26,11 @@ def forward_last(model, ids, cache=None, slot=None):
 
 def prepare_context(inputs, start):
     """Pad only the retained musical window, without inventing silence from time zero."""
-    clipped = ops.clip(ops.sort(inputs), 0, start, clip_duration=False, seconds=False)
+    # The model's time vocabulary spans MAX_TIME ticks (100 s) from the prompt's oldest event,
+    # so anything older than that before `start` is dropped instead of padded with a minute of
+    # rests -- rests the model would then keep predicting.
+    floor = start - (MAX_TIME - 2 * TIME_RESOLUTION)
+    clipped = ops.clip(ops.sort(inputs), max(0, floor), start, clip_duration=False, seconds=False)
     if not clipped:
         return [TIME_OFFSET + start, DUR_OFFSET, REST]
     base = ops.min_time(clipped, seconds=False)
@@ -52,9 +56,18 @@ def cached_generate(model, start_time, end_time, inputs, accomp_instrs=STRING_EN
     sampled_tokens = 0
     with torch.inference_mode():
         while deadline_s is None or time.monotonic() - began < deadline_s:
-            # Preserve event boundaries when the GPT-2 position window fills.
-            if cache is None or position + 3 >= 1024:
+            # Preserve event boundaries when the GPT-2 position window fills. Re-base as well
+            # when the window to generate no longer fits the model's time vocabulary
+            # (MAX_TIME ticks = 100 s past the oldest event in the prompt): a long session
+            # otherwise masks every time token, softmax turns to NaN and torch.multinomial
+            # trips a device-side assert that poisons the CUDA context for good.
+            if cache is None or position + 3 >= 1024 or end - offset >= MAX_TIME - 1:
                 history = tokens[-1017:]
+                floor = end - (MAX_TIME - 2 * TIME_RESOLUTION)
+                if ops.min_time(history, seconds=False) < floor:
+                    events = list(zip(history[::3], history[1::3], history[2::3]))
+                    kept = [e for e in events if e[0] - TIME_OFFSET >= floor]
+                    history = [tok for e in kept for tok in e] if kept else [TIME_OFFSET + max(0, floor), DUR_OFFSET, REST]
                 offset = ops.min_time(history, seconds=False)
                 history = history.copy()
                 history[::3] = [t - offset for t in history[::3]]
@@ -70,6 +83,11 @@ def cached_generate(model, start_time, end_time, inputs, accomp_instrs=STRING_EN
                 elif i == 2:
                     logits = _instr_mask_logits(logits, accomp_instrs, accomp_bias, accomp_only)
                 logits = nucleus(logits, top_p)
+                if torch.isneginf(logits).all():
+                    # Nothing left to sample (every candidate masked): stop rather than feed
+                    # NaN probabilities to multinomial. int(token) below syncs anyway.
+                    model.amt_sampled_tokens = sampled_tokens
+                    return ops.sort(ops.unpad(tokens))
                 token = int(torch.multinomial(torch.softmax(logits, -1), 1))
                 event.append(token)
                 ids = torch.tensor([[token]], dtype=torch.long, device=model.device)

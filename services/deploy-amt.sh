@@ -23,9 +23,8 @@ ssh_pod() {
 }
 
 echo "==> redeploying amt on ${POD_HOST}:${POD_SSH_PORT}"
-# The log is appended, never truncated, so a restart keeps the previous run's committed= lines;
-# a simple size check rotates it once past 50 MB.
-ssh_pod "cd /opt/backline && git pull --no-rebase origin main && tmux kill-session -t amt; f=/var/log/amt.log; if [ -f \$f ] && [ \$(stat -c%s \$f) -gt 52428800 ]; then mv -f \$f \$f.1; fi; tmux new-session -d -s amt \"cd /opt/backline/services/amt && PORT=${AMT_PORT} /opt/amt-venv/bin/python server.py 2>&1 | tee -a /var/log/amt.log\""
+# run-amt.sh supervises the process (restart on exit, append+rotate the log).
+ssh_pod "cd /opt/backline && git pull --no-rebase origin main && chmod +x services/amt/run-amt.sh && tmux kill-session -t amt 2>/dev/null; tmux new-session -d -s amt \"bash /opt/backline/services/amt/run-amt.sh ${AMT_PORT} 3 /var/log/amt.log\""
 
 echo "==> waiting up to ${HEALTH_WAIT_S}s for ${RELAY_BASE}/health to report amt:true"
 deadline=$((SECONDS + HEALTH_WAIT_S))

@@ -18,8 +18,9 @@ session. `AMT_PRIME=0` / `AMT_CHORD_PAD=0` switch them off for A/B runs.
 """
 import os
 
-from amt import MELODY_INSTR, make_event
+from amt import MELODY_INSTR, make_event, parse_events
 from anticipation.config import TIME_RESOLUTION
+from anticipation.vocab import TIME_OFFSET
 from arrangement import harmony_classes, role_for_instrument
 from harmony import parse_key
 
@@ -137,8 +138,19 @@ def build_prompt(history, group, key, genre, chord, start_s, end_s, beat_s):
     shift_s = 0.0
     events = []
     if PRIME_ON:
-        shift_s = (PRIME_BEATS + PRIME_GAP_BEATS) * beat_s
-        events.extend(prime_events(genre, key, group, beat_s))
+        prime_len_s = (PRIME_BEATS + PRIME_GAP_BEATS) * beat_s
+        hist_times = history[::3]
+        hist_min_s = (min(hist_times) - TIME_OFFSET) / TIME_RESOLUTION if hist_times else start_s
+        # The prime sits right before the retained history, not at time zero: the model's time
+        # vocabulary spans 100 s from the prompt's oldest event, so a prime anchored at zero
+        # left every window past ~100 s of playing unexpressible (no notes, then NaN in the
+        # sampler). Only a session too young for that keeps the old shifted-history layout.
+        if hist_min_s >= prime_len_s:
+            prime_base_s = hist_min_s - prime_len_s
+        else:
+            prime_base_s = 0.0
+            shift_s = prime_len_s
+        events.extend((t + prime_base_s, d, i, p) for (t, d, i, p) in prime_events(genre, key, group, beat_s))
     if CHORD_PAD_ON and chord:
         events.extend((t + shift_s, d, i, p) for (t, d, i, p) in chord_pad_events(key, chord, start_s, end_s, beat_s))
     tokens = []
