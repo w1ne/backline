@@ -108,12 +108,24 @@ export class Players implements PlayersLike {
     this.setGenre(this.genre);
   }
 
+  private morphListeners = new Set<(node: AudioNode | undefined) => void>();
+
   /** Hands the players the MORPH bus input (or undefined when the output is off).
    *  Every instrument's route is re-applied, so "morph" pads become audible on the box
    *  and fall back to the main output when it goes away. */
   setMorphBus(node: AudioNode | undefined): void {
     this.morphNode = node;
     INSTRUMENTS.forEach(i => this.applyRoute(i));
+    this.morphListeners.forEach(cb => cb(node));
+  }
+
+  /** Notifies a voice outside the fixed Instrument set (e.g. the found-sound sampler) of the
+   *  MORPH bus, immediately and on every change, so it can route itself without needing a
+   *  slot in `busses`/`INSTRUMENTS`. Returns an unsubscribe function. */
+  onMorphChange(cb: (node: AudioNode | undefined) => void): () => void {
+    this.morphListeners.add(cb);
+    cb(this.morphNode);
+    return () => this.morphListeners.delete(cb);
   }
 
   /** Remove old-tempo events and tails when an engine transport restarts. */

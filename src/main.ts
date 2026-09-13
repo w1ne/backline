@@ -16,6 +16,7 @@ import { SECTION_LABEL, type FormResult, type Section } from './band/form';
 import { PlanFreshness, chooseChord, chooseSection } from './band/planOverride';
 import { outputLatencyMs } from './audio/outputLatency';
 import { Drone } from './players/drone';
+import { FoundSoundSampler } from './audio/foundSound';
 import { WhiteNoise } from './players/whiteNoise';
 import { LOCAL_SOUNDS } from './device/arturia';
 import { MidiMonitor } from './players/monitor';
@@ -89,6 +90,7 @@ const drone = new Drone();
 let morph: MorphBus | undefined;
 let mic: MicSource | undefined;
 let vocalChain: VocalChain | undefined;
+let foundSound: FoundSoundSampler | undefined;
 let midi: MidiSource | undefined;
 /** true once players.init() has built the AudioContext the morph bus has to live in */
 let audioReady = false;
@@ -267,6 +269,19 @@ function applyVoiceMonitor(): void {
     outputDeviceId: store.state.morphOut,
   });
   vocalChain.setEnabled(allowed && !store.state.micMuted);
+}
+
+/** Builds the found-sound sampler the first time the mic's source node and the band's
+ *  master chain both exist; a no-op once built. Subscribes it to the MORPH bus once so it
+ *  keeps following that device without any further wiring. */
+function applyFoundSound(): void {
+  if (foundSound || !audioReady || !mic?.sourceNode) return;
+  const reverbBus = players.reverbBus();
+  const masterInput = players.preLimiterInput();
+  if (!reverbBus || !masterInput) return;
+  foundSound = new FoundSoundSampler(mic.sourceNode);
+  foundSound.connectMaster(masterInput, reverbBus);
+  players.onMorphChange(node => foundSound?.setMorphNode(node));
 }
 
 /** Pushes the store's routing into the audio graph: pads via Players, engines via the band. */
@@ -554,6 +569,7 @@ async function power() {
   await listener.start();
   store.update({ sources: { ...listener.sourceStatus } });
   applyVoiceMonitor();
+  applyFoundSound();
   // labels only come back from enumerateDevices() once a media permission has been
   // granted, so the pickers are worth re-reading right after the mic starts
   void refreshDevices().catch(() => undefined);
@@ -798,6 +814,23 @@ const liveActions: LiveActions = {
     whiteNoise.setEnabled(store.state.power === 'on' && !store.state.paused);
     whiteNoise.setLevel(noiseVolume);
     store.update({ noiseVolume });
+  },
+  startSampleRecording: () => {
+    if (!foundSound || foundSound.isRecording) return;
+    store.update({ sampleRecording: true });
+    void foundSound.startRecording();
+  },
+  stopSampleRecording: () => {
+    if (!foundSound?.isRecording) return;
+    foundSound.stopRecording().then(() => {
+      store.update({ sampleRecording: false, sampleReady: foundSound!.hasClip });
+    });
+  },
+  triggerSample: () => {
+    if (!foundSound?.hasClip) return;
+    // 0 means the Transport isn't running (no lock yet) -- play immediately instead of
+    // silently scheduling for a "next beat" that will never come.
+    foundSound.trigger(Tone.getTransport().nextSubdivision('4n') || undefined);
   },
   setSound: sound => {
     if (sound === store.state.sound) return;
