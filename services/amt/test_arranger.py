@@ -73,3 +73,18 @@ def test_section_spacing_is_anchored_to_beats_across_half_bar_windows():
     left = arranger.arrange([(2, .2, 24, 64), (2.5, .2, 24, 67)], 2, 3, .5)
     right = arranger.arrange([(3, .2, 24, 64), (3.5, .2, 24, 67)], 3, 4, .5)
     assert [n['beat'] for n in left + right] == [4, 6]
+
+
+def test_phrase_rhythm_and_count_do_not_depend_on_creativity():
+    from musical_identity import MusicalIdentity
+    phrase = [(0, .25, 60), (.25, .25, 64), (.75, .25, 62), (5, .5, 67), (7.5, .5, 65)]
+    rhythms = []
+    for creativity in (.2, .9, 1):
+        identity = MusicalIdentity()
+        identity.observe(phrase, {}, 9)
+        shaped = identity.shape([(4.5, .2, 24, 64)], 9, 11, .5, 9, creativity, 'lift')
+        arranged = Arranger(amount=1, creativity=creativity, section='lift').constrain(
+            shaped, 4.5, 5.5, .5, key='C major', chord='C', phrase_instrument=24)
+        rhythms.append([(n[0], n[1]) for n in arranged])
+    assert rhythms[0] == rhythms[1] == rhythms[2]
+    assert len(rhythms[0]) == 3

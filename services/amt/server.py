@@ -346,7 +346,8 @@ class Session:
                                         now_beat, self.creativity, self.section)
         self.phrase_response = self.identity.response_applied
         raw_notes = arranger.constrain(raw_notes, start_s, commit_end_s, self.beat_s,
-                                       self.space, TIME_RESOLUTION, self.key, self.chord)
+                                       self.space, TIME_RESOLUTION, self.key, self.chord,
+                                       phrase_instrument=self.identity.response_instrument)
         # (onset_s, dur_s, instr, pitch), trimmed/monophonic per instrument by the committer.
         committed = self.committer.commit(raw_notes)
         self.committed_horizon_beats = commit_end_beat
@@ -383,6 +384,7 @@ class Session:
         plan = {"type": "plan", "fromBeat": from_beat, "toBeat": to_beat, "notes": notes, "section": self.section}
         if self.phrase_response and notes:
             plan["phraseResponse"] = True
+            plan["phraseInstrument"] = self.identity.response_instrument
         if self.chord:
             plan["chord"] = self.chord
             plan["chordFrom"] = from_beat

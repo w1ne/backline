@@ -13,18 +13,21 @@ def plan_window(now_beat, span_beats, lookahead_beats=4.0):
     return (start, start + span_beats)
 
 
-def shape_notes(notes, start, end, beat_seconds, space, time_resolution=100, key=None, chord=None, creativity=0.0, amount=0.5):
+def shape_notes(notes, start, end, beat_seconds, space, time_resolution=100, key=None, chord=None, creativity=0.0, amount=0.5, preserve_rhythm=False):
     creativity = max(0.0, min(1.0, creativity))
     amount = max(0.0, min(1.0, amount))
     if amount == 0:
         return []
     # Amount controls room left for the performer; creativity unlocks subdivisions.
-    grid_beats = .25 if creativity >= .65 else .5
+    grid_beats = .25 if preserve_rhythm or creativity >= .65 else .5
     gap_beats = 2.0 if amount < .25 else 1.0 if amount < .7 else .5
     # Above 0.8, creativity gets a "wild" end: the density cap rises as the
     # minimum note spacing is pulled down from the amount-driven gap toward
     # the 0.25-beat grid, reaching exactly the grid at creativity == 1.0.
     wild = min(1.0, max(0.0, creativity - .8) / .2)
+    if preserve_rhythm:
+        wild = 0
+        gap_beats = 2.0 if amount < .25 else 1.0 if amount < .7 else .25
     if wild:
         gap_beats = gap_beats - (gap_beats - grid_beats) * wild
     gap = beat_seconds * max(grid_beats, gap_beats * (.5 if space else 1.0))
@@ -199,7 +202,7 @@ class Arranger:
             return ()
         return tuple(p for p in programs if self.enabled_roles[role_for_instrument(p)])
 
-    def constrain(self, notes, start, end, beat_seconds, space=False, time_resolution=100, key=None, chord=None):
+    def constrain(self, notes, start, end, beat_seconds, space=False, time_resolution=100, key=None, chord=None, phrase_instrument=None):
         """Return constrained model tuples; independent instruments may coexist."""
         if self.amount == 0 or self.section == "ended":
             return []
@@ -224,7 +227,7 @@ class Arranger:
         for program in palette:
             group = groups[program]
             shaped = shape_notes(group, start, end, beat_seconds, space, time_resolution,
-                                 key, chord, self.creativity, self.amount)
+                                 key, chord, self.creativity, self.amount, program == phrase_instrument)
             # Creativity can loosen the grid, but never override the amount's
             # presence budget. Apply the amount spacing even in the wild zone.
             gap = beat_seconds * (2. if self.amount < .25 else 1. if self.amount < .7 else .25)

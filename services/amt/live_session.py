@@ -29,6 +29,7 @@ class LatestPlanner:
         self.commands = deque()
         self.event_count = 0
         self.input_revision = 0
+        self.material_controls = {}
         self.pending_cue = None
         self.revision = 0
         self.epoch = 0
@@ -50,7 +51,18 @@ class LatestPlanner:
             self.revision += 1
             self.pending_cue = (dict(msg), self.revision, self.epoch, time.monotonic())
         else:
-            self.input_revision += 1
+            # Normal quiet-gap telemetry arrives several times a second. Only
+            # new performance or materially changed controls invalidate an answer.
+            if kind in ('notes', 'note_updates', 'start'):
+                self.input_revision += 1
+            if kind in ('set', 'start'):
+                if kind == 'start':
+                    self.material_controls.clear()
+                for name in ('amount', 'enabledRoles', 'accompInstruments', 'key',
+                             'creativity', 'accompBias', 'genre', 'chord'):
+                    if name in msg and msg[name] != self.material_controls.get(name):
+                        self.input_revision += 1
+                        self.material_controls[name] = copy.deepcopy(msg[name])
             count = max(1, len(msg.get('notes', [])))
             if self.event_count + count > self.max_events:
                 raise InputOverflow('AMT input backlog exceeded; reconnect to reset the session')
