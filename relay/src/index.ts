@@ -241,7 +241,9 @@ async function handleMe(req: Request, env: Env): Promise<Response> {
 // That is deliberate: it is a cheap brake on runaway clients, not a billing
 // guarantee, and it costs no storage round-trip on the hot path.
 
-const UPGRADE_LIMIT = 20;
+// 120: a venue full of people behind one NAT reconnects together (each app re-polls and
+// reopens on every engine switch); 20 refused the 21st person on shared Wi-Fi.
+const UPGRADE_LIMIT = 120;
 const UPGRADE_WINDOW_MS = 60_000;
 const upgradeHits = new Map<string, number[]>();
 
