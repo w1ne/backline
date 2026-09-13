@@ -41,7 +41,7 @@ sys.path.insert(0, str(BENCH_AMT_DIR))
 
 from anticipation import ops  # noqa: E402
 from anticipation.config import TIME_RESOLUTION  # noqa: E402
-from anticipation.vocab import TIME_OFFSET  # noqa: E402
+from anticipation.vocab import TIME_OFFSET, DUR_OFFSET, MAX_DUR  # noqa: E402
 
 from amt import (  # noqa: E402
     MELODY_INSTR,
@@ -87,6 +87,8 @@ CONTEXT_BEATS = 16.0
 # previous window was already empty (a dropout, not a rest), the window is filled with the
 # key-only plan so the band never goes quiet for a whole bar.
 FILL_UNTIL_HEARD_BEATS = 8.0
+# Listen gate for a `start {resume: true}` (a client reconnecting mid-set), in beats.
+RESUME_LISTEN_BEATS = 2.0
 
 app = FastAPI()
 inference_lock = asyncio.Lock()
@@ -240,6 +242,33 @@ class Session:
             self.accomp_instrs = resolve_instruments(self.instrument_names)
         if "accompBias" in msg:
             self.accomp_bias = float(msg["accompBias"])
+
+    def set_bpm(self, bpm):
+        """A tempo change mid-session. Everything the session reasons about is in beats (the
+        human notes, the commit horizon, the listen gate, the brain); only the model's token
+        stream and the committer's trim state are in seconds, so those are rescaled in place and
+        the session carries on. It used to take a reconnect: a new socket, an empty history and
+        the eight-beat listen gate again, for every two-bpm step of a singer's drift."""
+        try:
+            bpm = float(bpm)
+        except (TypeError, ValueError):
+            return
+        if not (0 < bpm < 1000) or bpm == self.bpm:
+            return
+        ratio = self.bpm / bpm  # old beat_s -> new beat_s
+        self.bpm = bpm
+        self.beat_s = 60.0 / bpm
+        self.performance.beat_seconds = self.beat_s
+        self.brain.latency_beats *= 1.0 / ratio
+        for i in range(0, len(self.history) - 2, 3):
+            self.history[i] = TIME_OFFSET + max(0, round((self.history[i] - TIME_OFFSET) * ratio))
+            self.history[i + 1] = DUR_OFFSET + min(MAX_DUR - 1, max(1, round((self.history[i + 1] - DUR_OFFSET) * ratio)))
+        for table in ("_last_end", "_prev_onset"):
+            seconds = getattr(self.committer, table, None)
+            if isinstance(seconds, dict):
+                for instr in seconds:
+                    seconds[instr] *= ratio
+        self.last_accomp_notes = [(t * ratio, d * ratio, p) for (t, d, p) in self.last_accomp_notes]
 
     @property
     def arranger(self):
@@ -449,11 +478,14 @@ class Session:
 def apply_session_message(session, msg):
     kind = msg.get("type")
     if kind == "start":
+        # A client resuming after a dropped socket has already been heard for a while: two
+        # beats of listening is enough to re-anchor, eight would be another two bars of silence.
+        listen_beats = RESUME_LISTEN_BEATS if msg.get("resume") is True else float(msg.get("listenBeats", 8.0))
         session.reset(
             bpm=float(msg.get("bpm", 100.0)),
             lookahead_beats=float(msg.get("lookaheadBeats", PLAN_LOOKAHEAD_BEATS)),
             commit_beats=float(msg.get("commitBeats", 2.0)),
-            listen_beats=float(msg.get("listenBeats", 8.0)),
+            listen_beats=listen_beats,
             top_p=0.95, instrument_names=msg.get("accompInstruments"),
             accomp_bias=float(msg.get("accompBias", ACCOMP_BIAS)),
             key=msg.get("key"), genre=msg.get("genre"),
@@ -464,6 +496,8 @@ def apply_session_message(session, msg):
     elif kind == "note_updates":
         session.update_human_notes(msg.get("notes", []))
     elif kind == "set":
+        if "bpm" in msg:
+            session.set_bpm(msg["bpm"])
         session.set_controls(msg)
 
 
@@ -515,7 +549,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 elif kind in ("start", "notes", "note_updates", "bar", "tick", "set"):
                     planner.submit(msg)
                     if kind == "start":
-                        await send({"type": "ready", "tick": True, "performanceEvents": True})
+                        await send({"type": "ready", "tick": True, "performanceEvents": True, "setBpm": True})
                 else:
                     await send({"type": "error", "message": f"unknown type {kind}"})
             except InputOverflow as error:
