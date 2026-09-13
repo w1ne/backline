@@ -84,7 +84,10 @@ export class Bandleader {
   }
   set(p: Partial<Pick<BandState, 'genre' | 'key' | 'chord' | 'creativity' | 'dynamics' | 'source' | 'sungPitchClass'>> & { chordBeat?: number }) {
     const { chordBeat, ...rest } = p;
-    Object.assign(this.state, rest);
+    // An engine switch before the key has locked passes `key: undefined`; keep the current
+    // key (and any other field) rather than wiping it, or chordAtBeat throws on every bar.
+    const defined = Object.fromEntries(Object.entries(rest).filter(([, value]) => value !== undefined));
+    Object.assign(this.state, defined);
     if (p.chord) {
       // Genre-color the detected triad right where the chord is stored, so both the
       // patterns (via chordAtBeat) and anything downstream (e.g. the AMT engine's

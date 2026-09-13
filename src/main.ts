@@ -910,6 +910,10 @@ installDebug({
   get band() {
     return band;
   },
+  /** The panel's actions, so a headless gate can switch engines the way a tap does. */
+  get actions() {
+    return liveActions;
+  },
 });
 
 store.update({}); // first render, which is what puts the canvas in the DOM
