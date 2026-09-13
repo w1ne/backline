@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { PitchDetector } from 'pitchy';
 import { VOICE_PROFILE } from '../../src/listener/pitchTracker';
 import { detectPitch, type PitchEstimate } from '../../src/listener/pitch';
+import { detectPitch as detectPitchOld } from './mcleod_old';
 import { median, noteSegmentation } from '../voice/metrics';
 import { SR } from '../voice/synth';
 import { CLIPS, DATA_DIR, datasetPresent, labelNotes, loadClip, type RealClip } from '../realvoice/dataset';
@@ -28,9 +29,11 @@ function score(clip: RealClip, est: Est, ms: number): R {
 
 function main() {
   if (!datasetPresent()) throw new Error('dataset missing');
-  const names = CLIPS.filter(n => existsSync(join(DATA_DIR, 'Wavfile', `${n}.wav`)));
+  const only = process.env.CLIPS?.split(',');
+  const names = (only ?? CLIPS).filter(n => existsSync(join(DATA_DIR, 'Wavfile', `${n}.wav`)));
   const methods: Record<string, (x: Float32Array) => PitchEstimate | null> = {};
-  methods.mcleod_ours = x => detectPitch(x, SR);
+  methods.mcleod_old = x => detectPitchOld(x, SR);
+  methods.pitchy_src = x => detectPitch(x, SR);
   for (const k of [0.8, 0.9]) {
     const det = PitchDetector.forFloat32Array(PITCH_WINDOW);
     det.clarityThreshold = k;
