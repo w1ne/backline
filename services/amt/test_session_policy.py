@@ -227,6 +227,8 @@ def test_human_hook_changes_committed_answer_with_same_model_output():
     b = identity_session([60, 55, 60, 64, 60, 55, 60, 64])
     pa, pb = (s.generate_tick_plan(10)['plan'] for s in (a, b))
     assert pa.get('phraseResponse') and pb.get('phraseResponse')
+    assert pa['phraseFromBeat'] == pa['fromBeat']
+    assert pa['phraseToBeat'] == min(pa['toBeat'], pa['fromBeat'] + 2)
     assert [n['pitch'] for n in pa['notes']] != [n['pitch'] for n in pb['notes']]
     for session, plan in ((a, pa), (b, pb)):
         assert plan['notes']

@@ -454,6 +454,8 @@ class Session:
         if self.phrase_response and any(n.get("gmInstr") == self.identity.response_instrument for n in notes):
             plan["phraseResponse"] = True
             plan["phraseInstrument"] = self.identity.response_instrument
+            plan["phraseFromBeat"] = from_beat
+            plan["phraseToBeat"] = min(to_beat, from_beat + 2.)
         if self.chord:
             plan["chord"] = self.chord
             plan["chordFrom"] = from_beat
