@@ -9,7 +9,6 @@ import type { AppState, Store } from './state';
 import type { SourceState } from '../listener/listener';
 import { shortDeviceName } from '../audio/devices';
 import { isPhoneUA } from '../listener/micConstraints';
-import { waitsForGivenTempo, tempoHint } from '../band/startPolicy';
 
 const ALL_KEYS: { root: number; mode: 'major' | 'minor' }[] = [
   ...NOTE_NAMES.map((_, root) => ({ root, mode: 'major' as const })),
@@ -499,13 +498,8 @@ function lcdText(s: AppState): string {
     return `LIVE · BAR ${s.bar}${s.input.chord ? ` · ${chordName(s.input.chord)}` : ''}${flags}`;
   }
   const who = `LISTENING · MIC ${mark(s.sources.mic)} ${midiLabel(s)}`;
-  // A singer alone gives the tempo (tap or typed) and gets a count-in; the tempogram's beat
-  // (or, before it has one, the syllable rate) is shown as the hint. See src/band/startPolicy.ts.
   const micOnly = s.sources.mic === 'on' && s.sources.midi !== 'on';
-  if (waitsForGivenTempo({ micOnly, countIn: s.countIn, hasBpmOverride: false })) {
-    const hint = tempoHint(s.input.pendingBpm, s.input.voiceBpm);
-    return `${who}${hint ? ` · ${hint}` : ''} · TAP OR SET BPM`;
-  }
+  if (micOnly) return `${who} · SING TO START`;
   // once there is enough to guess with, show the running estimate — it is the
   // only feedback that the mic is hearing a tempo and not just noise
   const guess = s.input.pendingBpm ? ` · ~${Math.round(s.input.pendingBpm)} BPM` : '';

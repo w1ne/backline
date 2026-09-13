@@ -11,7 +11,7 @@ import { Listener } from './listener/listener';
 import { MidiSource } from './listener/midiSource';
 import { TapTempo } from './listener/tapTempo';
 import { countInClicks } from './band/countIn';
-import { waitsForGivenTempo } from './band/startPolicy';
+import { initialTempo } from './band/startPolicy';
 import { SECTION_LABEL, type FormResult, type Section } from './band/form';
 import { PlanFreshness, chooseChord, chooseSection } from './band/planOverride';
 import { outputLatencyMs } from './audio/outputLatency';
@@ -505,18 +505,21 @@ async function power() {
     const p = input.pitch;
     viz?.addPitch(Tone.now(), p ? p.midi + p.cents / 100 : null, p?.stable ?? false);
     // The service's chord wins the display too while its plan is fresh — see planOverride.ts.
+    const startingBpm = !store.state.locked ? initialTempo({
+      micOnly: micIsOnlySource(), stablePitch: input.pitch?.stable ?? false,
+      bpm: input.bpm, voiceBpm: input.voiceBpm,
+    }) : null;
+    if (startingBpm != null) {
+      listener!.setSessionTempo(startingBpm);
+      input = { ...input, bpm: startingBpm };
+    }
     const fresh = planFreshness.chordFresh(store.state.bar);
     store.update({ input: fresh ? { ...input, chord: chooseChord(store.state.engine, fresh, planChord, input.chord) } : input });
     if (input.key) drone.setRoot(input.key.root);
     if (input.key) band!.set({ key: input.key });
-    if (input.bpm && !store.state.locked && store.state.paused) {
-      store.update({ locked: true });
-      lastFollowedBpm = input.bpm;
-    } else if (input.bpm && !store.state.locked) {
-      // A singer alone: the detected tempo is syllable rate, not beat, so with the count-in on
-      // the band waits for a tapped or typed tempo (the LCD shows the estimate as a hint).
-      if (waitsForGivenTempo({ micOnly: micIsOnlySource(), countIn: store.state.countIn, hasBpmOverride: listener!.hasBpmOverride })) return;
-      const db = listener!.downbeat! + perfOffset();
+    if (input.bpm && !store.state.locked) {
+      const downbeat = listener!.downbeat;
+      const db = downbeat == null ? Tone.now() + 0.15 : downbeat + perfOffset();
       const barLen = 240 / input.bpm;
       let first = db;
       while (first < Tone.now() + 0.1) first += barLen;

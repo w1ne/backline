@@ -1,33 +1,24 @@
 import { describe, it, expect } from 'vitest';
-import { waitsForGivenTempo, tempoHint } from './startPolicy';
-import { Store } from '../ui/state';
+import { initialTempo } from './startPolicy';
 
-describe('how a session gets its first tempo', () => {
-  it('the count-in is on by default', () => {
-    expect(new Store().state.countIn).toBe(true);
+describe('voice-only startup', () => {
+  it('starts a stable voice without requiring a manually entered tempo', () => {
+    expect(initialTempo({ micOnly: true, stablePitch: true, bpm: null, voiceBpm: null })).toBe(100);
   });
-
-  it('a mic-only session with the count-in on waits for a tapped or typed tempo', () => {
-    expect(waitsForGivenTempo({ micOnly: true, countIn: true, hasBpmOverride: false })).toBe(true);
+  it('uses the available session tempo before the voice estimate', () => {
+    expect(initialTempo({ micOnly: true, stablePitch: true, bpm: 120, voiceBpm: 96 })).toBe(120);
   });
-
-  it('a typed or tapped bpm is the given tempo', () => {
-    expect(waitsForGivenTempo({ micOnly: true, countIn: true, hasBpmOverride: true })).toBe(false);
+  it('uses a voice estimate when available', () => {
+    expect(initialTempo({ micOnly: true, stablePitch: true, bpm: null, voiceBpm: 96 })).toBe(96);
   });
-
-  it('turning the count-in off restores the onset-driven start', () => {
-    expect(waitsForGivenTempo({ micOnly: true, countIn: false, hasBpmOverride: false })).toBe(false);
+  it('does not start on silence or unstable pitch', () => {
+    expect(initialTempo({ micOnly: true, stablePitch: false, bpm: null, voiceBpm: 96 })).toBeNull();
   });
-
-  it('MIDI sessions are unchanged: the detected tempo starts the band', () => {
-    expect(waitsForGivenTempo({ micOnly: false, countIn: true, hasBpmOverride: false })).toBe(false);
-    expect(waitsForGivenTempo({ micOnly: false, countIn: false, hasBpmOverride: false })).toBe(false);
+  it('keeps MIDI tempo detection as the startup condition', () => {
+    expect(initialTempo({ micOnly: false, stablePitch: true, bpm: null, voiceBpm: 96 })).toBeNull();
+    expect(initialTempo({ micOnly: false, stablePitch: false, bpm: 110, voiceBpm: null })).toBe(110);
   });
-
-  it('shows the syllable rate as a hint, not a tempo, until the tempogram has a beat', () => {
-    expect(tempoHint(140.4)).toBe('~140 spoken');
-    expect(tempoHint(null)).toBe('');
-    expect(tempoHint(140.4, 96.2)).toBe('~96');
-    expect(tempoHint(null, 96.2)).toBe('~96');
+  it('rejects invalid tempo estimates', () => {
+    expect(initialTempo({ micOnly: true, stablePitch: true, bpm: NaN, voiceBpm: -1 })).toBe(100);
   });
 });
