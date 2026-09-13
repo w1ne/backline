@@ -551,13 +551,16 @@ export function accompPresetMuted(preset: AccompPreset, enabled: Record<Instrume
 
 function updateAccompTiles(screen: HTMLElement, s: AppState): void {
   const row = screen.querySelector<HTMLElement>('#accomp-tiles')!;
-  row.hidden = s.engine !== 'amt';
+  // AMT plays these as GM presets, ACE-Step renders them into the arrangement; Patterns has
+  // no place for them.
+  row.hidden = s.engine !== 'amt' && s.engine !== 'acestep';
 
   screen.querySelectorAll<HTMLButtonElement>('#accomp-tiles button[data-preset]').forEach(btn => {
     const preset = btn.dataset.preset as AccompPreset;
     const on = s.accompPresets.includes(preset);
-    const muted = accompPresetMuted(preset, s.enabled);
-    const active = on && !muted && !!s.accompActive[preset];
+    // only AMT routes a preset through a band role that can be switched off
+    const muted = s.engine === 'amt' && accompPresetMuted(preset, s.enabled);
+    const active = on && !muted && (s.engine === 'acestep' ? s.locked : !!s.accompActive[preset]);
     btn.classList.toggle('on', on);
     btn.classList.toggle('active', active);
     btn.setAttribute('aria-pressed', String(on));

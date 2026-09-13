@@ -256,7 +256,20 @@ class VoiceFollowingTest(unittest.TestCase):
             asyncio.run(run())
 
         self.assertEqual([p.task_type for p in requests], ['text2music', 'cover'])
-        self.assertEqual(requests[1].audio_cover_strength, server.COVER_STRENGTH)
+        self.assertEqual(requests[1].audio_cover_strength, server.creativity_to_cover_strength(0.5))
         self.assertEqual(requests[1].audio_duration, 32)
         self.assertIsNone(requests[1].repainting_start)
         self.assertEqual(written[-1], ((32 * server.HUM_SR, 1), server.HUM_SR))
+
+
+class ControlsReachAceTest(unittest.TestCase):
+    def test_accompaniment_tiles_become_prompt_instruments(self):
+        p = server.build_prompt('lofi', ['drums', 'bass'], extras=['sax', 'strings', 'bogus'])
+        self.assertIn('saxophone', p)
+        self.assertIn('string section', p)
+        self.assertNotIn('bogus', p)
+
+    def test_creativity_sets_how_tightly_the_cover_follows(self):
+        self.assertEqual(server.creativity_to_cover_strength(0.0), server.COVER_STRENGTH_TIGHT)
+        self.assertEqual(server.creativity_to_cover_strength(1.0), server.COVER_STRENGTH_LOOSE)
+        self.assertGreater(server.creativity_to_cover_strength(0.3), server.creativity_to_cover_strength(0.8))

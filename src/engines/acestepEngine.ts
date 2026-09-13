@@ -1,4 +1,4 @@
-import type { BandState, Chord, Dynamics, Instrument, Key } from '../types';
+import type { AccompPreset, BandState, Chord, Dynamics, Instrument, Key } from '../types';
 import { IDLE_DYNAMICS } from '../types';
 import { chordName } from '../music/chords';
 import { keyName } from '../music/pitchClass';
@@ -115,6 +115,8 @@ interface BlockRequest {
   /** the user's own on/off toggles, before dynamics thin them out: song mode arranges for
    *  these and only re-renders when *they* change, not when the player gets busy */
   enabled: Instrument[];
+  /** extra colours from the accompaniment tiles (sax, strings, orchestral, ambient) */
+  extras: AccompPreset[];
 }
 
 /** Streams bar-quantized blocks from the ACE-Step service and schedules them back-to-back
@@ -152,6 +154,8 @@ export class AceStepEngine implements BandEngine {
 
   private bandRoute: MorphRoute = 'main';
   private morphNode?: AudioNode;
+  private amount = 1;
+  private extras: AccompPreset[] = [];
   private micTap?: ScriptProcessorNode;
   private micSink?: GainNode;
 
@@ -185,6 +189,7 @@ export class AceStepEngine implements BandEngine {
     this.nextBlockAt = firstBarAt;
     this.player = new PcmPlayer(this.ctx, undefined, this.morphNode);
     this.player.routeBand(this.bandRoute, this.morphNode);
+    this.player.setAmount(this.amount);
     this.player.setBarSeconds(240 / bpm);
 
     const wsUrl = RELAY_URL.replace(/^http/, 'ws') + '/acestep';
@@ -299,6 +304,17 @@ export class AceStepEngine implements BandEngine {
     this.state.enabled[i] = on;
   }
 
+  /** Band amount is the stream's output level: the arrangement itself is rendered audio. */
+  setAmount(amount: number): void {
+    this.amount = Number.isFinite(amount) ? Math.min(1, Math.max(0, amount)) : 1;
+    this.player?.setAmount(this.amount);
+  }
+
+  /** The accompaniment tiles become extra instruments in the next render's prompt. */
+  setAccompaniment(presets: AccompPreset[]): void {
+    this.extras = [...presets];
+  }
+
   setBpm(bpm: number): void {
     if (bpm === this.bpm) return;
     this.bpm = bpm;
@@ -353,6 +369,7 @@ export class AceStepEngine implements BandEngine {
       fill: sel.fill,
       density: sel.density,
       enabled: (Object.keys(this.state.enabled) as Instrument[]).filter(i => this.state.enabled[i]),
+      extras: [...this.extras],
     };
     this.send(req);
   }

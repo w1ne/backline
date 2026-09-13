@@ -95,6 +95,16 @@ SONG_BPM_RESTART_FRACTION = 0.10
 # for text-only; 0.3 did nothing).
 SONG_COVER = os.environ.get("ACE_SONG_COVER", "1").lower() in ("1", "true", "yes")
 COVER_STRENGTH = float(os.environ.get("ACE_COVER_STRENGTH", "0.6"))
+# Creativity slider -> how tightly the band follows the voice: low creativity clings to the
+# sung melody, high creativity reinterprets it. Kept inside the range that measurably
+# followed (0.3 did nothing).
+COVER_STRENGTH_TIGHT = 0.75
+COVER_STRENGTH_LOOSE = 0.45
+
+
+def creativity_to_cover_strength(creativity: float) -> float:
+    c = max(0.0, min(1.0, creativity))
+    return round(COVER_STRENGTH_TIGHT - c * (COVER_STRENGTH_TIGHT - COVER_STRENGTH_LOOSE), 3)
 HUM_SR = 16000
 HUM_MAGIC = b"MIC0"
 HUM_MAX_SECONDS = 120.0
@@ -123,6 +133,13 @@ INSTRUMENT_WORDS = {
     "bass": "bass",
     "keys": "electric piano",
     "lead": "electric guitar lead",
+}
+# the accompaniment tiles, as prompt colours
+EXTRA_WORDS = {
+    "sax": "saxophone",
+    "strings": "string section",
+    "orchestral": "orchestral ensemble, harp",
+    "ambient": "ambient pads, flute",
 }
 
 
@@ -158,6 +175,7 @@ def build_prompt(
     space: bool = True,
     density: Optional[float] = None,
     fill: bool = False,
+    extras: Optional[list[str]] = None,
 ) -> str:
     genre_text = GENRE_PROMPTS.get(genre, GENRE_PROMPTS["lofi"])
     # The client already chose the instrument set from the player's activity; when it marks a
@@ -171,6 +189,9 @@ def build_prompt(
     parts = [genre_text, "cohesive backing for a live melody, steady recurring groove", density_words(d)]
     if fill and INSTRUMENT_WORDS["lead"] in words:
         parts.append("one brief guitar answer in the melody's gap, then leave space")
+    for e in extras or []:
+        if e in EXTRA_WORDS and EXTRA_WORDS[e] not in words:
+            words.append(EXTRA_WORDS[e])
     if words:
         parts.append(", ".join(words))
     if chords:
@@ -609,7 +630,8 @@ async def _run_song_block(self: "Session", msg: dict, seq: int, bpm: int, key: s
     # dynamics-thinned "instruments" list would otherwise re-render the song every time the
     # player got busy or left space.
     instruments = msg.get("enabled") or msg.get("instruments", ["drums", "bass"])
-    prompt_key = (msg.get("genre", "lofi"), tuple(sorted(instruments)), msg.get("player_instrument"))
+    extras = [str(e) for e in (msg.get("extras") or [])]
+    prompt_key = (msg.get("genre", "lofi"), tuple(sorted(instruments)), tuple(sorted(extras)), msg.get("player_instrument"))
     if self.song is not None and self.song_prompt_key is not None and prompt_key != self.song_prompt_key:
         # style or instrument switch: drop the rest of this segment and re-render from here,
         # continuing from what was already heard
@@ -640,6 +662,7 @@ async def _run_song_block(self: "Session", msg: dict, seq: int, bpm: int, key: s
             chords=[str(c) for c in (msg.get("chords") or [])],
             intensity=float(msg.get("intensity", 0.5)), space=True,
             density=float(msg.get("density", msg.get("intensity", 0.5))), fill=False,
+            extras=extras,
         )
         task = "cover" if cover else ("text2music" if source_path is None else "repaint")
         params = GenParams(
@@ -652,7 +675,7 @@ async def _run_song_block(self: "Session", msg: dict, seq: int, bpm: int, key: s
             repainting_start=context_duration if task == "repaint" else None,
             repainting_end=context_duration + segment if task == "repaint" else None,
             lyrics="[Instrumental]",
-            audio_cover_strength=COVER_STRENGTH if cover else None,
+            audio_cover_strength=creativity_to_cover_strength(float(msg.get("creativity", 0.5))) if cover else None,
         )
         loop = asyncio.get_running_loop()
 
