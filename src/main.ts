@@ -11,6 +11,7 @@ import { Listener } from './listener/listener';
 import { MidiSource } from './listener/midiSource';
 import { TapTempo } from './listener/tapTempo';
 import { countInClicks } from './band/countIn';
+import { waitsForGivenTempo } from './band/startPolicy';
 import { SECTION_LABEL, type FormResult, type Section } from './band/form';
 import { PlanFreshness, chooseChord, chooseSection } from './band/planOverride';
 import { outputLatencyMs } from './audio/outputLatency';
@@ -506,6 +507,9 @@ async function power() {
       store.update({ locked: true });
       lastFollowedBpm = input.bpm;
     } else if (input.bpm && !store.state.locked) {
+      // A singer alone: the detected tempo is syllable rate, not beat, so with the count-in on
+      // the band waits for a tapped or typed tempo (the LCD shows the estimate as a hint).
+      if (waitsForGivenTempo({ micOnly: micIsOnlySource(), countIn: store.state.countIn, hasBpmOverride: listener!.hasBpmOverride })) return;
       const db = listener!.downbeat! + perfOffset();
       const barLen = 240 / input.bpm;
       let first = db;
