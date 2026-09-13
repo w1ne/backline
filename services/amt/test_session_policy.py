@@ -12,6 +12,7 @@ import unittest
 
 from arrangement import Arranger, plan_window
 from brain import HarmonyBrain, sampling_for
+from musical_identity import MusicalIdentity
 from performance_history import PerformanceHistory
 
 
@@ -38,7 +39,7 @@ class Committer:
 def session_class(generate):
     tree = ast.parse(Path(__file__).with_name('server.py').read_text())
     node = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'Session')
-    namespace = dict(Arranger=Arranger, HarmonyBrain=HarmonyBrain, PerformanceHistory=PerformanceHistory,
+    namespace = dict(MusicalIdentity=MusicalIdentity, Arranger=Arranger, HarmonyBrain=HarmonyBrain, PerformanceHistory=PerformanceHistory,
                      sampling_for=sampling_for, plan_window=plan_window, ACCOMP_BIAS=2,
                      PLAN_LOOKAHEAD_BEATS=4., BEATS_PER_BAR=4., CONTEXT_BEATS=16.,
                      DEFAULT_PRESETS=('strings',), MELODY_INSTR=0, TIME_OFFSET=0,
@@ -64,6 +65,7 @@ class SessionPolicyTests(unittest.TestCase):
 
         self.session = session_class(generate)(SimpleNamespace())
         self.session.reset(120, 2, 2, 0, .95, instrument_names=['guitar', 'strings'], key='C major')
+        self.session.brain.on_bar(2)  # These tests isolate role/lifecycle policy after intro.
         self.session.add_human_notes([{'id': 'n1', 'beat': 0, 'pitch': 60, 'held': True}])
 
     def test_successful_empty_model_output_is_rest(self):
@@ -81,6 +83,7 @@ class SessionPolicyTests(unittest.TestCase):
             return per_group[args[4]]
         self.session = session_class(generate)(SimpleNamespace())
         self.session.reset(120, 2, 2, 0, .95, instrument_names=['strings', 'sax', 'guitar'], key='C major')
+        self.session.brain.on_bar(2)  # These tests isolate role/lifecycle policy after intro.
         self.session.add_human_notes([{'id': 'n1', 'beat': 0, 'pitch': 60, 'held': True}])
         notes = self.session.generate_tick_plan(2)['plan']['notes']
         self.assertEqual([c[4] for c in self.calls], [(40, 41, 42), (65,), (24,)])
@@ -150,3 +153,75 @@ class SessionPolicyTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def test_session_uses_current_brain_section_to_constrain_and_commit():
+    def generate(model, start, end, history, instruments, *args, **kwargs):
+        return [(start + i * .25, .2, instruments[0], 64) for i in range(4)]
+    session = session_class(generate)(SimpleNamespace())
+    session.reset(120, 2, 2, 0, .95, instrument_names=['guitar'])
+    session.add_human_notes([{'beat': 0, 'pitch': 60, 'dur': 1}])
+    intro = session.generate_tick_plan(2)['plan']
+    assert intro['section'] == 'intro'
+    assert len(intro['notes']) == 1
+    # Reach a sustained-energy lift, not a hand-edited section string.
+    session.set_controls({'intensity': .9, 'amount': 1})
+    for cue in (4, 8, 12, 16):
+        session.add_human_notes([{'beat': cue, 'pitch': 60, 'dur': 1}])
+        lift = session.generate_tick_plan(cue)['plan']
+    assert lift['section'] == 'lift'
+    assert len(lift['notes']) > len(intro['notes'])
+    last = lift['notes'][-1]
+    assert session.history[-3:] == encode(last['beat'] * .5, last['dur'] * .5,
+                                        last['gmInstr'], last['pitch'])
+
+
+def identity_session(pitches, bpm=120):
+    def generate(model, start, end, history, instruments, *args, **kwargs):
+        return [(start + i * 60 / bpm, .4 * 60 / bpm, instruments[0], 64) for i in range(2)]
+    session = session_class(generate)(SimpleNamespace())
+    session.reset(bpm, 2, 2, 0, .95, instrument_names=['guitar'], key='C major')
+    session.set_controls({'amount': 1, 'creativity': .3})
+    session.add_human_notes([{'id': str(i), 'beat': i, 'pitch': p, 'dur': .5}
+                             for i, p in enumerate(pitches)])
+    return session
+
+
+def test_human_hook_changes_committed_answer_with_same_model_output():
+    a = identity_session([60, 64, 67, 64, 60, 64, 67, 64])
+    b = identity_session([60, 55, 60, 64, 60, 55, 60, 64])
+    pa, pb = (s.generate_tick_plan(10)['plan'] for s in (a, b))
+    assert pa.get('phraseResponse') and pb.get('phraseResponse')
+    assert [n['pitch'] for n in pa['notes']] != [n['pitch'] for n in pb['notes']]
+    for session, plan in ((a, pa), (b, pb)):
+        assert plan['notes']
+        for n in plan['notes']:
+            assert plan['fromBeat'] <= n['beat'] < n['beat'] + n['dur'] <= plan['toBeat']
+        encoded = sum((encode(n['beat'] * .5, n['dur'] * .5, n['gmInstr'], n['pitch'])
+                       for n in plan['notes']), [])
+        assert session.history[-len(encoded):] == encoded
+
+
+def test_phrase_memory_isolated_in_candidate_and_reset_for_new_song():
+    from live_session import clone_session
+    session = identity_session([60, 64, 67, 64, 60, 64, 67, 64])
+    snapshot = clone_session(session)
+    assert snapshot.generate_tick_plan(10)['plan'].get('phraseResponse')
+    assert not session.identity.phrase
+    assert session.generate_tick_plan(10)['plan'].get('phraseResponse')
+    session.reset(120, 2, 2, 0, .95)
+    assert not session.identity.phrase
+
+
+def test_no_phrase_answer_after_held_note_or_zero_amount():
+    for control in ('held', 'mute'):
+        session = identity_session([60, 64, 67, 64, 60, 64, 67, 64])
+        session.generate_tick_plan(10)
+        if control == 'held':
+            session.add_human_notes([{'id': 'held', 'beat': 18, 'pitch': 69, 'held': True}])
+        else:
+            session.set_controls({'amount': 0})
+        plan = session.generate_tick_plan(18)['plan']
+        assert not plan.get('phraseResponse')
+        if control == 'mute':
+            assert plan['notes'] == []

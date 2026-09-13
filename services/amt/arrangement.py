@@ -186,7 +186,8 @@ class Arranger:
     No normal path manufactures events: silence from a successful model call is a
     rest. A caller must explicitly request failure_fallback after service failure.
     """
-    def __init__(self, amount=.5, creativity=.3, enabled_roles=None):
+    def __init__(self, amount=.5, creativity=.3, enabled_roles=None, section="groove"):
+        self.section = section
         self.amount = max(0., min(1., float(amount)))
         self.creativity = max(0., min(1., float(creativity)))
         self.enabled_roles = {role: True for role in ROLES}
@@ -200,19 +201,40 @@ class Arranger:
 
     def constrain(self, notes, start, end, beat_seconds, space=False, time_resolution=100, key=None, chord=None):
         """Return constrained model tuples; independent instruments may coexist."""
-        if self.amount == 0:
+        if self.amount == 0 or self.section == "ended":
             return []
         groups = {}
         for note in notes:
             if self.enabled_roles[role_for_instrument(note[2])]:
                 groups.setdefault(note[2], []).append(note)
+        # Select from instruments that actually have notes in this window: a quiet
+        # preferred instrument must not suppress another available voice.
+        groups = {program: group for program, group in groups.items()
+                  if any(start <= n[0] < end and n[1] > 0 for n in group)}
+        melodic = sorted((p for p in groups if role_for_instrument(p) != 'bass'),
+                         key=lambda p: (role_for_instrument(p) != 'lead', p))
+        bass = sorted(p for p in groups if role_for_instrument(p) == 'bass')
+        if self.section == 'breakdown':
+            palette = (melodic or bass)[:1]
+        elif self.section == 'intro':
+            palette = melodic[:1] + bass[:1]
+        else:
+            palette = list(groups)
         out = []
-        for group in groups.values():
+        for program in palette:
+            group = groups[program]
             shaped = shape_notes(group, start, end, beat_seconds, space, time_resolution,
                                  key, chord, self.creativity, self.amount)
             # Creativity can loosen the grid, but never override the amount's
             # presence budget. Apply the amount spacing even in the wild zone.
             gap = beat_seconds * (2. if self.amount < .25 else 1. if self.amount < .7 else .25)
+            section_gap = {'intro': 2., 'breakdown': 2., 'groove': 1.}.get(self.section, 0.)
+            gap = max(gap, section_gap * beat_seconds)
+            if self.section == 'ending':
+                # One short release, no new line across the rest of the window.
+                release_end = min(end, start + beat_seconds)
+                shaped = [(t, min(d, release_end - t), instr, pitch)
+                          for t, d, instr, pitch in shaped[:1] if t < release_end]
             previous = None
             for note in shaped:
                 if previous is None or note[0] - previous >= gap - 1e-8:

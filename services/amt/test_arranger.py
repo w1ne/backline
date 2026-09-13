@@ -45,3 +45,31 @@ class ArrangerTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def test_sections_change_same_material_without_changing_instrument_identity():
+    raw = [(i * .25, .2, instr, pitch) for instr, pitch in [(24, 64), (40, 60), (42, 48)] for i in range(8)]
+    outputs = {section: Arranger(amount=1, section=section).arrange(raw, 0, 2, .5)
+               for section in ('intro', 'groove', 'lift', 'breakdown', 'ending', 'ended')}
+    assert 0 < len(outputs['intro']) < len(outputs['groove']) < len(outputs['lift'])
+    assert 0 < len(outputs['breakdown']) < len(outputs['groove'])
+    assert {n['gmInstr'] for n in outputs['breakdown']} == {24}
+    assert outputs['ended'] == []
+    assert all(n['beat'] + n['dur'] <= 1 for n in outputs['ending'])
+    assert all(n['gmInstr'] in (24, 40, 42) for out in outputs.values() for n in out)
+
+
+def test_sections_preserve_a_sparse_selected_instrument_and_never_unmute():
+    for section in ('intro', 'groove', 'lift', 'breakdown', 'ending'):
+        for instr in (24, 40, 42):
+            raw = [(0, .2, instr, 60)]
+            assert len(Arranger(section=section).arrange(raw, 0, 1, .5)) == 1
+            assert Arranger(amount=0, section=section).arrange(raw, 0, 1, .5) == []
+            assert Arranger(section=section, enabled_roles={'keys':False,'bass':False,'lead':False}).arrange(raw, 0, 1, .5) == []
+
+
+def test_section_spacing_is_anchored_to_beats_across_half_bar_windows():
+    arranger = Arranger(amount=1, section='breakdown')
+    left = arranger.arrange([(2, .2, 24, 64), (2.5, .2, 24, 67)], 2, 3, .5)
+    right = arranger.arrange([(3, .2, 24, 64), (3.5, .2, 24, 67)], 3, 4, .5)
+    assert [n['beat'] for n in left + right] == [4, 6]
