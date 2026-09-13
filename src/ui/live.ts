@@ -83,8 +83,11 @@ export function renderLive(root: HTMLElement, store: Store, actions: LiveActions
   update(screen, store.state, actions.changeLatencyMs ?? 0);
   // Only the Pi remote has somewhere else to play; in the browser the pill says nothing useful.
   const target = screen.querySelector<HTMLElement>('#playback-target')!;
-  target.hidden = actions.playbackTarget !== 'Pi';
-  target.textContent = `Playback: ${actions.playbackTarget ?? 'This browser'}`;
+  const onPi = actions.playbackTarget === 'Pi';
+  target.hidden = !onPi;
+  // .pill sets display:flex, which beats the [hidden] attribute -- force it off the page.
+  target.style.display = onPi ? '' : 'none';
+  target.textContent = onPi ? 'Playback: Pi' : '';
   if (actions.setPlaying) {
     const audio = screen.querySelector<HTMLButtonElement>('#enable-audio')!;
     audio.hidden = false;
