@@ -6,6 +6,7 @@ import type { BandEngine } from './engine';
 import { PcmPlayer } from './pcmPlayer';
 import type { MorphRoute } from '../audio/routing';
 import { RELAY_URL } from '../config';
+import { engineSocketUrl } from './upstream';
 
 const CUT_FADE_SEC = 0.15;
 /** the player's voice goes up to the server as 16 kHz mono PCM16 frames with this prefix */
@@ -200,7 +201,7 @@ export class AceStepEngine implements BandEngine {
     this.player.routeBand(this.bandRoute, this.morphNode);
     this.player.setBarSeconds(240 / bpm);
 
-    const wsUrl = RELAY_URL.replace(/^http/, 'ws') + '/acestep';
+    const wsUrl = engineSocketUrl('acestep', RELAY_URL, '/acestep');
     this.ws = new WebSocket(wsUrl);
     this.ws.binaryType = 'arraybuffer';
 

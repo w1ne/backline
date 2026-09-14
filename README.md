@@ -35,6 +35,16 @@ mic / MIDI  →  Listener  →  { bpm, key, chord, notes }  →  BandEngine  →
 | ACE | ACE-Step 1.5 on a GPU pod via relay | next 2-bar block |
 | AMT | Anticipatory Music Transformer on the pod via relay | per bar, note-following |
 
+## Run your own GPU
+
+The ACE-Step and AMT engines run on a GPU pod we pay for; when it is off, the app plays its offline Patterns band. Anyone can run the models themselves and point the live app at them, no relay involved:
+
+1. Rent a pod on RunPod (an L40S or 4090 class card, 40 GB disk, ports 8080 and 8081 exposed as HTTP) with the `runpod/pytorch` image and your SSH key.
+2. Bootstrap it: `scp services/pod-bootstrap.sh root@<pod>:/root/ && ssh root@<pod> bash /root/pod-bootstrap.sh` (ACE-Step on 8080, AMT on 8081; `services/DEPLOYED.md` has the details).
+3. On www.duetai.art open **Models & connection → Your own GPU** and paste the pod id (e.g. `6r2srn274qynf1`) into the ACE-Step and/or AMT field. A host or a full `wss://…/ws` URL works too, so any machine that runs `services/acestep/server.py` or `services/amt/server.py` will do.
+
+The setting lives in your browser only. Clear the field to go back to the hosted relay.
+
 ## Deploy
 
 Push to `main` deploys the app to Cloudflare Pages (duetai.art) and GitHub Pages (shylenko.com/backline/). Other branches preview at `https://<branch>.backline-88n.pages.dev`. Relay: `cd relay && npm run deploy`. GPU services: `services/README.md`.

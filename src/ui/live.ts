@@ -45,6 +45,8 @@ export interface LiveActions {
   /** which sound your MIDI keyboard plays through */
   setSound?(s: MonitorSound): void;
   setNoiseVolume?(volume: number): void;
+  /** point an engine at the player's own GPU pod (RunPod id, host or ws url); '' = hosted */
+  setOwnUpstream?(engine: 'acestep' | 'amt', value: string): void;
   /** shift the noise's filtered color up or down, in fractional octaves (-2..2) */
   setNoiseRegister?(register: number): void;
   setDroneVolume?(volume: number): void;
@@ -321,6 +323,12 @@ function skeleton(): string {
         </div>
 <p id="engine-status" role="status"></p>
 <p id="output-latency" role="status"></p>
+        <div class="zone zone--orange own-gpu">
+          <span class="zone-label">Your own GPU</span>
+          <p class="own-gpu-hint">Running the models yourself? Paste your RunPod pod id (or a ws:// URL) and the app talks to your pod instead of ours. See README → Run your own GPU.</p>
+          <div class="field"><label for="own-acestep">ACE-Step pod</label><input id="own-acestep" type="text" autocomplete="off" spellcheck="false" placeholder="pod id or wss://…/ws" /></div>
+          <div class="field"><label for="own-amt">AMT pod</label><input id="own-amt" type="text" autocomplete="off" spellcheck="false" placeholder="pod id or wss://…/ws" /></div>
+        </div>
       </details>
     </div>
   `;
@@ -351,6 +359,10 @@ function wireControls(screen: HTMLElement, store: Store): void {
   ] as const) {
     const input = screen.querySelector<HTMLInputElement>(`#${id}`)!;
     input.addEventListener('input', () => actions()[action]?.(Number(input.value)));
+  }
+  for (const engine of ['acestep', 'amt'] as const) {
+    const input = screen.querySelector<HTMLInputElement>(`#own-${engine}`)!;
+    input.addEventListener('change', () => actions().setOwnUpstream?.(engine, input.value));
   }
   const genreSelect = screen.querySelector<HTMLSelectElement>('#genre')!;
   genreSelect.addEventListener('change', e => {
@@ -556,7 +568,12 @@ function update(screen: HTMLElement, s: AppState, changeLatencyMs: number): void
     s.requestAgeMs == null ? '' : `Age ${Math.round(s.requestAgeMs)} ms`,
     s.tooLate ? `Late ${s.tooLate}` : ''].filter(Boolean).join(' · ');
   screen.querySelector<HTMLElement>('#output-latency')!.textContent = s.outputLatencyMs == null ? '' : `Output latency: ${Math.round(s.outputLatencyMs)} ms`;
-  screen.querySelector<HTMLElement>('#engine-status')!.textContent = s.engineConnecting ? `${ENGINE_NAMES[s.engine]} · connecting…` : s.offlineEngines.includes(s.engine) ? `${ENGINE_NAMES[s.engine]} · offline` : '';
+  const ownPod = (s.engine === 'acestep' || s.engine === 'amt') && s.ownUpstreams[s.engine] ? ' · your pod' : '';
+  screen.querySelector<HTMLElement>('#engine-status')!.textContent = s.engineConnecting ? `${ENGINE_NAMES[s.engine]} · connecting…${ownPod}` : s.offlineEngines.includes(s.engine) ? `${ENGINE_NAMES[s.engine]} · offline` : ownPod.slice(3);
+  for (const engine of ['acestep', 'amt'] as const) {
+    const input = screen.querySelector<HTMLInputElement>(`#own-${engine}`)!;
+    if (document.activeElement !== input) input.value = s.ownUpstreams[engine] ?? '';
+  }
   for (const [id, value] of [['noise', s.noiseVolume], ['drone', s.droneVolume]] as const) {
     const input = screen.querySelector<HTMLInputElement>(`#${id}-volume`)!;
     syncInstrumentControl(input, String(value));

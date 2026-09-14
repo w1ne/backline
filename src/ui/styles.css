@@ -2014,3 +2014,28 @@ button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-v
   0%, 100% { opacity: 1; }
   50% { opacity: 0.55; }
 }
+
+/* Your own GPU: pod id / url fields under Models & connection */
+.own-gpu .field {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  min-width: 0;
+  margin-top: 8px;
+}
+.own-gpu input[type='text'] {
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 6px 8px;
+  border: 2px solid #000;
+  border-radius: 6px;
+  background: #fff;
+  color: #000;
+  width: 100%;
+  box-sizing: border-box;
+}
+.own-gpu-hint {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.35;
+}

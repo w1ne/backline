@@ -22,6 +22,7 @@ import { ToneClock } from '../band/clock';
 import type { ClockLike } from '../band/clockTypes';
 import { Bandleader, type PlayersLike } from '../band/bandleader';
 import { RELAY_URL } from '../config';
+import { engineSocketUrl } from './upstream';
 import { PATTERNS } from '../patterns';
 
 const KEY_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -341,7 +342,7 @@ export class AmtEngine implements BandEngine {
     clearTimeout(this.responseTimer);
     this.responseTimer = undefined;
 
-    const wsUrl = RELAY_URL.replace(/^http/, 'ws') + amtPath();
+    const wsUrl = engineSocketUrl('amt', RELAY_URL, amtPath());
     const ws = this.ws = new WebSocket(wsUrl);
     let opened = false;
     if (resume) {
