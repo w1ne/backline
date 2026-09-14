@@ -44,6 +44,7 @@ import { audioRecorder } from './export/audioRecorder';
 import { DEBUG, installDebug, recordToggle } from './debug';
 import { chooseFallback } from './engines/fallback';
 import { RELAY_URL } from './config';
+import { OWN_ENGINES, ownUpstream, saveOwnUpstream, withoutOwnUpstreams } from './engines/upstream';
 import type { EngineChoice } from './ui/state';
 import { parseHealth } from './engines/health';
 import { MorphBus, setSinkSupported } from './audio/morphBus';
@@ -454,10 +455,10 @@ function pollHealth(): void {
     .then(async res => {
       const body = await res.text();
       const health = parseHealth(body);
-      if (health) store.update({ offlineEngines: health });
+      if (health) store.update({ offlineEngines: withoutOwnUpstreams(health) });
     })
     .catch(() => {
-      store.update({ offlineEngines: ['acestep', 'lyria', 'amt'] });
+      store.update({ offlineEngines: withoutOwnUpstreams(['acestep', 'lyria', 'amt']) });
     });
 }
 pollHealth();
@@ -846,6 +847,18 @@ const liveActions: LiveActions = {
     drone.setRegister(droneRegister);
     store.update({ droneRegister });
   },
+  setOwnUpstream: (engine, value) => {
+    saveOwnUpstream(engine, value);
+    store.update({ ownUpstreams: { ...store.state.ownUpstreams, [engine]: value.trim() } });
+    // A pod the relay never sees is neither online nor offline in its /health; re-derive now
+    // instead of waiting for the next 30 s poll, and the fallback timer still catches a dead pod.
+    pollHealth();
+    // The engine reads its socket URL when it starts, so a live one restarts on the new pod.
+    if (store.state.engine === engine && store.state.power === 'on') {
+      liveActions.setEngine('patterns');
+      liveActions.setEngine(engine);
+    }
+  },
   setNoiseVolume: value => {
     const noiseVolume = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
     whiteNoise.setEnabled(store.state.power === 'on' && !store.state.paused);
@@ -916,7 +929,7 @@ installDebug({
   },
 });
 
-store.update({}); // first render, which is what puts the canvas in the DOM
+store.update({ ownUpstreams: Object.fromEntries(OWN_ENGINES.map(e => [e, ownUpstream(e)])) }); // first render, which is what puts the canvas in the DOM
 
 // No power key: the band boots with the page. Audio stays suspended until the
 // first tap (browser autoplay policy); the LCD says so until then.

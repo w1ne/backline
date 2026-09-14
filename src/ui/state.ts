@@ -60,6 +60,8 @@ export interface AppState {
   loopsUpdatedAt: number | undefined;
   /** engines the /health probe found unreachable at page load; still selectable, just flagged in the UI */
   offlineEngines: EngineChoice[];
+  /** Player-supplied GPU pods per engine (raw text as typed), '' = hosted relay. */
+  ownUpstreams: Partial<Record<'acestep' | 'amt', string>>;
   /** true while the current engine is waiting on its 8s connect/first-block watchdog */
   engineConnecting: boolean;
   /** where each part goes: the main output, the MORPH output (Neutone/LYDIA), or both */
@@ -127,6 +129,7 @@ const defaults: AppState = {
   loops: 0,
   loopsUpdatedAt: undefined,
   offlineEngines: [],
+  ownUpstreams: {},
   engineConnecting: false,
   routing: { ...MAIN_ROUTING },
   morphOut: null,
